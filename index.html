@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>China Town Imports — Controle de Estoque</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
+  <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
+  <div class="titulo">
+    <b>Controle de Estoque</b>
+    <span>China Town Imports</span>
+  </div>
+  <div class="acoes">
+    <button class="btn btn-claro btn-mini" onclick="abrirCategorias()">Categorias</button>
+    <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
+    <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
+    <button class="btn btn-amarelo" onclick="abrirProduto()">+ Novo produto</button>
+    <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
+  </div>
+</header>
+
+<main>
+  <div class="filtros">
+    <input type="text" id="busca" placeholder="Buscar por nome, marca ou código..." oninput="render()">
+    <select id="filtroCategoria" onchange="render()"><option value="">Todas as categorias</option></select>
+    <div class="ordenar">
+      <label for="ordenarPor">Ordenar:</label>
+      <select id="ordenarPor" onchange="render()">
+        <option value="nome">Nome</option>
+        <option value="estoque">Quantidade</option>
+        <option value="preco">Preço</option>
+        <option value="custo">Custo médio</option>
+      </select>
+      <button id="btnDir" class="btn btn-claro btn-mini" onclick="alternarDirecao()" title="Inverter ordem">↑</button>
+    </div>
+  </div>
+  <div id="conteudo"></div>
+</main>
+
+<!-- ===== Modal: produto ===== -->
+<div class="overlay" id="modalProduto">
+  <div class="modal">
+    <div class="modal-cabecalho">
+      <h2 id="tituloProduto">Novo produto</h2>
+      <button class="fechar" onclick="fechar('modalProduto')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <input type="hidden" id="produtoId">
+      <div class="linha-campos">
+        <div class="campo" style="flex:.8">
+          <label>Marca / fabricante</label>
+          <input type="text" id="pMarca" placeholder="Ex: Baseus">
+        </div>
+        <div class="campo" style="flex:1.4">
+          <label>Nome do produto</label>
+          <input type="text" id="pNome" placeholder="Ex: Cabo USB-C 1m">
+        </div>
+      </div>
+      <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
+      <div class="linha-campos">
+        <div class="campo">
+          <label>Categoria</label>
+          <select id="pCategoria"></select>
+        </div>
+        <div class="campo">
+          <label>Código (opcional)</label>
+          <input type="text" id="pCodigo" placeholder="SKU / código interno">
+        </div>
+      </div>
+      <div class="linha-campos">
+        <div class="campo">
+          <label>Preço de venda (R$)</label>
+          <input type="number" id="pPreco" min="0" step="0.01" placeholder="0,00">
+          <div class="dica">Base para o cálculo de lucro.</div>
+        </div>
+        <div class="campo">
+          <label>Estoque mínimo</label>
+          <input type="number" id="pMinimo" min="0" value="0">
+          <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div>
+        </div>
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-vermelho" id="btnExcluirProduto" style="margin-right:auto;display:none" onclick="excluirProduto()">Excluir</button>
+        <button class="btn btn-claro" onclick="fechar('modalProduto')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarProduto()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: movimentações ===== -->
+<div class="overlay" id="modalMov">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-cabecalho">
+      <h2 id="tituloMov">Produto</h2>
+      <button class="fechar" onclick="fechar('modalMov')">&times;</button>
+    </div>
+    <div class="modal-corpo" id="corpoMov"></div>
+  </div>
+</div>
+
+<!-- ===== Modal: categorias ===== -->
+<div class="overlay" id="modalCat">
+  <div class="modal">
+    <div class="modal-cabecalho">
+      <h2>Categorias</h2>
+      <button class="fechar" onclick="fechar('modalCat')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="linha-campos" style="align-items:flex-end">
+        <div class="campo" style="margin-bottom:0">
+          <label>Nova categoria</label>
+          <input type="text" id="novaCat" placeholder="Ex: Áudio">
+        </div>
+        <button class="btn btn-amarelo" style="margin-bottom:0" onclick="adicionarCategoria()">Adicionar</button>
+      </div>
+      <ul class="lista-cat" id="listaCat" style="margin-top:16px"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: senha do gerente ===== -->
+<div class="overlay" id="modalSenha">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-cabecalho">
+      <h2>Confirmação do gerente</h2>
+      <button class="fechar" onclick="cancelarSenha()">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p style="margin-bottom:14px">O preço de venda foi alterado em relação ao preço base. Digite a senha de administrador para confirmar a baixa.</p>
+      <div class="campo">
+        <input type="password" id="senhaInput" placeholder="Senha do administrador" onkeydown="if(event.key==='Enter')confirmarSenha()">
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="cancelarSenha()">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="confirmarSenha()">Confirmar baixa</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

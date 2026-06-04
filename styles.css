@@ -1,0 +1,185 @@
+/* ===== Cores da marca ===== */
+:root{
+  --amarelo:#F7C600;
+  --amarelo-claro:#FFF3BF;
+  --preto:#1A1A17;
+  --vermelho:#E0241B;
+  --vermelho-claro:#FBE6E4;
+  --verde:#2E7D32;
+  --bg:#F4F1E8;
+  --card:#FFFFFF;
+  --borda:rgba(26,26,23,.12);
+  --borda-forte:rgba(26,26,23,.25);
+  --texto:#1A1A17;
+  --texto-sec:#74726A;
+  --raio:14px;
+  --display:'Bricolage Grotesque',sans-serif;
+  --corpo:'IBM Plex Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--corpo);
+  background:var(--bg);
+  color:var(--texto);
+  line-height:1.5;
+  padding-bottom:60px;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:var(--corpo);cursor:pointer}
+input,select{font-family:var(--corpo);font-size:15px}
+
+/* ===== Cabeçalho ===== */
+header{
+  background:var(--preto);
+  color:#fff;
+  padding:14px 20px;
+  display:flex;align-items:center;gap:14px;
+  flex-wrap:wrap;
+  position:sticky;top:0;z-index:50;
+  border-bottom:4px solid var(--amarelo);
+}
+header .logo{
+  width:46px;height:46px;border-radius:50%;
+  background:var(--amarelo);object-fit:contain;flex-shrink:0;
+}
+header .titulo{display:flex;flex-direction:column;line-height:1.1}
+header .titulo b{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.2px}
+header .titulo span{font-size:12px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}
+header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* ===== Botões ===== */
+.btn{
+  border:none;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;
+  display:inline-flex;align-items:center;gap:6px;transition:transform .08s,filter .15s;
+}
+.btn:active{transform:translateY(1px)}
+.btn-amarelo{background:var(--amarelo);color:var(--preto)}
+.btn-amarelo:hover{filter:brightness(1.05)}
+.btn-escuro{background:#33332E;color:#fff}
+.btn-escuro:hover{background:#45453E}
+.btn-claro{background:#fff;color:var(--preto);border:1px solid var(--borda-forte)}
+.btn-claro:hover{background:var(--bg)}
+.btn-vermelho{background:var(--vermelho);color:#fff}
+.btn-vermelho:hover{filter:brightness(1.05)}
+.btn-mini{padding:6px 10px;font-size:13px}
+
+/* ===== Conteúdo ===== */
+main{max-width:980px;margin:0 auto;padding:22px 18px}
+.filtros{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.filtros input,.filtros select{
+  padding:10px 12px;border:1px solid var(--borda);border-radius:10px;background:#fff;
+}
+.filtros>input{flex:1;min-width:180px}
+.ordenar{display:flex;align-items:center;gap:6px}
+.ordenar label{font-size:13px;color:var(--texto-sec);font-weight:600}
+.ordenar select{padding:8px 10px}
+#btnDir{font-family:var(--mono);min-width:34px;justify-content:center}
+
+/* ===== Tabela de produtos ===== */
+.tabela{background:var(--card);border:1px solid var(--borda);border-radius:var(--raio);overflow:hidden}
+.linha-cabecalho,.linha{
+  display:grid;
+  grid-template-columns:2.4fr 1.1fr .75fr 1fr 1fr;
+  align-items:center;gap:8px;padding:12px 16px;
+}
+.linha-cabecalho{
+  background:var(--preto);color:#fff;font-size:12px;text-transform:uppercase;
+  letter-spacing:.6px;font-weight:600;
+}
+.linha-cabecalho .num,.linha .num{text-align:right}
+.linha{border-top:1px solid var(--borda);cursor:pointer;transition:background .12s}
+.linha:hover{background:var(--amarelo-claro)}
+.linha .nome{font-weight:600}
+.linha .nome .marca{
+  display:block;font-weight:600;color:var(--texto-sec);font-size:11px;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px;
+}
+.linha .nome small.codigo{display:block;font-weight:400;color:var(--texto-sec);font-size:12px}
+.linha .cat{
+  display:inline-block;background:var(--bg);border:1px solid var(--borda);
+  padding:3px 10px;border-radius:999px;font-size:13px;
+}
+.linha .num{font-family:var(--mono);font-weight:600}
+.badge-baixo,.badge-receber{
+  display:inline-flex;align-items:center;font-size:11px;font-weight:600;
+  padding:2px 8px;border-radius:999px;margin-left:6px;font-family:var(--corpo);
+  vertical-align:middle;
+}
+.badge-baixo{background:var(--vermelho-claro);color:var(--vermelho)}
+.badge-receber{background:var(--amarelo-claro);color:#8A6D00}
+
+/* ===== Estado vazio ===== */
+.vazio{text-align:center;padding:50px 20px;color:var(--texto-sec)}
+.vazio img{width:160px;height:auto;margin-bottom:6px}
+.vazio h3{font-family:var(--display);font-weight:700;color:var(--texto);font-size:20px;margin-bottom:4px}
+.sem-resultado{padding:24px;text-align:center;color:var(--texto-sec)}
+
+/* ===== Modal ===== */
+.overlay{
+  position:fixed;inset:0;background:rgba(26,26,23,.55);display:none;
+  align-items:flex-start;justify-content:center;padding:30px 14px;z-index:100;overflow-y:auto;
+}
+.overlay.aberto{display:flex}
+.modal{
+  background:var(--card);border-radius:18px;width:100%;max-width:560px;
+  border-top:6px solid var(--amarelo);overflow:hidden;animation:sobe .2s ease;
+}
+@keyframes sobe{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-cabecalho{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--borda)}
+.modal-cabecalho h2{font-family:var(--display);font-weight:700;font-size:19px}
+.modal-cabecalho .fechar{margin-left:auto;background:none;border:none;font-size:24px;color:var(--texto-sec);line-height:1}
+.modal-corpo{padding:20px}
+.campo{margin-bottom:14px}
+.campo label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.campo input,.campo select{
+  width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:10px;background:#fff;
+}
+.campo .dica,.dica{font-size:12px;color:var(--texto-sec);margin-top:4px}
+.linha-campos{display:flex;gap:12px}
+.linha-campos .campo{flex:1}
+.rodape-modal{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+
+/* ===== Painel de movimentações ===== */
+.resumo{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px}
+.resumo .caixa{background:var(--bg);border:1px solid var(--borda);border-radius:12px;padding:12px}
+.resumo .caixa span{display:block;font-size:12px;color:var(--texto-sec);margin-bottom:2px}
+.resumo .caixa b{font-family:var(--mono);font-size:18px}
+.resumo .caixa .margem{font-family:var(--corpo);font-size:12px;color:var(--texto-sec);margin-top:3px}
+.resumo .destaque{background:var(--amarelo-claro);border-color:var(--amarelo)}
+.sub{font-family:var(--display);font-weight:700;font-size:15px;margin:18px 0 10px}
+.forms-mov{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.forms-mov .bloco{border:1px solid var(--borda);border-radius:12px;padding:14px}
+.forms-mov .bloco h4{font-size:13px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
+.forms-mov .bloco.entrada h4{color:var(--verde)}
+.forms-mov .bloco.saida h4{color:var(--vermelho)}
+.mini-campo{margin-bottom:8px}
+.mini-campo label{font-size:12px;color:var(--texto-sec)}
+.mini-campo input,.mini-campo select{width:100%;padding:7px 9px;border:1px solid var(--borda);border-radius:8px;font-size:14px}
+.historico{margin-top:6px}
+.mov{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--borda);font-size:14px}
+.mov .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.mov .tag.e{background:#E5F2E6;color:var(--verde)}
+.mov .tag.s{background:var(--vermelho-claro);color:var(--vermelho)}
+.mov .data{color:var(--texto-sec);font-size:13px}
+.mov .valor{margin-left:auto;font-family:var(--mono);font-weight:600;text-align:right;white-space:nowrap}
+.mov .apagar{background:none;border:none;color:var(--texto-sec);font-size:16px}
+.lista-cat{list-style:none}
+.lista-cat li{display:flex;align-items:center;padding:9px 0;border-top:1px solid var(--borda)}
+.lista-cat li:first-child{border-top:none}
+.lista-cat li button{margin-left:auto}
+
+/* ===== Toast ===== */
+#toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:var(--preto);color:#fff;padding:12px 20px;border-radius:12px;font-weight:500;
+  border-left:4px solid var(--amarelo);transition:transform .25s;z-index:200;max-width:90%;
+}
+#toast.mostra{transform:translateX(-50%) translateY(0)}
+
+@media(max-width:620px){
+  .linha-cabecalho,.linha{grid-template-columns:1.9fr .8fr 1fr}
+  .col-cat,.col-custo{display:none}
+  .forms-mov,.resumo{grid-template-columns:1fr}
+  header .titulo b{font-size:18px}
+}

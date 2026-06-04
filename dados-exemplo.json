@@ -1,0 +1,53 @@
+{
+  "categorias": [
+    "Celulares",
+    "Games",
+    "Consoles",
+    "Joysticks",
+    "Acessórios",
+    "Cabos",
+    "Memória e armazenamento"
+  ],
+  "produtos": [
+    {
+      "id": "ex-cabo-usbc",
+      "marca": "Baseus",
+      "nome": "Cabo USB-C 1m",
+      "categoria": "Cabos",
+      "codigo": "CB-001",
+      "minimo": 10,
+      "preco": 19.9,
+      "movimentacoes": [
+        { "id": "m1", "tipo": "entrada", "data": "2026-04-10", "qtd": 50, "custoUnit": 7.5 },
+        { "id": "m2", "tipo": "entrada", "data": "2026-05-20", "qtd": 30, "custoUnit": 9.2 },
+        { "id": "m3", "tipo": "saida", "data": "2026-05-28", "qtd": 72, "motivo": "Venda", "precoVenda": 19.9 }
+      ]
+    },
+    {
+      "id": "ex-pendrive-64",
+      "marca": "SanDisk",
+      "nome": "Pendrive 64GB",
+      "categoria": "Memória e armazenamento",
+      "codigo": "PD-64",
+      "minimo": 5,
+      "preco": 49.9,
+      "movimentacoes": [
+        { "id": "m4", "tipo": "entrada", "data": "2026-05-02", "qtd": 40, "custoUnit": 22.0 },
+        { "id": "m5", "tipo": "saida", "data": "2026-05-25", "qtd": 8, "motivo": "Venda", "precoVenda": 49.9 },
+        { "id": "m6", "tipo": "saida", "data": "2026-05-30", "qtd": 3, "motivo": "A receber", "precoVenda": 0 }
+      ]
+    },
+    {
+      "id": "ex-controle-xbox",
+      "marca": "Microsoft",
+      "nome": "Controle sem fio Xbox",
+      "categoria": "Joysticks",
+      "codigo": "JS-XB",
+      "minimo": 3,
+      "preco": 399.0,
+      "movimentacoes": [
+        { "id": "m7", "tipo": "entrada", "data": "2026-04-15", "qtd": 12, "custoUnit": 215.0 }
+      ]
+    }
+  ]
+}
