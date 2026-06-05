@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.2.0';
+const VERSAO = '0.2.1';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -31,6 +31,7 @@ function salvar(){ Armazenamento.gravar(estado); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function prod(id){ return estado.produtos.find(p=>p.id===id); }
+function aberto(id){ return document.getElementById(id).classList.contains('aberto'); }
 
 /* =========================================================
    CÁLCULOS
@@ -176,7 +177,7 @@ function preencherFiltroCategorias(){
     estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
 }
 
-/* ===== Toque/clique nas linhas: clique abre painel, segurar abre ações ===== */
+/* ===== Toque/clique nas linhas: clique abre o painel inteiro, segurar abre ações ===== */
 let pressTimer = null, longPress = false;
 function bindLinhas(){
   document.querySelectorAll('.linha[data-id]').forEach(el=>{
@@ -204,8 +205,8 @@ function abrirAcoes(id){
   document.getElementById('tituloAcoes').textContent = prod(id).nome;
   abrir('modalAcoes');
 }
-function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id,'entrada'); }
-function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id,'saida'); }
+function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroEntrada(id); }
+function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirProduto(id); }
 
 /* =========================================================
@@ -262,18 +263,75 @@ function excluirProduto(){
 }
 
 /* =========================================================
-   MOVIMENTAÇÕES (painel do produto)
+   BLOCOS REUTILIZÁVEIS (entrada / saída)
+   Usados tanto no painel completo quanto nos modais avulsos.
+   ========================================================= */
+function blocoEntrada(p){
+  return `<div class="bloco entrada">
+    <h4>Registrar entrada (compra)</h4>
+    <div class="mini-campo"><label>Data</label><input type="date" id="eData" value="${hoje()}"></div>
+    <div class="mini-campo"><label>Quantidade</label><input type="number" id="eQtd" min="1" placeholder="0"></div>
+    <div class="mini-campo"><label>Custo por unidade (R$)</label><input type="number" id="eCusto" min="0" step="0.01" value="${ultimoCustoDe(p)||''}" placeholder="0,00"></div>
+    <button class="btn btn-amarelo btn-mini" style="width:100%;margin-top:4px" onclick="registrarEntrada()">+ Adicionar entrada</button>
+  </div>`;
+}
+function blocoSaida(p){
+  return `<div class="bloco saida">
+    <h4>Registrar saída (baixa)</h4>
+    <div class="mini-campo"><label>Data</label><input type="date" id="sData" value="${hoje()}"></div>
+    <div class="mini-campo"><label>Quantidade</label><input type="number" id="sQtd" min="1" placeholder="0"></div>
+    <div class="mini-campo"><label>Motivo</label>
+      <select id="sMotivo" onchange="ajustarCamposSaida()">
+        <option>Venda</option>
+        <option>A receber</option>
+        <option>Perda / avaria</option>
+        <option>Devolução</option>
+        <option>Ajuste</option>
+        <option>Outros</option>
+      </select>
+    </div>
+    <div class="mini-campo" id="campoPrecoSaida">
+      <label>Preço de venda (un.)</label>
+      <input type="number" id="sPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
+      <small style="color:var(--texto-sec);font-size:11px">Alterar o preço base exige senha do gerente.</small>
+    </div>
+    <div class="mini-campo" id="campoMotivoOutros" style="display:none">
+      <label>Descreva o motivo</label>
+      <input type="text" id="sMotivoTexto" placeholder="Ex: brinde, uso interno...">
+    </div>
+    <div class="mini-campo" id="notaReceber" style="display:none">
+      <small style="color:#8A6D00">Registrado com valor R$ 0,00 e contado como “a receber”.</small>
+    </div>
+    <button class="btn btn-escuro btn-mini" style="width:100%;margin-top:4px" onclick="registrarSaida()">− Dar baixa</button>
+  </div>`;
+}
+
+/* ===== Modais avulsos a partir das ações rápidas ===== */
+function abrirRegistroEntrada(id){
+  produtoAtivo = id;
+  document.getElementById('tituloRegEntrada').textContent = prod(id).nome;
+  document.getElementById('corpoRegEntrada').innerHTML = blocoEntrada(prod(id));
+  abrir('modalRegEntrada');
+  setTimeout(()=>{ const el=document.getElementById('eQtd'); if(el) el.focus(); }, 80);
+}
+function abrirRegistroSaida(id){
+  produtoAtivo = id;
+  document.getElementById('tituloRegSaida').textContent = prod(id).nome;
+  document.getElementById('corpoRegSaida').innerHTML = blocoSaida(prod(id));
+  abrir('modalRegSaida');
+  ajustarCamposSaida();
+  setTimeout(()=>{ const el=document.getElementById('sQtd'); if(el) el.focus(); }, 80);
+}
+
+/* =========================================================
+   PAINEL COMPLETO DO PRODUTO (toque simples)
    ========================================================= */
 let produtoAtivo = null;
-function abrirMov(id, foco){
+function abrirMov(id){
   produtoAtivo = id;
   document.getElementById('tituloMov').textContent = prod(id).nome;
   renderMov();
   abrir('modalMov');
-  if(foco){
-    const alvo = foco==='entrada' ? 'eQtd' : 'sQtd';
-    setTimeout(()=>{ const el=document.getElementById(alvo); if(el) el.focus(); }, 80);
-  }
 }
 function renderMov(){
   const p = prod(produtoAtivo);
@@ -322,62 +380,39 @@ function renderMov(){
       <div class="caixa"><span>Variação de custo entre lotes</span><b style="font-size:15px">${variacao}</b></div>
     </div>
 
+    <div style="margin:-4px 0 18px">
+      <button class="btn btn-claro btn-mini" onclick="fechar('modalMov');abrirProduto('${p.id}')">Editar dados do produto</button>
+    </div>
+
     <div class="sub">Composição do estoque atual</div>
     <div class="composicao">${compHtml}</div>
 
     <div class="forms-mov">
-      <div class="bloco entrada">
-        <h4>Registrar entrada (compra)</h4>
-        <div class="mini-campo"><label>Data</label><input type="date" id="eData" value="${hoje()}"></div>
-        <div class="mini-campo"><label>Quantidade</label><input type="number" id="eQtd" min="1" placeholder="0"></div>
-        <div class="mini-campo"><label>Custo por unidade (R$)</label><input type="number" id="eCusto" min="0" step="0.01" value="${ultimoCustoDe(p)||''}" placeholder="0,00"></div>
-        <button class="btn btn-amarelo btn-mini" style="width:100%;margin-top:4px" onclick="registrarEntrada()">+ Adicionar entrada</button>
-      </div>
-      <div class="bloco saida">
-        <h4>Registrar saída (baixa)</h4>
-        <div class="mini-campo"><label>Data</label><input type="date" id="sData" value="${hoje()}"></div>
-        <div class="mini-campo"><label>Quantidade</label><input type="number" id="sQtd" min="1" placeholder="0"></div>
-        <div class="mini-campo"><label>Motivo</label>
-          <select id="sMotivo" onchange="ajustarCamposSaida()">
-            <option>Venda</option>
-            <option>A receber</option>
-            <option>Perda / avaria</option>
-            <option>Devolução</option>
-            <option>Ajuste</option>
-            <option>Outros</option>
-          </select>
-        </div>
-        <div class="mini-campo" id="campoPrecoSaida">
-          <label>Preço de venda (un.)</label>
-          <input type="number" id="sPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
-          <small style="color:var(--texto-sec);font-size:11px">Alterar o preço base exige senha do gerente.</small>
-        </div>
-        <div class="mini-campo" id="campoMotivoOutros" style="display:none">
-          <label>Descreva o motivo</label>
-          <input type="text" id="sMotivoTexto" placeholder="Ex: brinde, uso interno...">
-        </div>
-        <div class="mini-campo" id="notaReceber" style="display:none">
-          <small style="color:#8A6D00">Registrado com valor R$ 0,00 e contado como “a receber”.</small>
-        </div>
-        <button class="btn btn-escuro btn-mini" style="width:100%;margin-top:4px" onclick="registrarSaida()">− Dar baixa</button>
-      </div>
+      ${blocoEntrada(p)}
+      ${blocoSaida(p)}
     </div>
 
     <div class="sub">Histórico de movimentações</div>
-    <div class="historico">${movs || '<p style="color:var(--texto-sec);padding:8px 0">Nenhuma movimentação ainda.</p>'}</div>
-
-    <div class="rodape-modal" style="margin-top:18px">
-      <button class="btn btn-claro btn-mini" onclick="fechar('modalMov');abrirProduto('${p.id}')">Editar dados do produto</button>
-    </div>`;
+    <div class="historico">${movs || '<p style="color:var(--texto-sec);padding:8px 0">Nenhuma movimentação ainda.</p>'}</div>`;
 
   ajustarCamposSaida();
 }
 
 function ajustarCamposSaida(){
-  const m = document.getElementById('sMotivo').value;
+  const sel = document.getElementById('sMotivo');
+  if(!sel) return;
+  const m = sel.value;
   document.getElementById('campoPrecoSaida').style.display   = (m==='Venda') ? 'block' : 'none';
   document.getElementById('campoMotivoOutros').style.display = (m==='Outros') ? 'block' : 'none';
   document.getElementById('notaReceber').style.display       = (m==='A receber') ? 'block' : 'none';
+}
+
+/* Refresca a UI depois de registrar uma movimentação, venha de onde vier */
+function aposMovimento(){
+  if(aberto('modalRegEntrada')) fechar('modalRegEntrada');
+  if(aberto('modalRegSaida'))   fechar('modalRegSaida');
+  if(aberto('modalMov'))        renderMov();
+  render();
 }
 
 /* ===== Entrada (com lembrete de custo da última compra) ===== */
@@ -454,8 +489,7 @@ function entradaConfirmaNovo(){
 function commitEntrada(p, mov){
   p.movimentacoes.push({ id:uid(), tipo:'entrada', ...mov });
   salvar(); entradaPendente = null;
-  if(document.getElementById('modalMov').classList.contains('aberto')) renderMov();
-  render(); toast('Entrada registrada.');
+  aposMovimento(); toast('Entrada registrada.');
 }
 
 /* ===== Saída ===== */
@@ -490,7 +524,7 @@ function registrarSaida(){
 }
 function efetivarSaida(p, mov){
   p.movimentacoes.push(mov);
-  salvar(); renderMov(); render(); toast('Baixa registrada.');
+  salvar(); aposMovimento(); toast('Baixa registrada.');
 }
 function apagarMov(id){
   const p = prod(produtoAtivo);
@@ -626,13 +660,21 @@ function importar(ev){
 }
 
 /* ===== Utilidades de UI ===== */
+/* Containers gerados dinamicamente: limpamos ao fechar para não duplicar IDs */
+const CORPO_DE = {
+  modalMov:'corpoMov', modalRegEntrada:'corpoRegEntrada',
+  modalRegSaida:'corpoRegSaida', modalEntrada:'corpoEntrada'
+};
 function abrir(id){ document.getElementById(id).classList.add('aberto'); }
-function fechar(id){ document.getElementById(id).classList.remove('aberto'); }
+function fechar(id){
+  document.getElementById(id).classList.remove('aberto');
+  if(CORPO_DE[id]) document.getElementById(CORPO_DE[id]).innerHTML = '';
+}
 document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
   if(e.target===o){
     if(o.id==='modalSenha') acaoSenha=null;
     if(o.id==='modalEntrada') entradaPendente=null;
-    o.classList.remove('aberto');
+    fechar(o.id);
   }
 }));
 let tToast;

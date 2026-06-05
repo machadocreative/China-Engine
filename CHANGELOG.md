@@ -27,6 +27,12 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 - Registro de despesas da loja (aluguel, energia, internet, funcionários, compra de insumos etc.).
 - Apuração de lucro da operação (entender se o negócio dá lucro de fato).
 
+## [0.2.1] - 2026-06-05
+
+### Alterado
+- Nas ações rápidas (toque e segure), "Registrar entrada" e "Registrar saída" passam a abrir um modal apenas com o bloco correspondente, em vez de rolar até ele no painel completo.
+- O botão "Editar dados do produto" foi movido para logo abaixo dos cards de estado geral do estoque (antes ficava no fim do painel).
+
 ## [0.2.0] - 2026-06-05
 
 ### Adicionado
@@ -76,7 +82,8 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 - Aplicativo estático (HTML + CSS + JS), pensado para hospedagem no GitHub Pages.
 
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
-     ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.2.0 -->
+     ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.2.1 -->
 [Não lançado]: #
+[0.2.1]: #
 [0.2.0]: #
 [0.1.0]: #
