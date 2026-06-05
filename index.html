@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChinaTown Imports — Controle de Estoque</title>
-<meta property="og:title" content="ChinaTown Imports — Controle de Estoque">
+<title>China Town Imports — Controle de Estoque</title>
+
+<meta property="og:title" content="China Town Imports — Controle de Estoque">
 <meta property="og:description" content="Estoque, custos e lucro em um só lugar.">
 <meta property="og:image" content="https://machadocreative.github.io/China-Engine/og-image.png">
 <meta property="og:url" content="https://machadocreative.github.io/China-Engine/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,12 +21,13 @@
 
 <header>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
-  <img class="logo" src="Chinatown_Imports_Logo.png" alt="ChinaTown Imports" onerror="this.style.display='none'">
+  <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
   <div class="titulo">
     <b>Controle de Estoque</b>
-    <span>ChinaTown Imports</span>
+    <span>China Town Imports <em id="versao"></em></span>
   </div>
   <div class="acoes">
+    <button class="btn btn-claro btn-mini" onclick="abrirHistorico()">Histórico</button>
     <button class="btn btn-claro btn-mini" onclick="abrirCategorias()">Categorias</button>
     <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
     <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
@@ -48,8 +51,26 @@
       <button id="btnDir" class="btn btn-claro btn-mini" onclick="alternarDirecao()" title="Inverter ordem">↑</button>
     </div>
   </div>
+  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas.</p>
   <div id="conteudo"></div>
 </main>
+
+<!-- ===== Modal: ações rápidas (toque e segure) ===== -->
+<div class="overlay" id="modalAcoes">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-cabecalho">
+      <h2 id="tituloAcoes">Produto</h2>
+      <button class="fechar" onclick="fechar('modalAcoes')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="acoes-rapidas">
+        <button class="btn btn-amarelo" onclick="acaoEntrada()">Registrar entrada</button>
+        <button class="btn btn-escuro" onclick="acaoSaida()">Registrar saída</button>
+        <button class="btn btn-claro" onclick="acaoEditar()">Editar informações do produto</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ===== Modal: produto ===== -->
 <div class="overlay" id="modalProduto">
@@ -85,7 +106,7 @@
         <div class="campo">
           <label>Preço de venda (R$)</label>
           <input type="number" id="pPreco" min="0" step="0.01" placeholder="0,00">
-          <div class="dica">Base para o cálculo de lucro.</div>
+          <div class="dica">Alterar exige senha do gerente.</div>
         </div>
         <div class="campo">
           <label>Estoque mínimo</label>
@@ -110,6 +131,41 @@
       <button class="fechar" onclick="fechar('modalMov')">&times;</button>
     </div>
     <div class="modal-corpo" id="corpoMov"></div>
+  </div>
+</div>
+
+<!-- ===== Modal: confirmar entrada (lembrete de custo) ===== -->
+<div class="overlay" id="modalEntrada">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-cabecalho">
+      <h2>Confirmar entrada</h2>
+      <button class="fechar" onclick="fechar('modalEntrada')">&times;</button>
+    </div>
+    <div class="modal-corpo" id="corpoEntrada"></div>
+  </div>
+</div>
+
+<!-- ===== Modal: histórico geral ===== -->
+<div class="overlay" id="modalHistorico">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-cabecalho">
+      <h2>Histórico de movimentações</h2>
+      <button class="fechar" onclick="fechar('modalHistorico')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="ordenar" style="margin-bottom:14px">
+        <label for="histOrdenar">Ordenar:</label>
+        <select id="histOrdenar" onchange="renderHistorico()">
+          <option value="data">Data</option>
+          <option value="tipo">Entrada / Saída</option>
+          <option value="categoria">Categoria</option>
+          <option value="nome">Nome do produto</option>
+          <option value="valor">Valor</option>
+        </select>
+        <button id="histDir" class="btn btn-claro btn-mini" onclick="histAlternarDir()" title="Inverter ordem">↓</button>
+      </div>
+      <div id="histConteudo"></div>
+    </div>
   </div>
 </div>
 
@@ -141,13 +197,13 @@
       <button class="fechar" onclick="cancelarSenha()">&times;</button>
     </div>
     <div class="modal-corpo">
-      <p style="margin-bottom:14px">O preço de venda foi alterado em relação ao preço base. Digite a senha de administrador para confirmar a baixa.</p>
+      <p id="senhaTexto" style="margin-bottom:14px">Digite a senha de administrador para confirmar.</p>
       <div class="campo">
         <input type="password" id="senhaInput" placeholder="Senha do administrador" onkeydown="if(event.key==='Enter')confirmarSenha()">
       </div>
       <div class="rodape-modal">
         <button class="btn btn-claro" onclick="cancelarSenha()">Cancelar</button>
-        <button class="btn btn-amarelo" onclick="confirmarSenha()">Confirmar baixa</button>
+        <button class="btn btn-amarelo" onclick="confirmarSenha()">Confirmar</button>
       </div>
     </div>
   </div>

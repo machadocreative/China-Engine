@@ -46,12 +46,13 @@ header .logo{
 header .titulo{display:flex;flex-direction:column;line-height:1.1}
 header .titulo b{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.2px}
 header .titulo span{font-size:12px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}
+header .titulo em{font-style:normal;color:var(--amarelo);font-weight:600;margin-left:4px}
 header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 
 /* ===== Botões ===== */
 .btn{
   border:none;border-radius:10px;padding:9px 14px;font-weight:600;font-size:14px;
-  display:inline-flex;align-items:center;gap:6px;transition:transform .08s,filter .15s;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:transform .08s,filter .15s;
 }
 .btn:active{transform:translateY(1px)}
 .btn-amarelo{background:var(--amarelo);color:var(--preto)}
@@ -73,8 +74,8 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .filtros>input{flex:1;min-width:180px}
 .ordenar{display:flex;align-items:center;gap:6px}
 .ordenar label{font-size:13px;color:var(--texto-sec);font-weight:600}
-.ordenar select{padding:8px 10px}
-#btnDir{font-family:var(--mono);min-width:34px;justify-content:center}
+.ordenar select{padding:8px 10px;border:1px solid var(--borda);border-radius:10px;background:#fff}
+#btnDir,#histDir{font-family:var(--mono);min-width:34px}
 
 /* ===== Tabela de produtos ===== */
 .tabela{background:var(--card);border:1px solid var(--borda);border-radius:var(--raio);overflow:hidden}
@@ -88,7 +89,10 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
   letter-spacing:.6px;font-weight:600;
 }
 .linha-cabecalho .num,.linha .num{text-align:right}
-.linha{border-top:1px solid var(--borda);cursor:pointer;transition:background .12s}
+.linha{
+  border-top:1px solid var(--borda);cursor:pointer;transition:background .12s;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+}
 .linha:hover{background:var(--amarelo-claro)}
 .linha .nome{font-weight:600}
 .linha .nome .marca{
@@ -140,6 +144,10 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .linha-campos .campo{flex:1}
 .rodape-modal{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 
+/* ===== Ações rápidas (toque e segure) ===== */
+.acoes-rapidas{display:flex;flex-direction:column;gap:10px}
+.acoes-rapidas .btn{width:100%;padding:13px;font-size:15px}
+
 /* ===== Painel de movimentações ===== */
 .resumo{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px}
 .resumo .caixa{background:var(--bg);border:1px solid var(--borda);border-radius:12px;padding:12px}
@@ -148,7 +156,13 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .resumo .caixa .margem{font-family:var(--corpo);font-size:12px;color:var(--texto-sec);margin-top:3px}
 .resumo .destaque{background:var(--amarelo-claro);border-color:var(--amarelo)}
 .sub{font-family:var(--display);font-weight:700;font-size:15px;margin:18px 0 10px}
-.forms-mov{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.composicao{display:flex;flex-wrap:wrap;gap:8px}
+.composicao .lote{
+  background:#fff;border:1px solid var(--borda-forte);border-radius:10px;padding:8px 12px;font-size:14px;
+}
+.composicao .lote b{font-family:var(--mono)}
+.composicao .lote span{color:var(--texto-sec)}
+.forms-mov{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px}
 .forms-mov .bloco{border:1px solid var(--borda);border-radius:12px;padding:14px}
 .forms-mov .bloco h4{font-size:13px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
 .forms-mov .bloco.entrada h4{color:var(--verde)}
@@ -169,6 +183,23 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .lista-cat li:first-child{border-top:none}
 .lista-cat li button{margin-left:auto}
 
+/* ===== Histórico geral ===== */
+.hist-tabela{border:1px solid var(--borda);border-radius:12px;overflow:hidden}
+.hist-cab,.hist-linha{
+  display:grid;grid-template-columns:1fr 1.7fr 1.1fr .5fr .8fr .9fr;
+  align-items:center;gap:8px;padding:10px 14px;
+}
+.hist-cab{background:var(--preto);color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.hist-cab .num,.hist-linha .num{text-align:right}
+.hist-linha{border-top:1px solid var(--borda);font-size:14px}
+.hist-linha .nome{font-weight:600}
+.hist-linha .nome small{display:block;font-weight:400;color:var(--texto-sec);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.hist-linha .num{font-family:var(--mono)}
+.hist-linha .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.hist-linha .tag.e{background:#E5F2E6;color:var(--verde)}
+.hist-linha .tag.s{background:var(--vermelho-claro);color:var(--vermelho)}
+.hist-linha .cat{display:inline-block;background:var(--bg);border:1px solid var(--borda);padding:2px 8px;border-radius:999px;font-size:12px}
+
 /* ===== Toast ===== */
 #toast{
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);
@@ -179,6 +210,7 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 
 @media(max-width:620px){
   .linha-cabecalho,.linha{grid-template-columns:1.9fr .8fr 1fr}
+  .hist-cab,.hist-linha{grid-template-columns:.9fr 1.5fr .5fr .8fr .9fr}
   .col-cat,.col-custo{display:none}
   .forms-mov,.resumo{grid-template-columns:1fr}
   header .titulo b{font-size:18px}

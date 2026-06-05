@@ -16,6 +16,32 @@ e o projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/):
 ### Corrigido
 ### Removido
 
+## Planejado (futuro — fora do escopo atual)
+
+Módulo financeiro, a ser desenvolvido **após** o polimento das funcionalidades de estoque,
+integrando as movimentações de entrada e saída com a gestão financeira da loja:
+
+- Exportação em `.ofx`.
+- Registro do tipo de recebimento na saída (venda em espécie, cartão de crédito, Pix, conta bancária em que foi recebido etc.).
+- Emissão/registro de recibo fiscal.
+- Registro de despesas da loja (aluguel, energia, internet, funcionários, compra de insumos etc.).
+- Apuração de lucro da operação (entender se o negócio dá lucro de fato).
+
+## [0.2.0] - 2026-06-05
+
+### Adicionado
+- Número da versão exibido no cabeçalho do app.
+- "Toque e segure" um produto na lista para abrir ações rápidas: Registrar entrada, Registrar saída e Editar informações do produto.
+- Composição do estoque atual por custo: mostra quantas unidades correspondem a cada preço de compra (ex.: 12 un. a R$ 10,00 · 8 un. a R$ 15,00).
+- Confirmação de custo ao registrar entrada em produto já existente: lembra o custo da última compra e, se houve mudança, permite informar novo custo e novo preço de venda mostrando o lucro resultante. O custo das unidades já em estoque não é alterado.
+- Tela de histórico geral de movimentações (todas as entradas e saídas de todos os produtos), com ordenação por entrada/saída, categoria, nome do produto, data e valor.
+
+### Alterado
+- Alterar o preço de venda na edição do produto agora também exige a senha do gerente (antes, só na saída).
+
+### Segurança
+- A senha de gerente continua no código do app (client-side) — trava operacional, não segurança real.
+
 ## [0.1.0] - 2026-06-04
 
 Primeira versão do MVP — controle de estoque com custo por lote.
@@ -50,6 +76,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 - Aplicativo estático (HTML + CSS + JS), pensado para hospedagem no GitHub Pages.
 
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
-     ex.: https://github.com/SEU-USUARIO/SEU-REPO/releases/tag/v0.1.0 -->
+     ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.2.0 -->
 [Não lançado]: #
+[0.2.0]: #
 [0.1.0]: #
