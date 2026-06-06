@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.2.1';
+const VERSAO = '0.3.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -32,6 +32,18 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function prod(id){ return estado.produtos.find(p=>p.id===id); }
 function aberto(id){ return document.getElementById(id).classList.contains('aberto'); }
+function val(id){ const el=document.getElementById(id); return el ? el.value : ''; }
+function sanitizarCategoria(v){
+  return v.replace(/[^A-Za-zÀ-ÿ0-9 \-\/&]/g,'').replace(/\s{2,}/g,' ');
+}
+/* SKU automático: prefixo da categoria + sufixo aleatório único */
+function gerarSku(categoria){
+  const base = (categoria||'').replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'SKU';
+  let sku;
+  do{ sku = base + '-' + Math.random().toString(36).slice(2,6).toUpperCase(); }
+  while(estado.produtos.some(p=>p.codigo===sku));
+  return sku;
+}
 
 /* =========================================================
    CÁLCULOS
@@ -57,9 +69,8 @@ function ultimoCustoDe(p){
   return ent.length ? ent[0].custoUnit : null;
 }
 function aReceberDe(p){
-  return saidas(p).filter(m=>m.motivo==='A receber').reduce((s,m)=>s+m.qtd,0);
+  return saidas(p).filter(m=>m.motivo==='A receber' && !m.recebido).reduce((s,m)=>s+m.qtd,0);
 }
-/* Composição do estoque atual por custo (FIFO: saídas consomem os lotes mais antigos) */
 function composicaoEstoque(p){
   const lotes = [...entradas(p)].sort((a,b)=>a.data.localeCompare(b.data))
                 .map(m=>({custo:m.custoUnit, qtd:m.qtd}));
@@ -77,7 +88,6 @@ function composicaoEstoque(p){
   }
   return grupos;
 }
-/* Lucro estimado a partir do preço de venda e do custo médio */
 function lucroDe(p){
   const cm = custoMedioDe(p);
   if(!p.preco || cm==null) return null;
@@ -109,7 +119,7 @@ function render(){
 
   let lista = estado.produtos.filter(p=>{
     const okCat = !cat || p.categoria===cat;
-    const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''}`.toLowerCase();
+    const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
     return okCat && (!busca || alvo.includes(busca));
   });
 
@@ -141,12 +151,11 @@ function render(){
     const baixo = est <= (p.minimo||0);
     const ar = aReceberDe(p);
     const cm = custoMedioDe(p);
-    return `<div class="linha" data-id="${p.id}">
+    const linha = `<div class="linha" data-id="${p.id}">
       <div class="nome">
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
         ${escapar(p.nome)}
         ${baixo?'<span class="badge-baixo">estoque baixo</span>':''}
-        ${ar>0?`<span class="badge-receber">${ar} a receber</span>`:''}
         ${p.codigo?`<small class="codigo">${escapar(p.codigo)}</small>`:''}
       </div>
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
@@ -154,6 +163,11 @@ function render(){
       <div class="num">${fmtBRL(p.preco||null)}</div>
       <div class="num col-custo">${fmtBRL(cm)}</div>
     </div>`;
+    const sub = ar>0 ? `<div class="subrow">
+        <span>${ar} unidade(s) a receber</span>
+        <button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento</button>
+      </div>` : '';
+    return linha + sub;
   }).join('');
 
   if(lista.length===0) linhas = `<div class="sem-resultado">Nenhum produto encontrado.</div>`;
@@ -173,11 +187,15 @@ function render(){
 function preencherFiltroCategorias(){
   const filtro = document.getElementById('filtroCategoria');
   const atual = filtro.value;
+  const contagem = {};
+  estado.produtos.forEach(p=>{ contagem[p.categoria] = (contagem[p.categoria]||0)+1; });
+  const comProdutos = estado.categorias.filter(c=>contagem[c]>0);
   filtro.innerHTML = '<option value="">Todas as categorias</option>' +
-    estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
+    comProdutos.map(c=>`<option value="${escapar(c)}" ${c===atual?'selected':''}>${escapar(c)} (${contagem[c]})</option>`).join('');
+  if(atual && !comProdutos.includes(atual)) filtro.value = '';
 }
 
-/* ===== Toque/clique nas linhas: clique abre o painel inteiro, segurar abre ações ===== */
+/* ===== Toque/clique nas linhas: clique abre o painel, segurar abre ações ===== */
 let pressTimer = null, longPress = false;
 function bindLinhas(){
   document.querySelectorAll('.linha[data-id]').forEach(el=>{
@@ -210,6 +228,40 @@ function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroS
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirProduto(id); }
 
 /* =========================================================
+   RECEBIMENTOS PENDENTES ("a receber")
+   ========================================================= */
+let receberAtivo = null;
+function abrirReceber(id){ receberAtivo = id; renderReceber(); abrir('modalReceber'); }
+function renderReceber(){
+  const p = prod(receberAtivo);
+  document.getElementById('tituloReceber').textContent = 'A receber — ' + p.nome;
+  const pend = saidas(p).filter(m=>m.motivo==='A receber' && !m.recebido).sort((a,b)=>a.data.localeCompare(b.data));
+  if(pend.length===0){
+    document.getElementById('corpoReceber').innerHTML = '<p style="color:var(--texto-sec)">Nenhum recebimento pendente.</p>';
+    return;
+  }
+  document.getElementById('corpoReceber').innerHTML =
+    `<p style="margin-bottom:14px;color:var(--texto-sec)">As unidades já saíram do estoque — finalizar apenas registra o valor recebido.</p>` +
+    pend.map(m=>`<div class="receber-linha">
+        <div><b>${m.qtd} un.</b><br><span class="data">saída em ${fmtData(m.data)}</span></div>
+        <input type="number" id="rec_${m.id}" min="0" step="0.01" value="${p.preco||''}" placeholder="valor un.">
+        <button class="btn btn-amarelo btn-mini" onclick="finalizarRecebimento('${m.id}')">Receber</button>
+      </div>`).join('');
+}
+function finalizarRecebimento(movId){
+  const p = prod(receberAtivo);
+  const m = p.movimentacoes.find(x=>x.id===movId);
+  const v = parseFloat(document.getElementById('rec_'+movId).value);
+  if(isNaN(v)||v<0){ toast('Informe o valor recebido.'); return; }
+  m.recebido = true;
+  m.precoVenda = v;
+  m.dataRecebimento = hoje();
+  salvar(); renderReceber(); render();
+  if(aberto('modalMov')) renderMov();
+  toast('Recebimento registrado.');
+}
+
+/* =========================================================
    PRODUTO (cadastro)
    ========================================================= */
 function abrirProduto(id){
@@ -218,12 +270,13 @@ function abrirProduto(id){
   const p = id ? prod(id) : null;
   document.getElementById('tituloProduto').textContent = p ? 'Editar produto' : 'Novo produto';
   document.getElementById('produtoId').value = p ? p.id : '';
-  document.getElementById('pMarca').value    = p ? (p.marca||'') : '';
-  document.getElementById('pNome').value     = p ? p.nome : '';
-  document.getElementById('pCategoria').value= p ? p.categoria : (estado.categorias[0]||'');
-  document.getElementById('pCodigo').value   = p ? (p.codigo||'') : '';
-  document.getElementById('pPreco').value    = p && p.preco ? p.preco : '';
-  document.getElementById('pMinimo').value   = p ? (p.minimo||0) : 0;
+  document.getElementById('pMarca').value        = p ? (p.marca||'') : '';
+  document.getElementById('pNome').value         = p ? p.nome : '';
+  document.getElementById('pCategoria').value    = p ? p.categoria : (estado.categorias[0]||'');
+  document.getElementById('pCodigo').value       = p ? (p.codigo||'') : '';
+  document.getElementById('pCodigoBarras').value = p ? (p.codigoBarras||'') : '';
+  document.getElementById('pPreco').value        = p && p.preco ? p.preco : '';
+  document.getElementById('pMinimo').value       = p ? (p.minimo||0) : 0;
   document.getElementById('btnExcluirProduto').style.display = p ? 'inline-flex' : 'none';
   abrir('modalProduto');
 }
@@ -237,9 +290,11 @@ function salvarProduto(){
     nome,
     categoria: document.getElementById('pCategoria').value,
     codigo: document.getElementById('pCodigo').value.trim(),
+    codigoBarras: document.getElementById('pCodigoBarras').value.trim(),
     preco: isNaN(precoVal) ? 0 : precoVal,
     minimo: parseInt(document.getElementById('pMinimo').value)||0
   };
+  if(!dados.codigo) dados.codigo = gerarSku(dados.categoria);   // SKU automático se vazio
 
   if(id){
     const p = prod(id);
@@ -257,14 +312,56 @@ function salvarProduto(){
 }
 function excluirProduto(){
   const id = document.getElementById('produtoId').value;
-  if(!confirm('Excluir este produto e todo o histórico dele?')) return;
-  estado.produtos = estado.produtos.filter(p=>p.id!==id);
-  salvar(); fechar('modalProduto'); render(); toast('Produto excluído.');
+  pedirConfirmacao('Excluir este produto e todo o histórico dele?', ()=>{
+    estado.produtos = estado.produtos.filter(p=>p.id!==id);
+    salvar(); fechar('modalProduto'); render(); toast('Produto excluído.');
+  });
+}
+
+/* ===== Leitor de código de barras por câmera (BarcodeDetector) ===== */
+let scanStream = null, scanTimer = null, scanDetector = null;
+async function abrirScanner(){
+  if(!('BarcodeDetector' in window)){
+    toast('Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
+    return;
+  }
+  try{
+    scanDetector = new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+  }catch(e){ scanDetector = new window.BarcodeDetector(); }
+  try{
+    scanStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  }catch(e){
+    toast('Não foi possível acessar a câmera. Verifique a permissão.');
+    return;
+  }
+  const v = document.getElementById('scanVideo');
+  v.srcObject = scanStream;
+  await v.play();
+  abrir('modalScanner');
+  loopScan();
+}
+async function loopScan(){
+  if(!scanStream) return;
+  const v = document.getElementById('scanVideo');
+  try{
+    const codes = await scanDetector.detect(v);
+    if(codes && codes.length){
+      document.getElementById('pCodigoBarras').value = codes[0].rawValue;
+      toast('Código de barras lido.');
+      fecharScanner();
+      return;
+    }
+  }catch(e){}
+  scanTimer = setTimeout(loopScan, 250);
+}
+function fecharScanner(){
+  if(scanTimer){ clearTimeout(scanTimer); scanTimer=null; }
+  if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  fechar('modalScanner');
 }
 
 /* =========================================================
    BLOCOS REUTILIZÁVEIS (entrada / saída)
-   Usados tanto no painel completo quanto nos modais avulsos.
    ========================================================= */
 function blocoEntrada(p){
   return `<div class="bloco entrada">
@@ -306,7 +403,6 @@ function blocoSaida(p){
   </div>`;
 }
 
-/* ===== Modais avulsos a partir das ações rápidas ===== */
 function abrirRegistroEntrada(id){
   produtoAtivo = id;
   document.getElementById('tituloRegEntrada').textContent = prod(id).nome;
@@ -321,6 +417,93 @@ function abrirRegistroSaida(id){
   abrir('modalRegSaida');
   ajustarCamposSaida();
   setTimeout(()=>{ const el=document.getElementById('sQtd'); if(el) el.focus(); }, 80);
+}
+
+/* =========================================================
+   COMPRA EM LOTE (vários produtos numa só vez)
+   ========================================================= */
+let compraSeq = 0;
+function abrirCompra(){
+  compraSeq = 0;
+  document.getElementById('compraData').value = hoje();
+  document.getElementById('compraLinhas').innerHTML = '';
+  adicionarLinhaCompra();
+  abrir('modalCompra');
+}
+function linhaCompraHTML(idx){
+  const opts = estado.produtos.map(p=>`<option value="${p.id}">${escapar(p.nome)}${p.marca?' — '+escapar(p.marca):''}</option>`).join('');
+  const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
+  return `
+   <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+     <select id="lc_prod_${idx}" style="flex:1;padding:8px;border:1px solid var(--borda);border-radius:8px" onchange="ajustarLinhaCompra(${idx})">
+       <option value="">— escolher produto —</option>
+       ${opts}
+       <option value="__novo__">➕ Cadastrar novo produto</option>
+     </select>
+     <button class="btn btn-claro btn-mini" title="Remover item" onclick="this.closest('.linha-compra').remove()">✕</button>
+   </div>
+   <div id="lc_novo_${idx}" class="lc-novo" style="display:none">
+     <div class="linha-campos">
+       <div class="mini-campo" style="flex:.8"><label>Marca</label><input type="text" id="lc_marca_${idx}" placeholder="Marca"></div>
+       <div class="mini-campo" style="flex:1.6"><label>Nome do novo produto</label><input type="text" id="lc_nome_${idx}" placeholder="Nome"></div>
+     </div>
+     <div class="linha-campos">
+       <div class="mini-campo"><label>Categoria</label><select id="lc_cat_${idx}">${cats}</select></div>
+       <div class="mini-campo"><label>Preço de venda (R$)</label><input type="number" id="lc_preco_${idx}" min="0" step="0.01" placeholder="0,00"></div>
+     </div>
+   </div>
+   <div class="linha-campos">
+     <div class="mini-campo"><label>Quantidade</label><input type="number" id="lc_qtd_${idx}" min="1" placeholder="0"></div>
+     <div class="mini-campo"><label>Custo unitário (R$)</label><input type="number" id="lc_custo_${idx}" min="0" step="0.01" placeholder="0,00"></div>
+   </div>`;
+}
+function adicionarLinhaCompra(){
+  const idx = compraSeq++;
+  const div = document.createElement('div');
+  div.className = 'linha-compra';
+  div.dataset.idx = idx;
+  div.innerHTML = linhaCompraHTML(idx);
+  document.getElementById('compraLinhas').appendChild(div);
+}
+function ajustarLinhaCompra(idx){
+  const v = document.getElementById('lc_prod_'+idx).value;
+  document.getElementById('lc_novo_'+idx).style.display = (v==='__novo__') ? 'block' : 'none';
+}
+function registrarCompraLote(){
+  const data = document.getElementById('compraData').value || hoje();
+  const linhas = [...document.querySelectorAll('#compraLinhas .linha-compra')];
+  const itens = [];
+  for(const el of linhas){
+    const idx = el.dataset.idx;
+    const sel = val('lc_prod_'+idx);
+    if(!sel) continue; // linha não preenchida, ignora
+    const qtd = parseInt(val('lc_qtd_'+idx));
+    const custo = parseFloat(val('lc_custo_'+idx));
+    if(!qtd||qtd<1||isNaN(custo)||custo<0){ toast('Verifique quantidade e custo de cada item.'); return; }
+    if(sel==='__novo__'){
+      const nome = val('lc_nome_'+idx).trim();
+      if(!nome){ toast('Dê um nome ao novo produto.'); return; }
+      itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(), categoria:val('lc_cat_'+idx),
+                   preco:parseFloat(val('lc_preco_'+idx))||0, qtd, custo });
+    } else {
+      itens.push({ novo:false, id:sel, qtd, custo });
+    }
+  }
+  if(itens.length===0){ toast('Adicione ao menos um item.'); return; }
+
+  itens.forEach(it=>{
+    let p;
+    if(it.novo){
+      p = { id:uid(), marca:it.marca, nome:it.nome, categoria:it.categoria,
+            codigo:gerarSku(it.categoria), codigoBarras:'', preco:it.preco, minimo:0, movimentacoes:[] };
+      estado.produtos.push(p);
+    } else {
+      p = prod(it.id);
+    }
+    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo });
+  });
+  salvar(); fechar('modalCompra'); render();
+  toast(`Compra registrada: ${itens.length} item(ns).`);
 }
 
 /* =========================================================
@@ -358,15 +541,16 @@ function renderMov(){
     let valor = '';
     if(m.tipo==='entrada') valor = fmtBRL(m.custoUnit)+'/un';
     else if(m.motivo==='Venda') valor = fmtBRL(m.precoVenda)+'/un';
-    else if(m.motivo==='A receber') valor = 'a receber';
-    const rotulo = m.tipo==='saida'
-      ? ` · ${escapar(m.motivo==='Outros' && m.motivoTexto ? m.motivoTexto : m.motivo)}` : '';
+    else if(m.motivo==='A receber') valor = m.recebido ? fmtBRL(m.precoVenda)+'/un' : 'a receber';
+    let texto = m.motivo;
+    if(m.motivo==='Outros' && m.motivoTexto) texto = m.motivoTexto;
+    else if(m.motivo==='A receber' && m.recebido) texto = 'A receber (recebido)';
+    const rotulo = m.tipo==='saida' ? ` · ${escapar(texto)}` : '';
     return `<div class="mov">
       <span class="tag ${m.tipo==='entrada'?'e':'s'}">${m.tipo==='entrada'?'entrada':'saída'}</span>
       <span class="data">${fmtData(m.data)}</span>
       <span>${m.qtd} un.${rotulo}</span>
       <span class="valor">${valor}</span>
-      <button class="apagar" title="Apagar" onclick="apagarMov('${m.id}')">&times;</button>
     </div>`;
   }).join('');
 
@@ -380,8 +564,9 @@ function renderMov(){
       <div class="caixa"><span>Variação de custo entre lotes</span><b style="font-size:15px">${variacao}</b></div>
     </div>
 
-    <div style="margin:-4px 0 18px">
+    <div class="acoes-painel">
       <button class="btn btn-claro btn-mini" onclick="fechar('modalMov');abrirProduto('${p.id}')">Editar dados do produto</button>
+      ${ar>0?`<button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento (${ar})</button>`:''}
     </div>
 
     <div class="sub">Composição do estoque atual</div>
@@ -407,7 +592,6 @@ function ajustarCamposSaida(){
   document.getElementById('notaReceber').style.display       = (m==='A receber') ? 'block' : 'none';
 }
 
-/* Refresca a UI depois de registrar uma movimentação, venha de onde vier */
 function aposMovimento(){
   if(aberto('modalRegEntrada')) fechar('modalRegEntrada');
   if(aberto('modalRegSaida'))   fechar('modalRegSaida');
@@ -482,7 +666,7 @@ function entradaConfirmaNovo(){
   const c = parseFloat(document.getElementById('novoCusto').value);
   const v = parseFloat(document.getElementById('novoPreco').value);
   if(isNaN(c)||c<0){ toast('Informe o novo custo.'); return; }
-  if(!isNaN(v) && v>=0) p.preco = v;   // atualiza o preço de venda do produto
+  if(!isNaN(v) && v>=0) p.preco = v;
   commitEntrada(p, { data:entradaPendente.data, qtd:entradaPendente.qtd, custoUnit:c });
   fechar('modalEntrada');
 }
@@ -526,11 +710,6 @@ function efetivarSaida(p, mov){
   p.movimentacoes.push(mov);
   salvar(); aposMovimento(); toast('Baixa registrada.');
 }
-function apagarMov(id){
-  const p = prod(produtoAtivo);
-  p.movimentacoes = p.movimentacoes.filter(m=>m.id!==id);
-  salvar(); renderMov(); render();
-}
 
 /* =========================================================
    SENHA DO GERENTE (genérica)
@@ -551,11 +730,31 @@ function confirmarSenha(){
   if(cb) cb();
 }
 
+/* ===== Confirmação genérica ===== */
+let acaoConfirma = null;
+function pedirConfirmacao(mensagem, callback, titulo){
+  acaoConfirma = callback;
+  document.getElementById('confirmaTitulo').textContent = titulo || 'Confirmar';
+  document.getElementById('confirmaTexto').textContent = mensagem;
+  abrir('modalConfirma');
+}
+function cancelarConfirma(){ acaoConfirma = null; fechar('modalConfirma'); }
+function confirmarConfirma(){
+  fechar('modalConfirma');
+  const cb = acaoConfirma; acaoConfirma = null;
+  if(cb) cb();
+}
+
 /* =========================================================
-   HISTÓRICO GERAL
+   HISTÓRICO GERAL (filtros + ordenação)
    ========================================================= */
 let histPor = 'data', histDir = 'desc';
-function abrirHistorico(){ renderHistorico(); abrir('modalHistorico'); }
+function abrirHistorico(){
+  document.getElementById('fhCategoria').innerHTML =
+    '<option value="">Todas</option>' + estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
+  renderHistorico();
+  abrir('modalHistorico');
+}
 function histAlternarDir(){
   histDir = histDir==='asc' ? 'desc' : 'asc';
   document.getElementById('histDir').textContent = histDir==='asc' ? '↑' : '↓';
@@ -563,16 +762,39 @@ function histAlternarDir(){
 }
 function renderHistorico(){
   histPor = document.getElementById('histOrdenar').value;
-  const linhas = [];
+  const fTipo = val('fhTipo');
+  const fCat  = val('fhCategoria');
+  const fProd = val('fhProduto').toLowerCase().trim();
+  const fDe   = val('fhDataDe');
+  const fAte  = val('fhDataAte');
+  const fMin  = parseFloat(val('fhValMin'));
+  const fMax  = parseFloat(val('fhValMax'));
+  const temValor = !isNaN(fMin) || !isNaN(fMax);
+
+  let linhas = [];
   estado.produtos.forEach(p=>{
     p.movimentacoes.forEach(m=>{
       let valor = null;
       if(m.tipo==='entrada') valor = m.custoUnit;
       else if(m.motivo==='Venda') valor = m.precoVenda;
-      else if(m.motivo==='A receber') valor = 0;
+      else if(m.motivo==='A receber') valor = m.recebido ? m.precoVenda : 0;
       linhas.push({ tipo:m.tipo, nome:p.nome, marca:p.marca, categoria:p.categoria,
-                    data:m.data, qtd:m.qtd, valor, motivo:m.motivo, motivoTexto:m.motivoTexto });
+                    data:m.data, qtd:m.qtd, valor, motivo:m.motivo, motivoTexto:m.motivoTexto, recebido:m.recebido });
     });
+  });
+
+  linhas = linhas.filter(l=>{
+    if(fTipo && l.tipo!==fTipo) return false;
+    if(fCat && l.categoria!==fCat) return false;
+    if(fProd && !`${l.nome} ${l.marca||''}`.toLowerCase().includes(fProd)) return false;
+    if(fDe && l.data < fDe) return false;
+    if(fAte && l.data > fAte) return false;
+    if(temValor){
+      if(l.valor==null) return false;
+      if(!isNaN(fMin) && l.valor < fMin) return false;
+      if(!isNaN(fMax) && l.valor > fMax) return false;
+    }
+    return true;
   });
 
   linhas.sort((a,b)=>{
@@ -589,7 +811,7 @@ function renderHistorico(){
   });
 
   const cont = document.getElementById('histConteudo');
-  if(linhas.length===0){ cont.innerHTML = '<p class="sem-resultado">Nenhuma movimentação registrada.</p>'; return; }
+  if(linhas.length===0){ cont.innerHTML = '<p class="sem-resultado">Nenhuma movimentação encontrada.</p>'; return; }
 
   cont.innerHTML = `<div class="hist-tabela">
     <div class="hist-cab">
@@ -597,7 +819,9 @@ function renderHistorico(){
       <div class="num">Qtd</div><div class="num">Data</div><div class="num">Valor</div>
     </div>` +
     linhas.map(l=>{
-      const rotulo = l.tipo==='entrada' ? 'entrada' : (l.motivo==='Outros' && l.motivoTexto ? l.motivoTexto : (l.motivo||'saída'));
+      let rotulo = l.tipo==='entrada' ? 'entrada' : (l.motivo||'saída');
+      if(l.motivo==='Outros' && l.motivoTexto) rotulo = l.motivoTexto;
+      else if(l.motivo==='A receber' && l.recebido) rotulo = 'recebido';
       return `<div class="hist-linha">
         <div><span class="tag ${l.tipo==='entrada'?'e':'s'}">${escapar(rotulo)}</span></div>
         <div class="nome">${escapar(l.nome)}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
@@ -610,26 +834,58 @@ function renderHistorico(){
 }
 
 /* =========================================================
-   CATEGORIAS
+   CATEGORIAS (criar / editar / remover)
    ========================================================= */
-function abrirCategorias(){ renderCategorias(); abrir('modalCat'); }
+let catEditando = null;
+function abrirCategorias(){ catEditando=null; renderCategorias(); abrir('modalCat'); }
 function renderCategorias(){
-  document.getElementById('listaCat').innerHTML = estado.categorias.map(c=>{
+  document.getElementById('listaCat').innerHTML = estado.categorias.map((c,i)=>{
     const emUso = estado.produtos.some(p=>p.categoria===c);
-    return `<li><span>${escapar(c)}</span>
-      <button class="btn btn-claro btn-mini" onclick="removerCategoria('${escapar(c)}')" ${emUso?'disabled title="Em uso por produtos" style="opacity:.4"':''}>Remover</button></li>`;
+    if(catEditando===i){
+      return `<li>
+        <input type="text" id="catInput" value="${escapar(c)}" style="flex:1;padding:7px 9px;border:1px solid var(--borda);border-radius:8px;font-size:14px" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')salvarEdicaoCategoria(${i})">
+        <button class="btn btn-amarelo btn-mini" onclick="salvarEdicaoCategoria(${i})">Salvar</button>
+        <button class="btn btn-claro btn-mini" onclick="catEditando=null;renderCategorias()">Cancelar</button>
+      </li>`;
+    }
+    return `<li><span style="flex:1">${escapar(c)}</span>
+      <button class="btn btn-claro btn-mini" onclick="catEditando=${i};renderCategorias()">Editar</button>
+      <button class="btn btn-claro btn-mini" onclick="removerCategoriaIdx(${i})" ${emUso?'disabled title="Em uso por produtos" style="opacity:.4"':''}>Remover</button></li>`;
   }).join('');
+  if(catEditando!==null){ const inp=document.getElementById('catInput'); if(inp) setTimeout(()=>inp.focus(),30); }
 }
 function adicionarCategoria(){
-  const v = document.getElementById('novaCat').value.trim();
-  if(!v) return;
-  if(estado.categorias.includes(v)){ toast('Essa categoria já existe.'); return; }
+  const v = sanitizarCategoria(document.getElementById('novaCat').value).trim();
+  if(!v){ toast('Informe um nome válido.'); return; }
+  if(estado.categorias.some(c=>c.toLowerCase()===v.toLowerCase())){ toast('Essa categoria já existe.'); return; }
   estado.categorias.push(v);
   document.getElementById('novaCat').value='';
   salvar(); renderCategorias(); render(); toast('Categoria adicionada.');
 }
-function removerCategoria(c){
-  estado.categorias = estado.categorias.filter(x=>x!==c);
+function salvarEdicaoCategoria(i){
+  const antigo = estado.categorias[i];
+  const novo = sanitizarCategoria(document.getElementById('catInput').value).trim();
+  if(!novo){ toast('Informe um nome válido.'); return; }
+  if(novo===antigo){ catEditando=null; renderCategorias(); return; }
+  if(estado.categorias.some((c,idx)=>idx!==i && c.toLowerCase()===novo.toLowerCase())){
+    toast('Já existe uma categoria com esse nome.'); return;
+  }
+  const temEstoqueAtivo = estado.produtos.some(p=>p.categoria===antigo && estoqueDe(p)>0);
+  const aplicar = ()=>{
+    estado.categorias[i] = novo;
+    estado.produtos.forEach(p=>{ if(p.categoria===antigo) p.categoria=novo; });
+    salvar(); catEditando=null; renderCategorias(); render(); toast('Categoria renomeada.');
+  };
+  if(temEstoqueAtivo){
+    pedirConfirmacao(`Existe estoque ativo associado a “${antigo}”. Os produtos serão movidos para “${novo}”. Confirmar a renomeação?`, aplicar, 'Renomear categoria');
+  } else {
+    aplicar();
+  }
+}
+function removerCategoriaIdx(i){
+  const c = estado.categorias[i];
+  if(estado.produtos.some(p=>p.categoria===c)){ toast('Categoria em uso — não pode ser removida.'); return; }
+  estado.categorias.splice(i,1);
   salvar(); renderCategorias(); render();
 }
 
@@ -651,8 +907,9 @@ function importar(ev){
     try{
       const dados = JSON.parse(e.target.result);
       if(!dados.produtos||!dados.categorias) throw new Error();
-      if(!confirm('Isso vai substituir os dados atuais pelo backup. Continuar?')) return;
-      estado = dados; salvar(); render(); toast('Backup restaurado.');
+      pedirConfirmacao('Isso vai substituir os dados atuais pelo backup. Continuar?', ()=>{
+        estado = dados; salvar(); render(); toast('Backup restaurado.');
+      });
     }catch(err){ toast('Arquivo inválido.'); }
   };
   leitor.readAsText(arq);
@@ -660,10 +917,10 @@ function importar(ev){
 }
 
 /* ===== Utilidades de UI ===== */
-/* Containers gerados dinamicamente: limpamos ao fechar para não duplicar IDs */
 const CORPO_DE = {
   modalMov:'corpoMov', modalRegEntrada:'corpoRegEntrada',
-  modalRegSaida:'corpoRegSaida', modalEntrada:'corpoEntrada'
+  modalRegSaida:'corpoRegSaida', modalEntrada:'corpoEntrada',
+  modalReceber:'corpoReceber'
 };
 function abrir(id){ document.getElementById(id).classList.add('aberto'); }
 function fechar(id){
@@ -672,7 +929,9 @@ function fechar(id){
 }
 document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
   if(e.target===o){
+    if(o.id==='modalScanner'){ fecharScanner(); return; }
     if(o.id==='modalSenha') acaoSenha=null;
+    if(o.id==='modalConfirma') acaoConfirma=null;
     if(o.id==='modalEntrada') entradaPendente=null;
     fechar(o.id);
   }
@@ -688,19 +947,19 @@ function criarExemplo(){
   return {
     categorias:['Celulares','Games','Consoles','Joysticks','Acessórios','Cabos','Memória e armazenamento'],
     produtos:[
-      { id:uid(), marca:'Baseus', nome:'Cabo USB-C 1m', categoria:'Cabos', codigo:'CB-001', minimo:10, preco:19.90,
+      { id:uid(), marca:'Baseus', nome:'Cabo USB-C 1m', categoria:'Cabos', codigo:'CB-001', codigoBarras:'', minimo:10, preco:19.90,
         movimentacoes:[
           {id:uid(),tipo:'entrada',data:'2026-04-10',qtd:50,custoUnit:7.50},
           {id:uid(),tipo:'entrada',data:'2026-05-20',qtd:30,custoUnit:9.20},
           {id:uid(),tipo:'saida',data:'2026-05-28',qtd:72,motivo:'Venda',precoVenda:19.90}
         ]},
-      { id:uid(), marca:'SanDisk', nome:'Pendrive 64GB', categoria:'Memória e armazenamento', codigo:'PD-64', minimo:5, preco:49.90,
+      { id:uid(), marca:'SanDisk', nome:'Pendrive 64GB', categoria:'Memória e armazenamento', codigo:'PD-64', codigoBarras:'', minimo:5, preco:49.90,
         movimentacoes:[
           {id:uid(),tipo:'entrada',data:'2026-05-02',qtd:40,custoUnit:22.00},
           {id:uid(),tipo:'saida',data:'2026-05-25',qtd:8,motivo:'Venda',precoVenda:49.90},
           {id:uid(),tipo:'saida',data:'2026-05-30',qtd:3,motivo:'A receber',precoVenda:0}
         ]},
-      { id:uid(), marca:'Microsoft', nome:'Controle sem fio Xbox', categoria:'Joysticks', codigo:'JS-XB', minimo:3, preco:399.00,
+      { id:uid(), marca:'Microsoft', nome:'Controle sem fio Xbox', categoria:'Joysticks', codigo:'JS-XB', codigoBarras:'', minimo:3, preco:399.00,
         movimentacoes:[
           {id:uid(),tipo:'entrada',data:'2026-04-15',qtd:12,custoUnit:215.00}
         ]}

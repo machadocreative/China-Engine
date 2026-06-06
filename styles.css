@@ -23,7 +23,7 @@ body{
   background:var(--bg);
   color:var(--texto);
   line-height:1.5;
-  padding-bottom:60px;
+  padding-bottom:86px;
   -webkit-font-smoothing:antialiased;
 }
 button{font-family:var(--corpo);cursor:pointer}
@@ -105,13 +105,19 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
   padding:3px 10px;border-radius:999px;font-size:13px;
 }
 .linha .num{font-family:var(--mono);font-weight:600}
-.badge-baixo,.badge-receber{
+.badge-baixo{
   display:inline-flex;align-items:center;font-size:11px;font-weight:600;
   padding:2px 8px;border-radius:999px;margin-left:6px;font-family:var(--corpo);
-  vertical-align:middle;
+  vertical-align:middle;background:var(--vermelho-claro);color:var(--vermelho);
 }
-.badge-baixo{background:var(--vermelho-claro);color:var(--vermelho)}
-.badge-receber{background:var(--amarelo-claro);color:#8A6D00}
+
+/* Subrow de "a receber" (largura total, logo abaixo do produto) */
+.subrow{
+  display:flex;align-items:center;gap:10px;
+  background:var(--amarelo-claro);border-top:1px solid var(--amarelo);
+  padding:8px 16px;font-size:13px;font-weight:600;color:#8A6D00;
+}
+.subrow button{margin-left:auto}
 
 /* ===== Estado vazio ===== */
 .vazio{text-align:center;padding:50px 20px;color:var(--texto-sec)}
@@ -141,12 +147,25 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 }
 .campo .dica,.dica{font-size:12px;color:var(--texto-sec);margin-top:4px}
 .linha-campos{display:flex;gap:12px}
-.linha-campos .campo{flex:1}
+.linha-campos .campo,.linha-campos .mini-campo{flex:1}
 .rodape-modal{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 
 /* ===== Ações rápidas (toque e segure) ===== */
 .acoes-rapidas{display:flex;flex-direction:column;gap:10px}
 .acoes-rapidas .btn{width:100%;padding:13px;font-size:15px}
+
+/* ===== Recebimentos pendentes ===== */
+.receber-linha{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--borda)}
+.receber-linha:first-of-type{border-top:none}
+.receber-linha .data{color:var(--texto-sec);font-size:12px}
+.receber-linha input{flex:1;padding:8px 10px;border:1px solid var(--borda);border-radius:8px}
+
+/* ===== Compra em lote ===== */
+.linha-compra{border:1px solid var(--borda);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+.lc-novo{margin:0 0 8px;padding:8px 0;border-top:1px dashed var(--borda);border-bottom:1px dashed var(--borda)}
+
+/* ===== Scanner ===== */
+#scanVideo{width:100%;border-radius:12px;background:#000;max-height:58vh}
 
 /* ===== Painel de movimentações ===== */
 .resumo{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px}
@@ -155,6 +174,7 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .resumo .caixa b{font-family:var(--mono);font-size:18px}
 .resumo .caixa .margem{font-family:var(--corpo);font-size:12px;color:var(--texto-sec);margin-top:3px}
 .resumo .destaque{background:var(--amarelo-claro);border-color:var(--amarelo)}
+.acoes-painel{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 18px}
 .sub{font-family:var(--display);font-weight:700;font-size:15px;margin:18px 0 10px}
 .composicao{display:flex;flex-wrap:wrap;gap:8px}
 .composicao .lote{
@@ -177,13 +197,16 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .mov .tag.s{background:var(--vermelho-claro);color:var(--vermelho)}
 .mov .data{color:var(--texto-sec);font-size:13px}
 .mov .valor{margin-left:auto;font-family:var(--mono);font-weight:600;text-align:right;white-space:nowrap}
-.mov .apagar{background:none;border:none;color:var(--texto-sec);font-size:16px}
 .lista-cat{list-style:none}
-.lista-cat li{display:flex;align-items:center;padding:9px 0;border-top:1px solid var(--borda)}
+.lista-cat li{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--borda)}
 .lista-cat li:first-child{border-top:none}
-.lista-cat li button{margin-left:auto}
 
-/* ===== Histórico geral ===== */
+/* ===== Histórico geral: filtros + tabela ===== */
+.hist-filtros{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.hf{display:flex;flex-direction:column;gap:3px}
+.hf label{font-size:11px;color:var(--texto-sec);font-weight:600}
+.hf input,.hf select{padding:7px 9px;border:1px solid var(--borda);border-radius:8px;font-size:13px;background:#fff}
+.hf input[type=number]{width:78px}
 .hist-tabela{border:1px solid var(--borda);border-radius:12px;overflow:hidden}
 .hist-cab,.hist-linha{
   display:grid;grid-template-columns:1fr 1.7fr 1.1fr .5fr .8fr .9fr;
@@ -202,11 +225,26 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 
 /* ===== Toast ===== */
 #toast{
-  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);
+  position:fixed;bottom:78px;left:50%;transform:translateX(-50%) translateY(80px);
   background:var(--preto);color:#fff;padding:12px 20px;border-radius:12px;font-weight:500;
   border-left:4px solid var(--amarelo);transition:transform .25s;z-index:200;max-width:90%;
 }
 #toast.mostra{transform:translateX(-50%) translateY(0)}
+
+/* ===== Navegação inferior (protótipo) ===== */
+.barra-inferior{
+  position:fixed;bottom:0;left:0;right:0;height:60px;z-index:60;
+  background:var(--preto);border-top:3px solid var(--amarelo);
+  display:flex;
+}
+.nav-item{
+  flex:1;background:none;border:none;color:#C9C7BE;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:11px;font-weight:600;letter-spacing:.3px;
+}
+.nav-item svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8}
+.nav-item.ativo{color:var(--amarelo)}
+.nav-item:disabled{opacity:.4;cursor:not-allowed}
 
 @media(max-width:620px){
   .linha-cabecalho,.linha{grid-template-columns:1.9fr .8fr 1fr}

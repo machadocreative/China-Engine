@@ -16,6 +16,8 @@ e o projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/):
 ### Corrigido
 ### Removido
 
+---
+
 ## Planejado (futuro — fora do escopo atual)
 
 Módulo financeiro, a ser desenvolvido **após** o polimento das funcionalidades de estoque,
@@ -27,11 +29,58 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 - Registro de despesas da loja (aluguel, energia, internet, funcionários, compra de insumos etc.).
 - Apuração de lucro da operação (entender se o negócio dá lucro de fato).
 
+---
+
+## [0.3.0] - 2026-06-05
+
+### Adicionado
+
+**Categorias**
+- Edição do nome de categorias diretamente na lista, com sanitização do campo (apenas letras, números, espaços e os caracteres `- / &` são aceitos; especiais são descartados em tempo real).
+- Modal de confirmação ao renomear uma categoria que possui estoque ativo associado.
+- Bloqueio de nomes duplicados ao adicionar ou renomear categorias.
+
+**Estoque — "A receber"**
+- Subrow de largura total exibida imediatamente abaixo do produto quando há saídas pendentes de recebimento, no lugar do badge anterior.
+- Modal "Finalizar recebimento": exibe todas as saídas "a receber" pendentes de um produto, permite informar o valor efetivamente recebido por unidade e registra o recebimento. A movimentação original é atualizada no lugar (sem recriar a saída), preservando a baixa de estoque e o histórico com data original.
+
+**Filtro de categorias**
+- O dropdown de filtro por categoria da tela principal exibe apenas as categorias com produtos cadastrados, com a contagem entre parênteses — ex.: `Cabos (3)`, `Games (5)`. Categorias sem produtos são omitidas.
+
+**Navegação inferior (protótipo)**
+- Barra de navegação fixa no rodapé com três módulos: **Estoque** (ativo), **Gestão** e **Configurações**. Os dois últimos aparecem desabilitados com tooltip "Em desenvolvimento".
+
+**Histórico geral — filtros**
+- Painel de filtros na tela de histórico: Tipo (entrada / saída), Categoria, Produto (texto livre), faixa de Data (de / até) e faixa de Valor em R$ (mín–máx). Todos os filtros combinam com a ordenação existente e atualizam a lista em tempo real.
+
+**Código de produto — SKU automático e código de barras**
+- O campo SKU agora gera um código automaticamente ao salvar o produto, caso seja deixado em branco (formato: prefixo da categoria + sufixo único, ex.: `CAB-7F3A`). Botão "Gerar" disponível para criar o SKU na hora.
+- Novo campo opcional "Código de barras" (EAN/UPC). Suporta duas formas de preenchimento: câmera (botão "Escanear", usa `BarcodeDetector` nativo — Chrome/Edge, requer permissão de câmera e HTTPS) e leitor USB/HID (basta focar o campo; o leitor digita diretamente).
+- A busca da tela principal inclui o código de barras no filtro de texto.
+
+**Compra em lote**
+- Novo fluxo "Compra em lote" (botão no cabeçalho), para registrar entradas de múltiplos produtos em uma única operação.
+- Cada linha permite escolher um produto existente ou criar um novo na hora (campo "Cadastrar novo produto", com nome, marca, categoria e preço de venda).
+- Ao confirmar, produtos novos são criados com SKU automático e todas as entradas são lançadas de uma vez com a data da compra.
+
+### Alterado
+
+- Exclusão de produto e restauração de backup agora usam o modal de confirmação estilizado do app, em vez do diálogo nativo do navegador.
+- Confirmação de ações que precisam de senha do gerente refatorada em função genérica, reutilizável em qualquer fluxo.
+
+### Removido
+
+- Botão de exclusão individual de movimentações (ícone ✕) no histórico do painel do produto — o histórico agora é imutável para preservar a integridade dos dados.
+
+---
+
 ## [0.2.1] - 2026-06-05
 
 ### Alterado
 - Nas ações rápidas (toque e segure), "Registrar entrada" e "Registrar saída" passam a abrir um modal apenas com o bloco correspondente, em vez de rolar até ele no painel completo.
 - O botão "Editar dados do produto" foi movido para logo abaixo dos cards de estado geral do estoque (antes ficava no fim do painel).
+
+---
 
 ## [0.2.0] - 2026-06-05
 
@@ -47,6 +96,8 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ### Segurança
 - A senha de gerente continua no código do app (client-side) — trava operacional, não segurança real.
+
+---
 
 ## [0.1.0] - 2026-06-04
 
@@ -82,8 +133,9 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 - Aplicativo estático (HTML + CSS + JS), pensado para hospedagem no GitHub Pages.
 
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
-     ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.2.1 -->
+     ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.3.0]: #
 [0.2.1]: #
 [0.2.0]: #
 [0.1.0]: #
