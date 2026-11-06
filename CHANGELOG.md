@@ -31,6 +31,27 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.3.1] - 2026-11-06
+
+### Adicionado
+
+**Registrar venda**
+- Novo botão "Registrar venda" no cabeçalho, com fluxo de venda de vários produtos: busca por texto (nome, marca, código ou código de barras) ou leitura do código de barras (câmera ou leitor USB). Só aparecem produtos com estoque.
+- Leitor USB: ao fim da leitura (Enter), o produto com aquele código de barras ou SKU é adicionado direto à venda. Enter também adiciona o produto quando a busca por texto tem um único resultado.
+- Cada produto entra na lista da venda com quantidade ajustável (limitada ao estoque disponível). Adicionar o mesmo produto de novo soma uma unidade.
+- Total da venda calculado em tempo real. Ao confirmar, todas as saídas são lançadas de uma vez com motivo "Venda", usando o preço de venda cadastrado e a data informada.
+
+**Fornecedor**
+- Novo campo opcional "Fornecedor" no cadastro de produto (ao lado da Categoria) e no formulário de novo produto da Compra em lote. O valor fica salvo no perfil do produto.
+
+### Alterado
+
+- Compra em lote: a seleção de produto deixou de ser um dropdown e passou a ser um campo de busca por texto (nome, marca, código ou código de barras), com resultados em lista flutuante. Ao escolher um produto, o custo unitário vem preenchido com o valor da última compra.
+- Compra em lote: "Cadastrar novo produto" aparece sempre no fim da lista de resultados. O texto digitado na busca é usado para pré-preencher o nome do novo produto.
+- O leitor de código de barras por câmera agora reconhece o contexto em que foi aberto: na venda, identifica o produto pelo código e o adiciona à lista (se não encontrar, joga o código na busca); no cadastro, preenche o campo "Código de barras" como antes.
+
+---
+
 ## [0.3.0] - 2026-06-05
 
 ### Adicionado
@@ -135,6 +156,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.3.1]: #
 [0.3.0]: #
 [0.2.1]: #
 [0.2.0]: #

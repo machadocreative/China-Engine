@@ -32,6 +32,7 @@
     <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
     <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
     <button class="btn btn-claro btn-mini" onclick="abrirCompra()">+ Compra em lote</button>
+    <button class="btn btn-escuro btn-mini" onclick="abrirVenda()">Registrar venda</button>
     <button class="btn btn-amarelo" onclick="abrirProduto()">+ Novo produto</button>
     <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
   </div>
@@ -95,7 +96,44 @@
   </div>
 </div>
 
-<!-- ===== Modal: compra em lote ===== -->
+<!-- ===== Modal: registrar venda ===== -->
+<div class="overlay" id="modalVenda">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-cabecalho">
+      <h2>Registrar venda</h2>
+      <button class="fechar" onclick="fechar('modalVenda')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="campo"><label>Data da venda</label><input type="date" id="vendaData"></div>
+      <div class="campo">
+        <label>Buscar produto</label>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;position:relative">
+            <input type="text" id="vendaBusca" placeholder="Nome, marca, código ou cód. de barras..."
+              style="width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:10px"
+              oninput="vendaFiltrar()" onkeydown="if(event.key==='Enter'){event.preventDefault();vendaEnter();}" autocomplete="off">
+            <div id="vendaResultados" style="position:absolute;top:100%;left:0;right:0;background:#fff;
+              border:1px solid var(--borda-forte);border-radius:10px;z-index:20;
+              max-height:220px;overflow-y:auto;margin-top:3px"></div>
+          </div>
+          <button class="btn btn-claro btn-mini" onclick="abrirScannerVenda()" title="Escanear código de barras">Escanear</button>
+        </div>
+        <div class="dica">Use a câmera ou o leitor USB com o campo de busca focado. Enter adiciona o produto do código lido (ou o único resultado da busca).</div>
+      </div>
+      <div id="vendaItens" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:2px solid var(--borda)">
+        <span style="font-weight:600">Total</span>
+        <span id="vendaTotal" style="font-family:var(--mono);font-size:20px;font-weight:700">—</span>
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalVenda')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="confirmarVenda()">Confirmar venda</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: registrar compra em lote ===== -->
 <div class="overlay" id="modalCompra">
   <div class="modal" style="max-width:680px">
     <div class="modal-cabecalho">
@@ -145,9 +183,15 @@
         </div>
       </div>
       <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
-      <div class="campo">
-        <label>Categoria</label>
-        <select id="pCategoria"></select>
+      <div class="linha-campos">
+        <div class="campo">
+          <label>Categoria</label>
+          <select id="pCategoria"></select>
+        </div>
+        <div class="campo">
+          <label>Fornecedor (opcional)</label>
+          <input type="text" id="pFornecedor" placeholder="Ex: Atacado China">
+        </div>
       </div>
       <div class="campo">
         <label>Código (SKU)</label>

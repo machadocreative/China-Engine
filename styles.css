@@ -164,6 +164,20 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .linha-compra{border:1px solid var(--borda);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
 .lc-novo{margin:0 0 8px;padding:8px 0;border-top:1px dashed var(--borda);border-bottom:1px dashed var(--borda)}
 
+/* ===== Registrar venda ===== */
+.venda-resultado{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 12px;font-size:14px;cursor:pointer;border-bottom:1px solid var(--borda);
+}
+.venda-resultado:last-child{border-bottom:none}
+#vendaResultados:empty{display:none}   /* sem resultados = sem caixa (evita a linha fina sob a busca) */
+.venda-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border:1px solid var(--borda);border-radius:10px;background:#fff;font-size:14px;
+}
+.vit-nome{flex:1;font-weight:600}
+.vit-nome small{display:block;font-weight:400;color:var(--texto-sec);font-size:12px}
+
 /* ===== Scanner ===== */
 #scanVideo{width:100%;border-radius:12px;background:#000;max-height:58vh}
 

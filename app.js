@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.3.0';
+const VERSAO = '0.3.1';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -273,6 +273,7 @@ function abrirProduto(id){
   document.getElementById('pMarca').value        = p ? (p.marca||'') : '';
   document.getElementById('pNome').value         = p ? p.nome : '';
   document.getElementById('pCategoria').value    = p ? p.categoria : (estado.categorias[0]||'');
+  document.getElementById('pFornecedor').value   = p ? (p.fornecedor||'') : '';
   document.getElementById('pCodigo').value       = p ? (p.codigo||'') : '';
   document.getElementById('pCodigoBarras').value = p ? (p.codigoBarras||'') : '';
   document.getElementById('pPreco').value        = p && p.preco ? p.preco : '';
@@ -289,6 +290,7 @@ function salvarProduto(){
     marca: document.getElementById('pMarca').value.trim(),
     nome,
     categoria: document.getElementById('pCategoria').value,
+    fornecedor: document.getElementById('pFornecedor').value.trim(),
     codigo: document.getElementById('pCodigo').value.trim(),
     codigoBarras: document.getElementById('pCodigoBarras').value.trim(),
     preco: isNaN(precoVal) ? 0 : precoVal,
@@ -318,12 +320,117 @@ function excluirProduto(){
   });
 }
 
+/* =========================================================
+   REGISTRAR VENDA (scanner + busca)
+   Pertence ao módulo de estoque: resultado = saída com motivo Venda.
+   No futuro, o módulo financeiro acrescenta forma de pagamento aqui.
+   ========================================================= */
+let vendaScanAtivo = false;
+function abrirVenda(){
+  document.getElementById('vendaBusca').value = '';
+  document.getElementById('vendaResultados').innerHTML = '';
+  document.getElementById('vendaItens').innerHTML = '';
+  document.getElementById('vendaData').value = hoje();
+  document.getElementById('vendaTotal').textContent = '—';
+  abrir('modalVenda');
+  setTimeout(()=>document.getElementById('vendaBusca').focus(), 80);
+}
+function vendaFiltrar(){
+  const q = document.getElementById('vendaBusca').value.toLowerCase().trim();
+  const res = document.getElementById('vendaResultados');
+  if(!q){ res.innerHTML=''; return; }
+  const match = estado.produtos.filter(p=>{
+    if(estoqueDe(p)<=0) return false;
+    const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
+    return alvo.includes(q);
+  }).slice(0,8);
+  if(match.length===0){ res.innerHTML=`<p style="padding:10px;font-size:13px;color:var(--texto-sec)">Nenhum produto com estoque encontrado.</p>`; return; }
+  res.innerHTML = match.map(p=>`<div class="venda-resultado" onmousedown="vendaAdicionarItem('${p.id}')"
+    onmouseenter="this.style.background='var(--amarelo-claro)'" onmouseleave="this.style.background=''">
+    <span>${escapar(p.nome)}${p.marca?` <small style="color:var(--texto-sec)">${escapar(p.marca)}</small>`:''}</span>
+    <span style="font-family:var(--mono);font-weight:600;margin-left:auto">${fmtBRL(p.preco||null)}</span>
+    <span style="font-size:12px;color:var(--texto-sec);margin-left:8px">${estoqueDe(p)} un.</span>
+  </div>`).join('');
+}
+/* Enter na busca (é o que o leitor USB envia ao fim da leitura):
+   1º código de barras ou SKU exato; 2º se a busca tiver um único resultado, adiciona ele. */
+function vendaEnter(){
+  const q = document.getElementById('vendaBusca').value.trim();
+  if(!q) return;
+  const ql = q.toLowerCase();
+  const exato = estado.produtos.find(p=>(p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql));
+  if(exato){
+    if(estoqueDe(exato)<=0){ toast(`Sem estoque: ${exato.nome}`); return; }
+    vendaAdicionarItem(exato.id); toast('Produto adicionado.'); return;
+  }
+  const res = document.querySelectorAll('#vendaResultados .venda-resultado');
+  if(res.length===1){ res[0].dispatchEvent(new MouseEvent('mousedown')); return; }
+  toast(res.length ? 'Mais de um resultado — escolha na lista.' : 'Código não encontrado.');
+}
+function vendaAdicionarItem(id){
+  document.getElementById('vendaBusca').value = '';
+  document.getElementById('vendaResultados').innerHTML = '';
+  const p = prod(id);
+  const est = estoqueDe(p);
+  if(est<=0){ toast('Sem estoque disponível.'); return; }
+  const existing = document.getElementById('vit_'+id);
+  if(existing){
+    const qtdEl = existing.querySelector('.vit-qtd');
+    const novaQtd = parseInt(qtdEl.value)+1;
+    if(novaQtd>est){ toast(`Estoque máximo: ${est} un.`); return; }
+    qtdEl.value = novaQtd;
+    vendaAtualizarTotal(); return;
+  }
+  const div = document.createElement('div');
+  div.className = 'venda-item'; div.id = 'vit_'+id; div.dataset.id = id;
+  div.innerHTML = `<span class="vit-nome">${escapar(p.nome)}${p.marca?`<small> ${escapar(p.marca)}</small>`:''}</span>
+    <input class="vit-qtd" type="number" min="1" max="${est}" value="1"
+      style="width:54px;padding:5px 6px;border:1px solid var(--borda);border-radius:7px;text-align:center;font-family:var(--mono)"
+      oninput="vendaAtualizarTotal()">
+    <span class="vit-preco" data-preco="${p.preco||0}"
+      style="font-family:var(--mono);font-weight:600;min-width:72px;text-align:right">${fmtBRL(p.preco||null)}/un</span>
+    <button class="btn btn-claro btn-mini" onclick="this.closest('.venda-item').remove();vendaAtualizarTotal()">✕</button>`;
+  document.getElementById('vendaItens').appendChild(div);
+  vendaAtualizarTotal();
+}
+function vendaAtualizarTotal(){
+  let total = 0;
+  document.querySelectorAll('.venda-item').forEach(el=>{
+    const qtd = parseInt(el.querySelector('.vit-qtd').value)||0;
+    const preco = parseFloat(el.querySelector('.vit-preco').dataset.preco)||0;
+    total += qtd*preco;
+  });
+  document.getElementById('vendaTotal').textContent = fmtBRL(total);
+}
+function confirmarVenda(){
+  const data = document.getElementById('vendaData').value || hoje();
+  const itens = [...document.querySelectorAll('.venda-item')];
+  if(itens.length===0){ toast('Adicione ao menos um produto.'); return; }
+  for(const el of itens){
+    const qtd = parseInt(el.querySelector('.vit-qtd').value)||0;
+    if(qtd<1){ toast('Quantidade inválida em um item.'); return; }
+    if(qtd>estoqueDe(prod(el.dataset.id))){ toast(`Sem estoque suficiente: ${prod(el.dataset.id).nome}`); return; }
+  }
+  itens.forEach(el=>{
+    const p = prod(el.dataset.id);
+    const qtd = parseInt(el.querySelector('.vit-qtd').value);
+    const preco = parseFloat(el.querySelector('.vit-preco').dataset.preco)||0;
+    p.movimentacoes.push({ id:uid(), tipo:'saida', data, qtd, motivo:'Venda', precoVenda:preco });
+  });
+  salvar(); fechar('modalVenda'); render();
+  toast(`Venda registrada: ${itens.length} item(ns).`);
+}
+async function abrirScannerVenda(){
+  vendaScanAtivo = true;
+  await abrirScanner();
+}
+
 /* ===== Leitor de código de barras por câmera (BarcodeDetector) ===== */
 let scanStream = null, scanTimer = null, scanDetector = null;
 async function abrirScanner(){
   if(!('BarcodeDetector' in window)){
     toast('Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
-    return;
+    vendaScanAtivo = false; return;
   }
   try{
     scanDetector = new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
@@ -332,7 +439,7 @@ async function abrirScanner(){
     scanStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão.');
-    return;
+    vendaScanAtivo = false; return;
   }
   const v = document.getElementById('scanVideo');
   v.srcObject = scanStream;
@@ -346,9 +453,18 @@ async function loopScan(){
   try{
     const codes = await scanDetector.detect(v);
     if(codes && codes.length){
-      document.getElementById('pCodigoBarras').value = codes[0].rawValue;
-      toast('Código de barras lido.');
+      const raw = codes[0].rawValue;
+      const paraVenda = vendaScanAtivo;   // guarda o contexto antes de fecharScanner() zerar a flag
       fecharScanner();
+      if(paraVenda){
+        // encontra produto pelo código de barras e adiciona à venda
+        const p = estado.produtos.find(x=>x.codigoBarras===raw);
+        if(p){ vendaAdicionarItem(p.id); toast('Produto adicionado.'); }
+        else { toast('Código não encontrado. Digite na busca.'); document.getElementById('vendaBusca').value=raw; vendaFiltrar(); }
+      } else {
+        document.getElementById('pCodigoBarras').value = raw;
+        toast('Código de barras lido.');
+      }
       return;
     }
   }catch(e){}
@@ -357,6 +473,7 @@ async function loopScan(){
 function fecharScanner(){
   if(scanTimer){ clearTimeout(scanTimer); scanTimer=null; }
   if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  vendaScanAtivo = false;
   fechar('modalScanner');
 }
 
@@ -431,16 +548,19 @@ function abrirCompra(){
   abrir('modalCompra');
 }
 function linhaCompraHTML(idx){
-  const opts = estado.produtos.map(p=>`<option value="${p.id}">${escapar(p.nome)}${p.marca?' — '+escapar(p.marca):''}</option>`).join('');
   const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   return `
-   <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-     <select id="lc_prod_${idx}" style="flex:1;padding:8px;border:1px solid var(--borda);border-radius:8px" onchange="ajustarLinhaCompra(${idx})">
-       <option value="">— escolher produto —</option>
-       ${opts}
-       <option value="__novo__">➕ Cadastrar novo produto</option>
-     </select>
-     <button class="btn btn-claro btn-mini" title="Remover item" onclick="this.closest('.linha-compra').remove()">✕</button>
+   <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px">
+     <div style="flex:1;position:relative">
+       <input type="text" id="lc_busca_${idx}" placeholder="Buscar por nome, marca, código ou cód. barras..."
+         style="width:100%;padding:8px 10px;border:1px solid var(--borda);border-radius:8px;font-size:14px"
+         oninput="filtrarLinhaBusca(${idx})" autocomplete="off">
+       <div id="lc_resultados_${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;
+         border:1px solid var(--borda-forte);border-radius:8px;z-index:20;max-height:200px;overflow-y:auto;margin-top:2px"></div>
+       <input type="hidden" id="lc_prod_${idx}" value="">
+       <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:13px;color:var(--texto-sec)"></div>
+     </div>
+     <button class="btn btn-claro btn-mini" style="margin-top:1px" title="Remover item" onclick="this.closest('.linha-compra').remove()">✕</button>
    </div>
    <div id="lc_novo_${idx}" class="lc-novo" style="display:none">
      <div class="linha-campos">
@@ -449,6 +569,9 @@ function linhaCompraHTML(idx){
      </div>
      <div class="linha-campos">
        <div class="mini-campo"><label>Categoria</label><select id="lc_cat_${idx}">${cats}</select></div>
+       <div class="mini-campo"><label>Fornecedor (opcional)</label><input type="text" id="lc_forn_${idx}" placeholder="Ex: Atacado China"></div>
+     </div>
+     <div class="linha-campos">
        <div class="mini-campo"><label>Preço de venda (R$)</label><input type="number" id="lc_preco_${idx}" min="0" step="0.01" placeholder="0,00"></div>
      </div>
    </div>
@@ -465,9 +588,54 @@ function adicionarLinhaCompra(){
   div.innerHTML = linhaCompraHTML(idx);
   document.getElementById('compraLinhas').appendChild(div);
 }
-function ajustarLinhaCompra(idx){
-  const v = document.getElementById('lc_prod_'+idx).value;
-  document.getElementById('lc_novo_'+idx).style.display = (v==='__novo__') ? 'block' : 'none';
+function filtrarLinhaBusca(idx){
+  const q = document.getElementById('lc_busca_'+idx).value.toLowerCase().trim();
+  const res = document.getElementById('lc_resultados_'+idx);
+  document.getElementById('lc_prod_'+idx).value = '';
+  document.getElementById('lc_selecionado_'+idx).style.display = 'none';
+  document.getElementById('lc_novo_'+idx).style.display = 'none';
+  if(!q){ res.style.display='none'; return; }
+  const match = estado.produtos.filter(p=>{
+    const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
+    return alvo.includes(q);
+  }).slice(0,8);
+  const items = match.map(p=>`<div style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--borda)"
+    onmousedown="selecionarLinhaProduto(${idx},'${p.id}')"
+    onmouseenter="this.style.background='var(--amarelo-claro)'" onmouseleave="this.style.background=''">
+    ${escapar(p.nome)}${p.marca?`<span style="color:var(--texto-sec)"> — ${escapar(p.marca)}</span>`:''}
+    ${p.codigo?`<small style="color:var(--texto-sec);font-size:11px;display:block">${escapar(p.codigo)}</small>`:''}
+  </div>`).join('');
+  const novoItem = `<div style="padding:8px 12px;cursor:pointer;font-size:14px;color:var(--verde);font-weight:600"
+    onmousedown="selecionarLinhaProduto(${idx},'__novo__')"
+    onmouseenter="this.style.background='var(--amarelo-claro)'" onmouseleave="this.style.background=''">
+    ➕ Cadastrar novo produto</div>`;
+  res.innerHTML = items + novoItem;
+  res.style.display = 'block';
+}
+function selecionarLinhaProduto(idx, id){
+  const res = document.getElementById('lc_resultados_'+idx);
+  res.style.display = 'none';
+  document.getElementById('lc_prod_'+idx).value = id;
+  const novoDiv = document.getElementById('lc_novo_'+idx);
+  const selDiv  = document.getElementById('lc_selecionado_'+idx);
+  if(id==='__novo__'){
+    const q = document.getElementById('lc_busca_'+idx).value.trim();
+    document.getElementById('lc_busca_'+idx).value = 'Novo produto';
+    // pré-preenche o nome com o que foi digitado
+    const nomeEl = document.getElementById('lc_nome_'+idx);
+    if(nomeEl && q) nomeEl.value = q;
+    novoDiv.style.display = 'block';
+    selDiv.style.display = 'none';
+  } else {
+    const p = prod(id);
+    document.getElementById('lc_busca_'+idx).value = p.nome + (p.marca?' — '+p.marca:'');
+    // sugere o último custo conhecido
+    const ult = ultimoCustoDe(p);
+    if(ult){ const custoEl=document.getElementById('lc_custo_'+idx); if(custoEl && !custoEl.value) custoEl.value=ult; }
+    novoDiv.style.display = 'none';
+    selDiv.innerHTML = p.codigo ? `SKU: ${escapar(p.codigo)}` : '';
+    selDiv.style.display = p.codigo ? 'block' : 'none';
+  }
 }
 function registrarCompraLote(){
   const data = document.getElementById('compraData').value || hoje();
@@ -483,7 +651,9 @@ function registrarCompraLote(){
     if(sel==='__novo__'){
       const nome = val('lc_nome_'+idx).trim();
       if(!nome){ toast('Dê um nome ao novo produto.'); return; }
-      itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(), categoria:val('lc_cat_'+idx),
+      itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(),
+                   fornecedor:val('lc_forn_'+idx).trim(),
+                   categoria:val('lc_cat_'+idx),
                    preco:parseFloat(val('lc_preco_'+idx))||0, qtd, custo });
     } else {
       itens.push({ novo:false, id:sel, qtd, custo });
@@ -495,6 +665,7 @@ function registrarCompraLote(){
     let p;
     if(it.novo){
       p = { id:uid(), marca:it.marca, nome:it.nome, categoria:it.categoria,
+            fornecedor:it.fornecedor||'',
             codigo:gerarSku(it.categoria), codigoBarras:'', preco:it.preco, minimo:0, movimentacoes:[] };
       estado.produtos.push(p);
     } else {
