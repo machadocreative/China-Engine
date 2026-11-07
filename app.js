@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.5.0';
+const VERSAO = '0.5.1';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -1320,6 +1320,7 @@ function mostrarView(v){
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
+  document.getElementById('fab').style.display = (v==='financeiro') ? 'none' : '';   // ⊕ não aparece no Financeiro
   renderViewAtual();
   window.scrollTo(0,0);
 }
