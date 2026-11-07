@@ -23,7 +23,7 @@ body{
   background:var(--bg);
   color:var(--texto);
   line-height:1.5;
-  padding-bottom:86px;
+  padding-bottom:150px;   /* espaço para a barra inferior e o botão ⊕ */
   -webkit-font-smoothing:antialiased;
 }
 button{font-family:var(--corpo);cursor:pointer}
@@ -48,6 +48,25 @@ header .titulo b{font-family:var(--display);font-weight:800;font-size:20px;lette
 header .titulo span{font-size:12px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}
 header .titulo em{font-style:normal;color:var(--amarelo);font-weight:600;margin-left:4px}
 header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+header{padding-right:70px}   /* espaço do contador de notificações */
+.marca-app{display:flex;align-items:center;gap:14px;color:inherit;text-decoration:none;cursor:pointer}
+.marca-app:hover .titulo b{color:var(--amarelo)}
+
+/* Contador de pontos de atenção (canto superior direito) */
+.notif{
+  position:absolute;top:50%;right:18px;transform:translateY(-50%);
+  width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);
+  background:transparent;color:#C9C7BE;display:flex;align-items:center;justify-content:center;
+}
+.notif:hover{background:rgba(255,255,255,.08)}
+.notif svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.notif span{
+  position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;
+  background:var(--vermelho);color:#fff;font-family:var(--mono);font-size:11px;font-weight:600;
+  display:none;align-items:center;justify-content:center;border:2px solid var(--preto);
+}
+.notif.tem span{display:flex}
+.notif.tem{color:#fff}
 
 /* ===== Botões ===== */
 .btn{
@@ -105,6 +124,14 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
   padding:3px 10px;border-radius:999px;font-size:13px;
 }
 .linha .num{font-family:var(--mono);font-weight:600}
+.badge-arquivado{
+  display:inline-flex;align-items:center;font-size:11px;font-weight:600;
+  padding:2px 8px;border-radius:999px;margin-left:6px;font-family:var(--corpo);
+  vertical-align:middle;background:var(--preto);color:var(--amarelo);letter-spacing:.3px;
+}
+.linha.arquivada{background:repeating-linear-gradient(135deg,#FAF8F2 0 10px,#F2EFE6 10px 20px)}
+.linha.arquivada .nome,.linha.arquivada .num,.linha.arquivada .cat{opacity:.6}
+.linha.arquivada .badge-arquivado{opacity:1}
 .badge-baixo{
   display:inline-flex;align-items:center;font-size:11px;font-weight:600;
   padding:2px 8px;border-radius:999px;margin-left:6px;font-family:var(--corpo);
@@ -161,7 +188,18 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 .receber-linha input{flex:1;padding:8px 10px;border:1px solid var(--borda);border-radius:8px}
 
 /* ===== Compra em lote ===== */
-.linha-compra{border:1px solid var(--borda);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+.linha-compra{position:relative;border:1px solid var(--borda);border-radius:12px;padding:12px;margin:0 0 14px;background:#fff}
+#compraLinhas{padding-top:6px}
+/* Remover item: círculo vermelho encostado no canto superior direito, longe do botão + */
+.lc-remover{
+  position:absolute;top:-10px;right:-10px;z-index:5;
+  width:24px;height:24px;border-radius:50%;border:2px solid #fff;
+  background:var(--vermelho);color:#fff;font-size:14px;line-height:1;font-weight:700;
+  display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+.lc-remover:hover{filter:brightness(1.1)}
+.lc-novo-btn{width:38px;height:38px;padding:0;font-size:20px;line-height:1;flex-shrink:0}
+.lc-resultados{z-index:30 !important}
 .lc-novo{margin:0 0 8px;padding:8px 0;border-top:1px dashed var(--borda);border-bottom:1px dashed var(--borda)}
 
 /* ===== Registrar venda ===== */
@@ -228,7 +266,8 @@ main{max-width:980px;margin:0 auto;padding:22px 18px}
 }
 .hist-cab{background:var(--preto);color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 .hist-cab .num,.hist-linha .num{text-align:right}
-.hist-linha{border-top:1px solid var(--borda);font-size:14px}
+.hist-linha{border-top:1px solid var(--borda);font-size:14px;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.hist-linha:hover{background:var(--amarelo-claro)}
 .hist-linha .nome{font-weight:600}
 .hist-linha .nome small{display:block;font-weight:400;color:var(--texto-sec);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .hist-linha .num{font-family:var(--mono)}
@@ -312,6 +351,60 @@ header .acoes [data-view].fora{display:none}
 .nf-linha .nf-data-mob{display:none}
 .btn-x{border:0;background:transparent;color:var(--texto-sec);font-size:15px;padding:4px 6px;border-radius:6px}
 .btn-x:hover{background:var(--vermelho-claro);color:var(--vermelho)}
+
+/* Selo de tipo no modal de edição de movimentação */
+.em-tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle}
+.em-tag.e{background:#E5F2E6;color:var(--verde)}
+.em-tag.s{background:var(--vermelho-claro);color:var(--vermelho)}
+
+/* ===== Tela Início ===== */
+.ini-ola{font-family:var(--display);font-weight:700;font-size:22px;margin-bottom:2px}
+.ini-sub{color:var(--texto-sec);font-size:14px;margin-bottom:18px}
+.ini-bloco{background:var(--card);border:1px solid var(--borda);border-radius:var(--raio);margin-bottom:16px;overflow:hidden}
+.ini-cab{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--borda)}
+.ini-cab h3{font-family:var(--display);font-weight:700;font-size:16px}
+.ini-cab small{display:block;color:var(--texto-sec);font-size:12px}
+.ini-qtd{margin-left:auto;font-family:var(--mono);font-weight:600;font-size:13px;padding:2px 10px;border-radius:999px}
+.ini-bloco.baixo .ini-cab{border-top:4px solid var(--vermelho)}
+.ini-bloco.baixo .ini-qtd{background:var(--vermelho-claro);color:var(--vermelho)}
+.ini-bloco.receber .ini-cab{border-top:4px solid var(--amarelo)}
+.ini-bloco.receber .ini-qtd{background:var(--amarelo-claro);color:#8A6D00}
+.ini-item{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--borda);font-size:14px}
+.ini-item:first-of-type{border-top:none}
+.ini-item .nome{flex:1;font-weight:600;min-width:0}
+.ini-item .nome small{display:block;font-weight:400;color:var(--texto-sec);font-size:12px}
+.ini-item .val{font-family:var(--mono);font-weight:600;white-space:nowrap;text-align:right}
+.ini-item .val small{display:block;font-family:var(--corpo);font-weight:400;color:var(--texto-sec);font-size:11px}
+.ini-vazio{padding:16px;color:var(--texto-sec);font-size:14px}
+.ini-ok{display:flex;align-items:center;gap:10px;background:#E5F2E6;border:1px solid #BFDCC1;border-radius:var(--raio);padding:14px 16px;margin-bottom:16px;color:var(--verde);font-weight:600}
+
+/* ===== Botão de ação flutuante (⊕) ===== */
+.fab{
+  position:fixed;right:18px;bottom:78px;z-index:72;
+  width:58px;height:58px;border-radius:50%;
+  background:var(--amarelo);border:3px solid var(--preto);color:var(--preto);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 14px rgba(26,26,23,.28);transition:transform .2s;
+}
+.fab svg{width:28px;height:28px;stroke:currentColor;stroke-width:3;fill:none;stroke-linecap:round;transition:transform .2s}
+.fab:active{transform:scale(.95)}
+.fab.aberto svg{transform:rotate(45deg)}
+.fab-fundo{position:fixed;inset:0;z-index:70;background:rgba(26,26,23,.35);display:none}
+.fab-fundo.aberto{display:block}
+.fab-menu{
+  position:fixed;right:22px;bottom:148px;z-index:71;
+  display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+  pointer-events:none;opacity:0;transform:translateY(10px);transition:opacity .15s,transform .15s;
+}
+.fab-menu.aberto{pointer-events:auto;opacity:1;transform:translateY(0)}
+.fab-opcao{display:flex;align-items:center;gap:10px;background:none;border:none;padding:0}
+.fab-opcao span{background:var(--preto);color:#fff;font-weight:600;font-size:14px;padding:7px 12px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.fab-opcao i{
+  width:46px;height:46px;border-radius:50%;background:#fff;border:2px solid var(--preto);
+  display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.2)
+}
+.fab-opcao i svg{width:21px;height:21px;stroke:var(--preto);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fab-opcao:hover i{background:var(--amarelo)}
 
 /* ===== Navegação inferior ===== */
 .barra-inferior{

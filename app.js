@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.4.1';
+const VERSAO = '0.5.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -27,7 +27,7 @@ let estado = Armazenamento.ler() || criarExemplo();
 let ordenarPor = 'nome';
 let direcao = 'asc';
 
-function salvar(){ Armazenamento.gravar(estado); }
+function salvar(){ Armazenamento.gravar(estado); if(typeof atualizarInicio==='function') atualizarInicio(); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function prod(id){ return estado.produtos.find(p=>p.id===id); }
@@ -120,6 +120,7 @@ function render(){
   let lista = estado.produtos.filter(p=>{
     const okCat = !cat || p.categoria===cat;
     const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
+    if(p.arquivado && !busca) return false;   // arquivados só aparecem quando o usuário pesquisa
     return okCat && (!busca || alvo.includes(busca));
   });
 
@@ -148,13 +149,14 @@ function render(){
 
   let linhas = lista.map(p=>{
     const est = estoqueDe(p);
-    const baixo = est <= (p.minimo||0);
+    const baixo = !p.arquivado && est <= (p.minimo||0);
     const ar = aReceberDe(p);
     const cm = custoMedioDe(p);
-    const linha = `<div class="linha" data-id="${p.id}">
+    const linha = `<div class="linha${p.arquivado?' arquivada':''}" data-id="${p.id}">
       <div class="nome">
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
         ${escapar(p.nome)}
+        ${p.arquivado?'<span class="badge-arquivado">Arquivado</span>':''}
         ${baixo?'<span class="badge-baixo">estoque baixo</span>':''}
         ${p.codigo?`<small class="codigo">${escapar(p.codigo)}</small>`:''}
       </div>
@@ -188,7 +190,7 @@ function preencherFiltroCategorias(){
   const filtro = document.getElementById('filtroCategoria');
   const atual = filtro.value;
   const contagem = {};
-  estado.produtos.forEach(p=>{ contagem[p.categoria] = (contagem[p.categoria]||0)+1; });
+  estado.produtos.forEach(p=>{ if(!p.arquivado) contagem[p.categoria] = (contagem[p.categoria]||0)+1; });
   const comProdutos = estado.categorias.filter(c=>contagem[c]>0);
   filtro.innerHTML = '<option value="">Todas as categorias</option>' +
     comProdutos.map(c=>`<option value="${escapar(c)}" ${c===atual?'selected':''}>${escapar(c)} (${contagem[c]})</option>`).join('');
@@ -221,11 +223,13 @@ let acaoAtivo = null;
 function abrirAcoes(id){
   acaoAtivo = id;
   document.getElementById('tituloAcoes').textContent = prod(id).nome;
+  document.getElementById('btnAcaoArquivar').textContent = prod(id).arquivado ? 'Desarquivar produto' : 'Arquivar produto';
   abrir('modalAcoes');
 }
 function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroEntrada(id); }
 function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirProduto(id); }
+function acaoArquivar(){ const id=acaoAtivo; fechar('modalAcoes'); arquivarProduto(id, !prod(id).arquivado); }
 
 /* =========================================================
    RECEBIMENTOS PENDENTES ("a receber")
@@ -279,6 +283,9 @@ function abrirProduto(id){
   document.getElementById('pPreco').value        = p && p.preco ? p.preco : '';
   document.getElementById('pMinimo').value       = p ? (p.minimo||0) : 0;
   document.getElementById('btnExcluirProduto').style.display = p ? 'inline-flex' : 'none';
+  const bArq = document.getElementById('btnArquivarProduto');
+  bArq.style.display = p ? 'inline-flex' : 'none';
+  bArq.textContent = p && p.arquivado ? 'Desarquivar' : 'Arquivar';
   abrir('modalProduto');
 }
 function salvarProduto(){
@@ -314,10 +321,36 @@ function salvarProduto(){
 }
 function excluirProduto(){
   const id = document.getElementById('produtoId').value;
-  pedirConfirmacao('Excluir este produto e todo o histórico dele?', ()=>{
-    estado.produtos = estado.produtos.filter(p=>p.id!==id);
-    salvar(); fechar('modalProduto'); render(); toast('Produto excluído.');
-  });
+  const p = prod(id);
+  const n = p.movimentacoes.length;
+  pedirConfirmacao(`Excluir “${p.nome}” e ${n?`as ${n} movimentação(ões) do histórico dele`:'o cadastro'}? Isso não pode ser desfeito. Para só tirar o produto da lista, use “Arquivar”.`, ()=>{
+    pedirSenha(()=>{
+      estado.produtos = estado.produtos.filter(x=>x.id!==id);
+      salvar(); fechar('modalProduto'); render(); renderViewAtual(); toast('Produto excluído.');
+    }, 'Excluir um produto apaga o histórico dele. Digite a senha do gerente para confirmar.');
+  }, 'Excluir produto');
+}
+
+/* ===== Arquivar: tira o produto da lista sem apagar o histórico ===== */
+function alternarArquivoProduto(){
+  const id = document.getElementById('produtoId').value;
+  fechar('modalProduto');
+  arquivarProduto(id, !prod(id).arquivado);
+}
+function arquivarProduto(id, arquivar){
+  const p = prod(id);
+  if(arquivar){
+    const est = estoqueDe(p);
+    const msg = `Arquivar “${p.nome}”? Ele sai da lista do estoque, da Nova venda e da Compra em lote, mas o histórico é mantido e ele continua aparecendo quando você pesquisa pelo nome.`
+      + (est>0 ? ` Atenção: ainda há ${est} unidade(s) em estoque.` : '');
+    pedirConfirmacao(msg, ()=>{
+      p.arquivado = true; p.dataArquivado = hoje();
+      salvar(); render(); renderViewAtual(); if(aberto('modalMov')) renderMov(); toast('Produto arquivado.');
+    }, 'Arquivar produto');
+  } else {
+    delete p.arquivado; delete p.dataArquivado;
+    salvar(); render(); renderViewAtual(); if(aberto('modalMov')) renderMov(); toast('Produto desarquivado.');
+  }
 }
 
 /* =========================================================
@@ -340,7 +373,7 @@ function vendaFiltrar(){
   const res = document.getElementById('vendaResultados');
   if(!q){ res.innerHTML=''; return; }
   const match = estado.produtos.filter(p=>{
-    if(estoqueDe(p)<=0) return false;
+    if(p.arquivado || estoqueDe(p)<=0) return false;
     const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
     return alvo.includes(q);
   }).slice(0,8);
@@ -358,7 +391,7 @@ function vendaEnter(){
   const q = document.getElementById('vendaBusca').value.trim();
   if(!q) return;
   const ql = q.toLowerCase();
-  const exato = estado.produtos.find(p=>(p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql));
+  const exato = estado.produtos.find(p=>!p.arquivado && ((p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql)));
   if(exato){
     if(estoqueDe(exato)<=0){ toast(`Sem estoque: ${exato.nome}`); return; }
     vendaAdicionarItem(exato.id); toast('Produto adicionado.'); return;
@@ -555,13 +588,14 @@ function linhaCompraHTML(idx){
        <input type="text" id="lc_busca_${idx}" placeholder="Buscar por nome, marca, código ou cód. barras..."
          style="width:100%;padding:8px 10px;border:1px solid var(--borda);border-radius:8px;font-size:14px"
          oninput="filtrarLinhaBusca(${idx})" autocomplete="off">
-       <div id="lc_resultados_${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;
+       <div id="lc_resultados_${idx}" class="lc-resultados" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;
          border:1px solid var(--borda-forte);border-radius:8px;z-index:20;max-height:200px;overflow-y:auto;margin-top:2px"></div>
        <input type="hidden" id="lc_prod_${idx}" value="">
        <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:13px;color:var(--texto-sec)"></div>
      </div>
-     <button class="btn btn-claro btn-mini" style="margin-top:1px" title="Remover item" onclick="this.closest('.linha-compra').remove()">✕</button>
+     <button type="button" class="btn btn-claro lc-novo-btn" title="Cadastrar novo produto" onclick="selecionarLinhaProduto(${idx},'__novo__')">+</button>
    </div>
+   <button type="button" class="lc-remover" title="Remover item" aria-label="Remover item" onclick="removerLinhaCompra(this)">×</button>
    <div id="lc_novo_${idx}" class="lc-novo" style="display:none">
      <div class="linha-campos">
        <div class="mini-campo" style="flex:.8"><label>Marca</label><input type="text" id="lc_marca_${idx}" placeholder="Marca"></div>
@@ -580,6 +614,10 @@ function linhaCompraHTML(idx){
      <div class="mini-campo"><label>Custo unitário (R$)</label><input type="number" id="lc_custo_${idx}" min="0" step="0.01" placeholder="0,00"></div>
    </div>`;
 }
+function removerLinhaCompra(btn){
+  const linha = btn.closest('.linha-compra');
+  pedirConfirmacao('Remover este item da compra?', ()=>linha.remove(), 'Remover item');
+}
 function adicionarLinhaCompra(){
   const idx = compraSeq++;
   const div = document.createElement('div');
@@ -596,6 +634,7 @@ function filtrarLinhaBusca(idx){
   document.getElementById('lc_novo_'+idx).style.display = 'none';
   if(!q){ res.style.display='none'; return; }
   const match = estado.produtos.filter(p=>{
+    if(p.arquivado) return false;
     const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
     return alvo.includes(q);
   }).slice(0,8);
@@ -619,7 +658,8 @@ function selecionarLinhaProduto(idx, id){
   const novoDiv = document.getElementById('lc_novo_'+idx);
   const selDiv  = document.getElementById('lc_selecionado_'+idx);
   if(id==='__novo__'){
-    const q = document.getElementById('lc_busca_'+idx).value.trim();
+    let q = document.getElementById('lc_busca_'+idx).value.trim();
+    if(q==='Novo produto') q = '';
     document.getElementById('lc_busca_'+idx).value = 'Novo produto';
     // pré-preenche o nome com o que foi digitado
     const nomeEl = document.getElementById('lc_nome_'+idx);
@@ -737,6 +777,8 @@ function renderMov(){
 
     <div class="acoes-painel">
       <button class="btn btn-claro btn-mini" onclick="fechar('modalMov');abrirProduto('${p.id}')">Editar dados do produto</button>
+      <button class="btn btn-claro btn-mini" onclick="arquivarProduto('${p.id}', ${!p.arquivado})">${p.arquivado?'Desarquivar':'Arquivar'}</button>
+      ${p.arquivado?'<span class="badge-arquivado" style="align-self:center">Arquivado</span>':''}
       ${ar>0?`<button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento (${ar})</button>`:''}
     </div>
 
@@ -949,7 +991,7 @@ function renderHistorico(){
       if(m.tipo==='entrada') valor = m.custoUnit;
       else if(m.motivo==='Venda') valor = m.precoVenda;
       else if(m.motivo==='A receber') valor = m.recebido ? m.precoVenda : 0;
-      linhas.push({ tipo:m.tipo, nome:p.nome, marca:p.marca, categoria:p.categoria,
+      linhas.push({ pid:p.id, mid:m.id, tipo:m.tipo, nome:p.nome, marca:p.marca, categoria:p.categoria,
                     data:m.data, qtd:m.qtd, valor, motivo:m.motivo, motivoTexto:m.motivoTexto, recebido:m.recebido });
     });
   });
@@ -993,7 +1035,7 @@ function renderHistorico(){
       let rotulo = l.tipo==='entrada' ? 'entrada' : (l.motivo||'saída');
       if(l.motivo==='Outros' && l.motivoTexto) rotulo = l.motivoTexto;
       else if(l.motivo==='A receber' && l.recebido) rotulo = 'recebido';
-      return `<div class="hist-linha">
+      return `<div class="hist-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
         <div><span class="tag ${l.tipo==='entrada'?'e':'s'}">${escapar(rotulo)}</span></div>
         <div class="nome">${escapar(l.nome)}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
@@ -1002,6 +1044,120 @@ function renderHistorico(){
         <div class="num">${l.valor==null?'—':fmtBRL(l.valor)}</div>
       </div>`;
     }).join('') + `</div>`;
+  cont.querySelectorAll('.hist-linha[data-mid]').forEach(el=>
+    toqueLongo(el, ()=>pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+}
+
+/* Toque e segure genérico (mouse e toque) */
+function toqueLongo(el, aoSegurar){
+  let t = null;
+  const iniciar = ()=>{ t = setTimeout(()=>{ t=null; aoSegurar(); }, 500); };
+  const cancelar = ()=>{ if(t){ clearTimeout(t); t=null; } };
+  el.addEventListener('mousedown', iniciar);
+  el.addEventListener('touchstart', iniciar, {passive:true});
+  ['mouseup','mouseleave','touchend','touchmove','touchcancel'].forEach(ev=>el.addEventListener(ev, cancelar));
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+
+/* =========================================================
+   EDITAR MOVIMENTAÇÃO (histórico) — exige senha do gerente
+   Sobrescreve a movimentação original.
+   ========================================================= */
+let editMov = null;
+function pedirEdicaoMov(pid, mid){
+  const p = prod(pid); const m = p && p.movimentacoes.find(x=>x.id===mid);
+  if(!m) return;
+  pedirSenha(()=>abrirEdicaoMov(pid, mid),
+    `Editar ${m.tipo==='entrada'?'a entrada':'a saída'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)}). Digite a senha do gerente.`);
+}
+function abrirEdicaoMov(pid, mid){
+  const p = prod(pid), m = p.movimentacoes.find(x=>x.id===mid);
+  editMov = { pid, mid };
+  const ent = m.tipo==='entrada';
+  const motivos = ['Venda','A receber','Perda / avaria','Devolução','Ajuste','Outros'];
+  const valorSaida = (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) ? (m.precoVenda??'') : '';
+  document.getElementById('corpoEditMov').innerHTML = `
+    <p style="margin-bottom:14px"><span class="tag ${ent?'e':'s'} em-tag">${ent?'entrada':'saída'}</span> <b>${escapar(p.nome)}</b>${p.marca?` <span style="color:var(--texto-sec)">· ${escapar(p.marca)}</span>`:''}</p>
+    <div class="linha-campos">
+      <div class="campo"><label>Data</label><input type="date" id="emData" value="${m.data}"></div>
+      <div class="campo"><label>Quantidade</label><input type="number" id="emQtd" min="1" value="${m.qtd}"></div>
+    </div>
+    ${ent ? `
+    <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
+    ` : `
+    <div class="campo"><label>Motivo</label>
+      <select id="emMotivo" onchange="ajustarEdicaoMov()">${motivos.map(x=>`<option ${x===m.motivo?'selected':''}>${x}</option>`).join('')}</select></div>
+    <div class="campo" id="emCampoValor"><label id="emValorLabel">Preço de venda (un.)</label>
+      <input type="number" id="emValor" min="0" step="0.01" value="${valorSaida}"></div>
+    <div class="campo" id="emCampoOutros"><label>Descreva o motivo</label>
+      <input type="text" id="emMotivoTexto" value="${escapar(m.motivoTexto||'')}"></div>
+    <div class="campo" id="emCampoRecebido"><label style="display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" id="emRecebido" style="width:auto" ${m.recebido?'checked':''} onchange="ajustarEdicaoMov()"> Já recebido</label></div>
+    `}
+    <div class="rodape-modal">
+      <button class="btn btn-claro" onclick="fechar('modalEditMov')">Cancelar</button>
+      <button class="btn btn-amarelo" onclick="salvarEdicaoMov()">Salvar alterações</button>
+    </div>`;
+  abrir('modalEditMov');
+  ajustarEdicaoMov();
+}
+function ajustarEdicaoMov(){
+  const sel = document.getElementById('emMotivo');
+  if(!sel) return;
+  const mot = sel.value, rec = document.getElementById('emRecebido').checked;
+  document.getElementById('emCampoOutros').style.display   = mot==='Outros' ? 'block' : 'none';
+  document.getElementById('emCampoRecebido').style.display = mot==='A receber' ? 'block' : 'none';
+  const mostraValor = mot==='Venda' || (mot==='A receber' && rec);
+  document.getElementById('emCampoValor').style.display = mostraValor ? 'block' : 'none';
+  document.getElementById('emValorLabel').textContent = mot==='Venda' ? 'Preço de venda (un.)' : 'Valor recebido (un.)';
+}
+function salvarEdicaoMov(){
+  const p = prod(editMov.pid), m = p.movimentacoes.find(x=>x.id===editMov.mid);
+  const data = val('emData'), qtd = parseInt(val('emQtd'));
+  if(!data){ toast('Informe a data.'); return; }
+  if(!qtd || qtd<1){ toast('Informe a quantidade.'); return; }
+  const novo = { data, qtd };
+  if(m.tipo==='entrada'){
+    const c = parseFloat(val('emValor'));
+    if(isNaN(c)||c<0){ toast('Informe o custo por unidade.'); return; }
+    novo.custoUnit = c;
+  } else {
+    const mot = val('emMotivo');
+    novo.motivo = mot;
+    if(mot==='Venda'){
+      const v = parseFloat(val('emValor'));
+      if(isNaN(v)||v<0){ toast('Informe o preço de venda.'); return; }
+      novo.precoVenda = v;
+    } else if(mot==='A receber'){
+      if(document.getElementById('emRecebido').checked){
+        const v = parseFloat(val('emValor'));
+        if(isNaN(v)||v<0){ toast('Informe o valor recebido.'); return; }
+        novo.precoVenda = v; novo.recebido = true;
+      } else { novo.precoVenda = 0; novo.recebido = false; }
+    } else if(mot==='Outros'){
+      const txt = val('emMotivoTexto').trim();
+      if(!txt){ toast('Descreva o motivo.'); return; }
+      novo.motivoTexto = txt;
+    }
+  }
+  // o estoque não pode ficar negativo com a alteração
+  const deltaAntes = m.tipo==='entrada' ? m.qtd : -m.qtd;
+  const deltaDepois = m.tipo==='entrada' ? qtd : -qtd;
+  if(estoqueDe(p) - deltaAntes + deltaDepois < 0){
+    toast('Essa alteração deixaria o estoque negativo.'); return;
+  }
+  // sobrescreve no lugar (mantém o id da movimentação)
+  m.data = novo.data; m.qtd = novo.qtd;
+  if(m.tipo==='entrada') m.custoUnit = novo.custoUnit;
+  else {
+    ['precoVenda','motivoTexto','recebido','dataRecebimento'].forEach(k=>{ if(!(k in novo)) delete m[k]; });
+    Object.assign(m, novo);
+    if(m.recebido && !m.dataRecebimento) m.dataRecebimento = hoje();
+    if(m.recebido===false) delete m.recebido;
+  }
+  salvar(); fechar('modalEditMov');
+  render(); renderHistorico(); if(aberto('modalMov')) renderMov();
+  toast('Movimentação atualizada.');
 }
 
 /* =========================================================
@@ -1150,11 +1306,12 @@ function criarExemplo(){
    NAVEGAÇÃO ENTRE MÓDULOS (barra inferior)
    ========================================================= */
 const VIEWS = {
+  inicio:     { secao:'viewInicio',     titulo:'Início' },
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' }
 };
-let viewAtual = 'estoque';
+let viewAtual = 'inicio';
 function mostrarView(v){
   if(!VIEWS[v]) return;
   viewAtual = v;
@@ -1162,13 +1319,82 @@ function mostrarView(v){
   document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('ativo', b.dataset.nav===v));
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
+  fecharFab();
   renderViewAtual();
   window.scrollTo(0,0);
 }
 function renderViewAtual(){
+  if(viewAtual==='inicio')     renderInicio();
   if(viewAtual==='historico')  prepararHistorico();
   if(viewAtual==='financeiro') renderFinanceiro();
 }
+
+/* =========================================================
+   TELA INÍCIO — pontos de atenção do vendedor
+   ========================================================= */
+function produtosEstoqueBaixo(){
+  return estado.produtos.filter(p=>!p.arquivado && estoqueDe(p) <= (p.minimo||0))
+    .sort((a,b)=>(estoqueDe(a)-(a.minimo||0))-(estoqueDe(b)-(b.minimo||0)) || a.nome.localeCompare(b.nome,'pt-BR'));
+}
+function recebimentosPendentes(){
+  const lista = [];
+  estado.produtos.forEach(p=>saidas(p).forEach(m=>{
+    if(m.motivo==='A receber' && !m.recebido) lista.push({ p, m });
+  }));
+  return lista.sort((a,b)=>a.m.data.localeCompare(b.m.data));   // mais antigos primeiro
+}
+function diasDesde(iso){ return Math.floor((new Date(hoje()) - new Date(iso))/86400000); }
+
+function atualizarInicio(){
+  const n = produtosEstoqueBaixo().length + recebimentosPendentes().length;
+  const b = document.getElementById('notif');
+  if(b){
+    b.classList.toggle('tem', n>0);
+    document.getElementById('notifContador').textContent = n>99 ? '99+' : n;
+    b.title = n ? `${n} ponto(s) de atenção` : 'Nenhum ponto de atenção';
+  }
+  if(viewAtual==='inicio') renderInicio();
+}
+function renderInicio(){
+  const baixos = produtosEstoqueBaixo();
+  const pend = recebimentosPendentes();
+  const totalPend = pend.reduce((s,x)=>s + x.m.qtd*(x.p.preco||0), 0);
+  const cont = document.getElementById('inicioConteudo');
+
+  const blocoBaixo = `<div class="ini-bloco baixo">
+    <div class="ini-cab"><div><h3>Estoque baixo</h3><small>Atenção para reabastecer</small></div>
+      <span class="ini-qtd">${baixos.length}</span></div>
+    ${baixos.length ? baixos.map(p=>{ const est = estoqueDe(p); return `
+      <div class="ini-item">
+        <div class="nome">${escapar(p.nome)}<small>${p.marca?escapar(p.marca)+' · ':''}mínimo ${p.minimo||0} un.</small></div>
+        <div class="val" style="color:${est<=0?'var(--vermelho)':'inherit'}">${est} un.<small>${est<=0?'sem estoque':'em estoque'}</small></div>
+        <button class="btn btn-amarelo btn-mini" onclick="abrirRegistroEntrada('${p.id}')">+ Entrada</button>
+      </div>`; }).join('') : '<div class="ini-vazio">Nenhum produto abaixo do mínimo.</div>'}
+  </div>`;
+
+  const blocoPend = `<div class="ini-bloco receber">
+    <div class="ini-cab"><div><h3>Pagamentos pendentes</h3><small>Saídas “a receber” · cerca de ${fmtBRL(totalPend)} pelo preço atual</small></div>
+      <span class="ini-qtd">${pend.length}</span></div>
+    ${pend.length ? pend.map(({p,m})=>{ const d = diasDesde(m.data); return `
+      <div class="ini-item">
+        <div class="nome">${escapar(p.nome)}<small>${m.qtd} un. · saída em ${fmtData(m.data)}</small></div>
+        <div class="val">${d<=0?'hoje':d+(d===1?' dia':' dias')}<small>pendente</small></div>
+        <button class="btn btn-claro btn-mini" onclick="abrirReceber('${p.id}')">Receber</button>
+      </div>`; }).join('') : '<div class="ini-vazio">Nenhum pagamento pendente.</div>'}
+  </div>`;
+
+  const tudoOk = !baixos.length && !pend.length;
+  cont.innerHTML = `
+    <div class="ini-ola">Pontos de atenção</div>
+    <div class="ini-sub">${tudoOk ? 'Tudo em dia por aqui.' : `${baixos.length+pend.length} item(ns) precisam da sua atenção.`}</div>
+    ${tudoOk ? '<div class="ini-ok">✓ Nenhum produto com estoque baixo e nenhum pagamento pendente.</div>' : ''}
+    ${blocoBaixo}${blocoPend}`;
+}
+
+/* ===== Botão de ação flutuante (⊕) ===== */
+function alternarFab(){ document.getElementById('fabMenu').classList.contains('aberto') ? fecharFab() : abrirFab(); }
+function abrirFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto')); }
+function fecharFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.remove('aberto')); }
 
 /* =========================================================
    FINANCEIRO — FATURAMENTO MEI
@@ -1472,4 +1698,5 @@ function mostrarAviso(titulo, html){
 /* ===== Início ===== */
 document.getElementById('versao').textContent = 'v'+VERSAO;
 render();
-mostrarView('estoque');
+atualizarInicio();
+mostrarView('inicio');

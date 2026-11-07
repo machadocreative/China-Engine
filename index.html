@@ -21,19 +21,24 @@
 
 <header>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
-  <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
-  <div class="titulo">
-    <b id="tituloView">Controle de Estoque</b>
-    <span>China Town Imports <em id="versao"></em></span>
-  </div>
+  <!-- Logo + título: tocar volta para a tela Início (como num site) -->
+  <a class="marca-app" href="#" onclick="mostrarView('inicio');return false" title="Voltar ao início">
+    <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
+    <div class="titulo">
+      <b id="tituloView">Início</b>
+      <span>China Town Imports <em id="versao"></em></span>
+    </div>
+  </a>
+  <!-- Contador de pontos de atenção da tela Início -->
+  <button class="notif" id="notif" onclick="mostrarView('inicio')" title="Pontos de atenção">
+    <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span id="notifContador"></span>
+  </button>
   <!-- Ações do cabeçalho: data-view indica em qual módulo o botão aparece (sem data-view = sempre) -->
   <div class="acoes">
     <button class="btn btn-claro btn-mini" data-view="estoque" onclick="abrirCategorias()">Categorias</button>
     <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
     <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
-    <button class="btn btn-claro btn-mini" data-view="estoque" onclick="abrirCompra()">+ Compra em lote</button>
-    <button class="btn btn-escuro btn-mini" data-view="estoque" onclick="abrirVenda()">Registrar venda</button>
-    <button class="btn btn-amarelo" data-view="estoque" onclick="abrirProduto()">+ Novo produto</button>
     <button class="btn btn-claro btn-mini" data-view="financeiro" onclick="abrirConfigTeto()">Configurar teto</button>
     <button class="btn btn-amarelo" data-view="financeiro" onclick="document.getElementById('arquivoXml').click()">+ Importar XML</button>
     <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
@@ -42,8 +47,13 @@
 </header>
 
 <main>
+<!-- ===================== TELA: INÍCIO (pontos de atenção) ===================== -->
+<section class="view" id="viewInicio">
+  <div id="inicioConteudo"></div>
+</section>
+
 <!-- ===================== TELA: ESTOQUE ===================== -->
-<section class="view" id="viewEstoque">
+<section class="view" id="viewEstoque" hidden>
   <div class="filtros">
     <input type="text" id="busca" placeholder="Buscar por nome, marca, código ou cód. de barras..." oninput="render()">
     <select id="filtroCategoria" onchange="render()"><option value="">Todas as categorias</option></select>
@@ -58,7 +68,7 @@
       <button id="btnDir" class="btn btn-claro btn-mini" onclick="alternarDirecao()" title="Inverter ordem">↑</button>
     </div>
   </div>
-  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas.</p>
+  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas. Produtos arquivados só aparecem na busca.</p>
   <div id="conteudo"></div>
 </section>
 
@@ -93,6 +103,7 @@
       </div>
     </div>
   </div>
+  <p class="dica" style="margin:-4px 0 12px">Toque e segure uma movimentação para editar (exige a senha do gerente).</p>
   <div id="histConteudo"></div>
 </section>
 
@@ -153,6 +164,7 @@
         <button class="btn btn-amarelo" onclick="acaoEntrada()">Registrar entrada</button>
         <button class="btn btn-escuro" onclick="acaoSaida()">Registrar saída</button>
         <button class="btn btn-claro" onclick="acaoEditar()">Editar informações do produto</button>
+        <button class="btn btn-claro" id="btnAcaoArquivar" onclick="acaoArquivar()">Arquivar produto</button>
       </div>
     </div>
   </div>
@@ -184,7 +196,7 @@
 <div class="overlay" id="modalVenda">
   <div class="modal" style="max-width:620px">
     <div class="modal-cabecalho">
-      <h2>Registrar venda</h2>
+      <h2>Nova venda</h2>
       <button class="fechar" onclick="fechar('modalVenda')">&times;</button>
     </div>
     <div class="modal-corpo">
@@ -221,7 +233,7 @@
 <div class="overlay" id="modalCompra">
   <div class="modal" style="max-width:680px">
     <div class="modal-cabecalho">
-      <h2>Registrar compra (vários produtos)</h2>
+      <h2>Nova compra em lote</h2>
       <button class="fechar" onclick="fechar('modalCompra')">&times;</button>
     </div>
     <div class="modal-corpo">
@@ -305,7 +317,8 @@
         </div>
       </div>
       <div class="rodape-modal">
-        <button class="btn btn-vermelho" id="btnExcluirProduto" style="margin-right:auto;display:none" onclick="excluirProduto()">Excluir</button>
+        <button class="btn btn-vermelho" id="btnExcluirProduto" style="display:none" onclick="excluirProduto()">Excluir</button>
+        <button class="btn btn-claro" id="btnArquivarProduto" style="margin-right:auto;display:none" onclick="alternarArquivoProduto()">Arquivar</button>
         <button class="btn btn-claro" onclick="fechar('modalProduto')">Cancelar</button>
         <button class="btn btn-amarelo" onclick="salvarProduto()">Salvar</button>
       </div>
@@ -448,11 +461,36 @@
   </div>
 </div>
 
+<!-- ===== Modal: editar movimentação (histórico) ===== -->
+<div class="overlay" id="modalEditMov">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-cabecalho">
+      <h2>Editar movimentação</h2>
+      <button class="fechar" onclick="fechar('modalEditMov')">&times;</button>
+    </div>
+    <div class="modal-corpo" id="corpoEditMov"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
+
+<!-- ===== Botão de ação flutuante (⊕) ===== -->
+<div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
+<div class="fab-menu" id="fabMenu">
+  <button class="fab-opcao" onclick="fecharFab();abrirVenda()"><span>Nova venda</span><i>
+    <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></i></button>
+  <button class="fab-opcao" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
+    <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
+  <button class="fab-opcao" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
+    <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg></i></button>
+</div>
+<button class="fab" id="fab" onclick="alternarFab()" title="Nova venda, produto ou compra" aria-label="Ações">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+</button>
 
 <!-- ===== Navegação inferior ===== -->
 <nav class="barra-inferior">
-  <button class="nav-item ativo" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
+  <button class="nav-item" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
     Estoque
   </button>

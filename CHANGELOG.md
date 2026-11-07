@@ -32,6 +32,39 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.5.0] - 2026-11-07
+
+### Adicionado
+
+**Tela Início**
+- Nova tela inicial, a primeira exibida ao abrir o app, com os pontos de atenção do vendedor:
+  - **Estoque baixo**: produtos no mínimo ou abaixo dele (arquivados não entram), com botão "+ Entrada" para registrar o reabastecimento na hora.
+  - **Pagamentos pendentes**: saídas "a receber" ainda não recebidas, das mais antigas para as mais novas, com quantos dias estão pendentes e botão "Receber".
+- Tocar no logo/título do cabeçalho volta para o Início, como num site.
+- Contador discreto no canto superior direito do cabeçalho (sino) com o número de pontos de atenção; tocar nele abre o Início.
+
+**Botão ⊕ flutuante**
+- Botão no canto inferior direito que reúne **Nova venda**, **Novo produto** e **Nova compra em lote**.
+
+**Editar movimentações**
+- No Histórico, tocar e segurar uma movimentação permite editá-la, após a senha do gerente: data, quantidade, valor (custo na entrada; preço de venda ou valor recebido na saída) e motivo da saída. A movimentação é sobrescrita no lugar.
+- A edição é bloqueada se deixar o estoque negativo. A lista do estoque, o painel do produto (com o mini-histórico) e a tela Início refletem a alteração na hora.
+
+**Arquivar produtos**
+- Produtos podem ser arquivados (pelo toque longo na lista, pelo painel do produto ou pela edição do produto) e desarquivados do mesmo jeito.
+- Arquivados somem da lista do estoque, da contagem do filtro de categorias, da Nova venda, da Compra em lote e do Início, mas aparecem quando o usuário pesquisa por eles, com fundo listrado e o selo "Arquivado". O histórico de movimentações é mantido.
+
+**Compra em lote**
+- Botão "+" ao lado do campo de busca de cada item, para cadastrar um novo produto direto (a opção continua também no fim da lista de resultados).
+- O botão de remover item virou um círculo vermelho no canto superior direito do item, longe do "+", e pede confirmação antes de remover.
+
+### Alterado
+
+- "Registrar venda", "+ Novo produto" e "+ Compra em lote" saíram do cabeçalho e passaram para o botão ⊕. Os modais foram renomeados para "Nova venda" e "Nova compra em lote".
+- Excluir produto agora pede confirmação e a senha do gerente, e sugere arquivar como alternativa (excluir apaga o histórico do produto).
+
+---
+
 ## [0.4.1] - 2026-11-06
 
 ### Corrigido
@@ -200,6 +233,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.5.0]: #
 [0.4.1]: #
 [0.4.0]: #
 [0.3.1]: #
