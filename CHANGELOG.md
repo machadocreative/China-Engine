@@ -32,6 +32,14 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.8.5] - 2026-11-07
+
+### Alterado
+
+- Desempenho: o card "Produtos parados" não aparece quando ainda não há produtos cadastrados no estoque (produtos arquivados não contam).
+
+---
+
 ## [0.8.4] - 2026-11-07
 
 ### Adicionado
@@ -380,6 +388,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.8.5]: #
 [0.8.4]: #
 [0.8.3]: #
 [0.8.2]: #
