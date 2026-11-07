@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.4.0';
+const VERSAO = '0.4.1';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -1279,8 +1279,8 @@ function renderFinanceiro(){
   const pos = p=>(p/escala*100)+'%';
   document.getElementById('finBarra').style.width = Math.min(100, pct/escala*100)+'%';
   const trilho = document.getElementById('finTrilho');
-  trilho.querySelectorAll('.marca').forEach(m=>m.remove());
-  [50,75,90].forEach(p=>{ const m=document.createElement('span'); m.className='marca'; m.style.left=pos(p); trilho.appendChild(m); });
+  trilho.querySelectorAll('.fin-marca').forEach(m=>m.remove());
+  [50,75,90].forEach(p=>{ const m=document.createElement('span'); m.className='fin-marca'; m.style.left=pos(p); trilho.appendChild(m); });
   document.getElementById('finLegendas').innerHTML =
     `<span style="left:0">0</span><span style="left:${pos(50)}">50%</span><span style="left:${pos(100)}">Teto</span><span style="left:100%">+20%</span>`;
 

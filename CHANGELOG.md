@@ -32,6 +32,14 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.4.1] - 2026-11-06
+
+### Corrigido
+
+- A marca dos produtos na lista do estoque não aparecia e, no lugar dela, surgia uma linha cinza vertical atravessando a tela. A classe `.marca` das divisões do medidor do Financeiro (adicionada na 0.4.0) colidia com a `.marca` do nome do produto; a do medidor foi renomeada para `.fin-marca`.
+
+---
+
 ## [0.4.0] - 2026-11-06
 
 ### Adicionado
@@ -192,6 +200,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.4.1]: #
 [0.4.0]: #
 [0.3.1]: #
 [0.3.0]: #
