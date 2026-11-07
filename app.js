@@ -1,13 +1,13 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.5.1';
+const VERSAO = '0.6.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
    OBS: por estar no código, ela serve como trava de operação
    (estilo caixa de supermercado), não como segurança real. */
-const SENHA_ADMIN = 'CHINAMASTER999';
+const SENHA_ADMIN = 'CHINAMASTER999';   // senha padrão; pode ser trocada em Configurações
 
 /* ===== Armazenamento (localStorage com fallback em memória) ===== */
 let memoria = null;
@@ -753,14 +753,10 @@ function renderMov(){
     if(m.tipo==='entrada') valor = fmtBRL(m.custoUnit)+'/un';
     else if(m.motivo==='Venda') valor = fmtBRL(m.precoVenda)+'/un';
     else if(m.motivo==='A receber') valor = m.recebido ? fmtBRL(m.precoVenda)+'/un' : 'a receber';
-    let texto = m.motivo;
-    if(m.motivo==='Outros' && m.motivoTexto) texto = m.motivoTexto;
-    else if(m.motivo==='A receber' && m.recebido) texto = 'A receber (recebido)';
-    const rotulo = m.tipo==='saida' ? ` · ${escapar(texto)}` : '';
     return `<div class="mov">
-      <span class="tag ${m.tipo==='entrada'?'e':'s'}">${m.tipo==='entrada'?'entrada':'saída'}</span>
+      <span class="hx-tag ${classeMov(m)}">${escapar(rotuloMov(m))}</span>
       <span class="data">${fmtData(m.data)}</span>
-      <span>${m.qtd} un.${rotulo}</span>
+      <span>${m.qtd} un.</span>
       <span class="valor">${valor}</span>
     </div>`;
   }).join('');
@@ -937,7 +933,7 @@ function pedirSenha(callback, mensagem){
 }
 function cancelarSenha(){ acaoSenha = null; fechar('modalSenha'); }
 function confirmarSenha(){
-  if(document.getElementById('senhaInput').value !== SENHA_ADMIN){ toast('Senha incorreta.'); return; }
+  if(document.getElementById('senhaInput').value !== senhaGerente()){ toast('Senha incorreta.'); return; }
   fechar('modalSenha');
   const cb = acaoSenha; acaoSenha = null;
   if(cb) cb();
@@ -962,89 +958,218 @@ function confirmarConfirma(){
    HISTÓRICO GERAL (filtros + ordenação)
    ========================================================= */
 let histPor = 'data', histDir = 'desc';
+
+/* ----- Cores e rótulos das movimentações (ponto de vista do caixa) -----
+   Venda / recebido = dinheiro entra (verde) · Aquisição = dinheiro sai (vermelho)
+   A receber pendente = âmbar · Perda, devolução, ajuste, outros = neutro */
+function classeMov(m){
+  if(m.tipo==='entrada') return 'neg';
+  if(m.motivo==='Venda') return 'pos';
+  if(m.motivo==='A receber') return m.recebido ? 'pos' : 'pend';
+  return 'neu';
+}
+function rotuloMov(m){
+  if(m.tipo==='entrada') return 'Aquisição';
+  if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
+  if(m.motivo==='A receber' && m.recebido) return 'Recebido';
+  return m.motivo || 'Saída';
+}
+/* Valor total da movimentação com sinal do caixa (null = sem valor financeiro) */
+function valorMov(m){
+  if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
+  if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
+  return null;
+}
+function tipoFiltroMov(m){
+  if(m.tipo==='entrada') return 'aquisicao';
+  if(m.motivo==='Venda') return 'venda';
+  if(m.motivo==='A receber') return 'areceber';
+  return 'outras';
+}
+
+/* ----- Período (navegação estilo "‹ Novembro 2026 ›") ----- */
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+let hxPeriodo = { tipo:'mes', ref:hoje() };   // tipo: dia | semana | mes | tudo | custom
+function isoDe(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function dataDe(iso){ const [a,m,d]=iso.split('-').map(Number); return new Date(a,m-1,d); }
+function intervaloPeriodo(){
+  const P = hxPeriodo;
+  if(P.tipo==='tudo') return { de:'', ate:'' };
+  if(P.tipo==='custom') return { de:P.de, ate:P.ate };
+  const r = dataDe(P.ref);
+  if(P.tipo==='dia') return { de:isoDe(r), ate:isoDe(r) };
+  if(P.tipo==='semana'){   // semana de domingo a sábado
+    const ini = new Date(r); ini.setDate(r.getDate()-r.getDay());
+    const fim = new Date(ini); fim.setDate(ini.getDate()+6);
+    return { de:isoDe(ini), ate:isoDe(fim) };
+  }
+  const ini = new Date(r.getFullYear(), r.getMonth(), 1), fim = new Date(r.getFullYear(), r.getMonth()+1, 0);
+  return { de:isoDe(ini), ate:isoDe(fim) };
+}
+function rotuloPeriodo(){
+  const P = hxPeriodo, h = hoje();
+  if(P.tipo==='tudo') return 'Todo o período';
+  if(P.tipo==='custom') return `${fmtData(P.de)} – ${fmtData(P.ate)}`;
+  const { de, ate } = intervaloPeriodo();
+  if(P.tipo==='dia') return de===h ? 'Hoje' : fmtData(de);
+  if(P.tipo==='semana') return (h>=de && h<=ate) ? 'Esta semana' : `${fmtData(de).slice(0,5)} – ${fmtData(ate).slice(0,5)}`;
+  const r = dataDe(P.ref);
+  return `${MESES[r.getMonth()]} ${r.getFullYear()}`;
+}
+function periodoPasso(dir){
+  const P = hxPeriodo;
+  if(P.tipo==='tudo') return;
+  if(P.tipo==='custom'){   // anda pelo tamanho do intervalo escolhido
+    const dias = Math.round((dataDe(P.ate)-dataDe(P.de))/86400000)+1;
+    const de = dataDe(P.de), ate = dataDe(P.ate);
+    de.setDate(de.getDate()+dir*dias); ate.setDate(ate.getDate()+dir*dias);
+    P.de = isoDe(de); P.ate = isoDe(ate);
+  } else {
+    const r = dataDe(P.ref);
+    if(P.tipo==='dia') r.setDate(r.getDate()+dir);
+    else if(P.tipo==='semana') r.setDate(r.getDate()+7*dir);
+    else { r.setDate(1); r.setMonth(r.getMonth()+dir); }
+    P.ref = isoDe(r);
+  }
+  renderHistorico();
+}
+function definirPeriodo(tipo){ hxPeriodo = { tipo, ref:hoje() }; fecharPops(); renderHistorico(); }
+function abrirPeriodoPersonalizado(){
+  fecharPops();
+  const { de, ate } = intervaloPeriodo();
+  document.getElementById('perDe').value = de || hoje().slice(0,8)+'01';
+  document.getElementById('perAte').value = ate || hoje();
+  abrir('modalPeriodo');
+}
+function aplicarPeriodoPersonalizado(){
+  let de = val('perDe'), ate = val('perAte');
+  if(!de || !ate){ toast('Informe as duas datas.'); return; }
+  if(de>ate) [de,ate] = [ate,de];
+  hxPeriodo = { tipo:'custom', de, ate };
+  fechar('modalPeriodo'); renderHistorico();
+}
+
+/* ----- Pop-ups dos filtros ----- */
+function fecharPops(){ document.querySelectorAll('.hx-pop.aberto').forEach(p=>p.classList.remove('aberto')); }
+function alternarPop(id, ev){
+  if(ev) ev.stopPropagation();
+  const el = document.getElementById(id), abrirEste = !el.classList.contains('aberto');
+  fecharPops();
+  if(abrirEste) el.classList.add('aberto');
+}
+function alternarMenuPeriodo(ev){ alternarPop('hxMenuPeriodo', ev); }
+document.addEventListener('click', fecharPops);
+function limparValor(){ document.getElementById('fhValMin').value=''; document.getElementById('fhValMax').value=''; renderHistorico(); }
+
 function prepararHistorico(){
   const sel = document.getElementById('fhCategoria');
   const atual = sel.value;
-  sel.innerHTML = '<option value="">Todas</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
+  sel.innerHTML = '<option value="">Categoria</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
+  ajustarAlturaHistorico();
   renderHistorico();
 }
 function histAlternarDir(){
   histDir = histDir==='asc' ? 'desc' : 'asc';
-  document.getElementById('histDir').textContent = histDir==='asc' ? '↑' : '↓';
+  document.getElementById('histDir').textContent = histDir==='asc' ? 'Mais antigos ↑' : 'Mais recentes ↓';
   renderHistorico();
 }
+/* A tela ocupa exatamente o espaço entre o cabeçalho e a barra inferior: só a lista rola */
+function ajustarAlturaHistorico(){
+  const v = document.getElementById('viewHistorico');
+  if(v.hidden) return;
+  const topo = v.getBoundingClientRect().top + window.scrollY;
+  const barra = document.querySelector('.barra-inferior').offsetHeight;
+  v.style.height = Math.max(320, window.innerHeight - topo - barra - 12) + 'px';
+}
+window.addEventListener('resize', ajustarAlturaHistorico);
+
 function renderHistorico(){
   histPor = document.getElementById('histOrdenar').value;
+  document.getElementById('hxPeriodoRotulo').textContent = rotuloPeriodo() + ' ▾';
+  document.querySelectorAll('.hx-seta').forEach(b=>b.disabled = hxPeriodo.tipo==='tudo');
   const fTipo = val('fhTipo');
   const fCat  = val('fhCategoria');
   const fProd = val('fhProduto').toLowerCase().trim();
-  const fDe   = val('fhDataDe');
-  const fAte  = val('fhDataAte');
+  const { de:fDe, ate:fAte } = intervaloPeriodo();
   const fMin  = parseFloat(val('fhValMin'));
   const fMax  = parseFloat(val('fhValMax'));
   const temValor = !isNaN(fMin) || !isNaN(fMax);
+  document.getElementById('hxValorBtn').textContent = temValor
+    ? `Valor: ${isNaN(fMin)?'…':fMin}–${isNaN(fMax)?'…':fMax}` : 'Valor';
+  ['fhTipo','fhCategoria','histOrdenar'].forEach(id=>document.getElementById(id).parentElement.classList.toggle('ativo', !!val(id) && val(id)!=='data'));
+  document.getElementById('hxValorBtn').classList.toggle('ativo', temValor);
 
   let linhas = [];
   estado.produtos.forEach(p=>{
     p.movimentacoes.forEach(m=>{
-      let valor = null;
-      if(m.tipo==='entrada') valor = m.custoUnit;
-      else if(m.motivo==='Venda') valor = m.precoVenda;
-      else if(m.motivo==='A receber') valor = m.recebido ? m.precoVenda : 0;
-      linhas.push({ pid:p.id, mid:m.id, tipo:m.tipo, nome:p.nome, marca:p.marca, categoria:p.categoria,
-                    data:m.data, qtd:m.qtd, valor, motivo:m.motivo, motivoTexto:m.motivoTexto, recebido:m.recebido });
+      const v = valorMov(m);
+      linhas.push({ pid:p.id, mid:m.id, m, nome:p.nome, marca:p.marca, categoria:p.categoria,
+                    data:m.data, qtd:m.qtd, v, tipoF:tipoFiltroMov(m), arquivado:!!p.arquivado });
     });
   });
 
   linhas = linhas.filter(l=>{
-    if(fTipo && l.tipo!==fTipo) return false;
+    if(fTipo && l.tipoF!==fTipo) return false;
     if(fCat && l.categoria!==fCat) return false;
     if(fProd && !`${l.nome} ${l.marca||''}`.toLowerCase().includes(fProd)) return false;
     if(fDe && l.data < fDe) return false;
     if(fAte && l.data > fAte) return false;
     if(temValor){
-      if(l.valor==null) return false;
-      if(!isNaN(fMin) && l.valor < fMin) return false;
-      if(!isNaN(fMax) && l.valor > fMax) return false;
+      if(!l.v) return false;
+      const t = Math.abs(l.v.total);
+      if(!isNaN(fMin) && t < fMin) return false;
+      if(!isNaN(fMax) && t > fMax) return false;
     }
     return true;
   });
 
-  linhas.sort((a,b)=>{
-    let va, vb;
+  // dias na ordem escolhida; dentro de cada dia, pela ordenação do filtro
+  const chave = l=>{
     switch(histPor){
-      case 'tipo':      va=a.tipo; vb=b.tipo; break;
-      case 'categoria': va=a.categoria.toLowerCase(); vb=b.categoria.toLowerCase(); break;
-      case 'nome':      va=a.nome.toLowerCase(); vb=b.nome.toLowerCase(); break;
-      case 'valor':     va=a.valor==null?-1:a.valor; vb=b.valor==null?-1:b.valor; break;
-      default:          va=a.data; vb=b.data;
+      case 'tipo':      return rotuloMov(l.m).toLowerCase();
+      case 'categoria': return l.categoria.toLowerCase();
+      case 'nome':      return l.nome.toLowerCase();
+      case 'valor':     return l.v ? l.v.total : 0;
+      default:          return 0;
     }
-    const r = (typeof va==='string') ? va.localeCompare(vb,'pt-BR') : va-vb;
-    return histDir==='asc' ? r : -r;
+  };
+  linhas.sort((a,b)=>{
+    const d = histDir==='asc' ? a.data.localeCompare(b.data) : b.data.localeCompare(a.data);
+    if(d) return d;
+    const ka = chave(a), kb = chave(b);
+    return (typeof ka==='string') ? ka.localeCompare(kb,'pt-BR') : (histPor==='valor' ? kb-ka : 0);
   });
 
   const cont = document.getElementById('histConteudo');
-  if(linhas.length===0){ cont.innerHTML = '<p class="sem-resultado">Nenhuma movimentação encontrada.</p>'; return; }
+  if(linhas.length===0){
+    cont.innerHTML = `<div class="hx-vazio">Nenhuma movimentação em <b>${escapar(rotuloPeriodo())}</b>${(fTipo||fCat||fProd||temValor)?' com esses filtros':''}.</div>`;
+    return;
+  }
 
-  cont.innerHTML = `<div class="hist-tabela">
-    <div class="hist-cab">
-      <div>Tipo</div><div>Produto</div><div class="col-cat">Categoria</div>
-      <div class="num">Qtd</div><div class="num">Data</div><div class="num">Valor</div>
-    </div>` +
-    linhas.map(l=>{
-      let rotulo = l.tipo==='entrada' ? 'entrada' : (l.motivo||'saída');
-      if(l.motivo==='Outros' && l.motivoTexto) rotulo = l.motivoTexto;
-      else if(l.motivo==='A receber' && l.recebido) rotulo = 'recebido';
-      return `<div class="hist-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
-        <div><span class="tag ${l.tipo==='entrada'?'e':'s'}">${escapar(rotulo)}</span></div>
-        <div class="nome">${escapar(l.nome)}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
+  const dias = [];
+  linhas.forEach(l=>{ const u = dias[dias.length-1]; if(u && u.data===l.data) u.itens.push(l); else dias.push({ data:l.data, itens:[l] }); });
+  const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
+  const fmtSem = v=> fmtBRL(Math.abs(v));
+
+  cont.innerHTML = dias.map(d=>{
+    const saldo = d.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
+    const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
+    return `<div class="hx-dia">
+      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
+      ${d.itens.map(l=>{ const c = classeMov(l.m); return `
+      <div class="hx-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
+        <div class="hx-mov">
+          <span class="hx-tag ${c}">${escapar(rotuloMov(l.m))}</span>
+          <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
+        </div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num">${l.qtd}</div>
-        <div class="num">${fmtData(l.data)}</div>
-        <div class="num">${l.valor==null?'—':fmtBRL(l.valor)}</div>
-      </div>`;
-    }).join('') + `</div>`;
-  cont.querySelectorAll('.hist-linha[data-mid]').forEach(el=>
+        <div class="num hx-valor ${l.v?c:''}">${l.v ? sinal(l.v.total)+fmtSem(l.v.total)+`<small>${fmtBRL(l.v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
+      </div>`; }).join('')}
+      <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
     toqueLongo(el, ()=>pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
 }
 
@@ -1077,7 +1202,7 @@ function abrirEdicaoMov(pid, mid){
   const motivos = ['Venda','A receber','Perda / avaria','Devolução','Ajuste','Outros'];
   const valorSaida = (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) ? (m.precoVenda??'') : '';
   document.getElementById('corpoEditMov').innerHTML = `
-    <p style="margin-bottom:14px"><span class="tag ${ent?'e':'s'} em-tag">${ent?'entrada':'saída'}</span> <b>${escapar(p.nome)}</b>${p.marca?` <span style="color:var(--texto-sec)">· ${escapar(p.marca)}</span>`:''}</p>
+    <p style="margin-bottom:14px"><span class="hx-tag ${classeMov(m)}">${escapar(rotuloMov(m))}</span> <b>${escapar(p.nome)}</b>${p.marca?` <span style="color:var(--texto-sec)">· ${escapar(p.marca)}</span>`:''}</p>
     <div class="linha-campos">
       <div class="campo"><label>Data</label><input type="date" id="emData" value="${m.data}"></div>
       <div class="campo"><label>Quantidade</label><input type="number" id="emQtd" min="1" value="${m.qtd}"></div>
@@ -1220,6 +1345,10 @@ function removerCategoriaIdx(i){
    BACKUP (exportar / importar JSON)
    ========================================================= */
 function exportar(){
+  estado.config = estado.config || {};
+  estado.config.ultimoBackup = new Date().toISOString();
+  salvar();
+  if(viewAtual==='config') renderConfig();
   const blob = new Blob([JSON.stringify(estado,null,2)],{type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1309,7 +1438,8 @@ const VIEWS = {
   inicio:     { secao:'viewInicio',     titulo:'Início' },
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
-  financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' }
+  financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
+  config:     { secao:'viewConfig',     titulo:'Configurações' }
 };
 let viewAtual = 'inicio';
 function mostrarView(v){
@@ -1320,14 +1450,41 @@ function mostrarView(v){
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
-  document.getElementById('fab').style.display = (v==='financeiro') ? 'none' : '';   // ⊕ não aparece no Financeiro
-  renderViewAtual();
+  document.getElementById('fab').style.display = (v==='financeiro' || v==='config') ? 'none' : '';   // ⊕ só nas telas de estoque
+  document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
   window.scrollTo(0,0);
+  renderViewAtual();
 }
 function renderViewAtual(){
   if(viewAtual==='inicio')     renderInicio();
   if(viewAtual==='historico')  prepararHistorico();
   if(viewAtual==='financeiro') renderFinanceiro();
+  if(viewAtual==='config')     renderConfig();
+}
+
+/* =========================================================
+   CONFIGURAÇÕES (backup e senha do gerente)
+   ========================================================= */
+function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
+function renderConfig(){
+  const u = estado.config && estado.config.ultimoBackup;
+  const el = document.getElementById('cfgUltimoBackup');
+  if(!u){ el.textContent = 'Nenhum backup baixado ainda neste navegador.'; el.style.color='var(--vermelho)'; return; }
+  const d = new Date(u), dias = Math.floor((Date.now()-d)/86400000);
+  el.textContent = `Último backup: ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` + (dias>=7 ? ` (há ${dias} dias — vale baixar um novo)` : '');
+  el.style.color = dias>=7 ? 'var(--vermelho)' : '';
+}
+function alterarSenha(){
+  const atual = val('cfgSenhaAtual'), nova = val('cfgSenhaNova'), rep = val('cfgSenhaRep');
+  if(atual !== senhaGerente()){ toast('Senha atual incorreta.'); return; }
+  if(nova.length < 4){ toast('A nova senha precisa ter ao menos 4 caracteres.'); return; }
+  if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
+  if(nova === atual){ toast('A nova senha é igual à atual.'); return; }
+  estado.config = estado.config || {};
+  estado.config.senhaGerente = nova;
+  salvar();
+  ['cfgSenhaAtual','cfgSenhaNova','cfgSenhaRep'].forEach(id=>document.getElementById(id).value='');
+  mostrarAviso('Senha alterada', '<p>A senha do gerente foi alterada.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Ela vale para este navegador e entra no próximo backup. Se você restaurar um backup antigo, volta a senha que estava nele.</p>');
 }
 
 /* =========================================================

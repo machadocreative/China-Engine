@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>China Town Imports — Controle de Estoque</title>
+<title>Chinatown Imports — Controle de Estoque</title>
 
-<meta property="og:title" content="China Town Imports — Controle de Estoque">
+<meta property="og:title" content="Chinatown Imports — Controle de Estoque">
 <meta property="og:description" content="Estoque, custos e lucro em um só lugar.">
 <meta property="og:image" content="https://machadocreative.github.io/China-Engine/og-image.png">
 <meta property="og:url" content="https://machadocreative.github.io/China-Engine/">
@@ -23,10 +23,10 @@
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
   <!-- Logo + título: tocar volta para a tela Início (como num site) -->
   <a class="marca-app" href="#" onclick="mostrarView('inicio');return false" title="Voltar ao início">
-    <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
+    <img class="logo" src="Chinatown_Imports_Logo.png" alt="Chinatown Imports" onerror="this.style.display='none'">
     <div class="titulo">
       <b id="tituloView">Início</b>
-      <span>China Town Imports <em id="versao"></em></span>
+      <span>Chinatown Imports <em id="versao"></em></span>
     </div>
   </a>
   <!-- Contador de pontos de atenção da tela Início -->
@@ -37,8 +37,6 @@
   <!-- Ações do cabeçalho: data-view indica em qual módulo o botão aparece (sem data-view = sempre) -->
   <div class="acoes">
     <button class="btn btn-claro btn-mini" data-view="estoque" onclick="abrirCategorias()">Categorias</button>
-    <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
-    <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
     <button class="btn btn-claro btn-mini" data-view="financeiro" onclick="abrirConfigTeto()">Configurar teto</button>
     <button class="btn btn-amarelo" data-view="financeiro" onclick="document.getElementById('arquivoXml').click()">+ Importar XML</button>
     <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
@@ -73,38 +71,66 @@
 </section>
 
 <!-- ===================== TELA: HISTÓRICO ===================== -->
+<!-- O topo (período + filtros + cabeçalho da lista) fica fixo; só a lista rola -->
 <section class="view" id="viewHistorico" hidden>
-  <div class="hist-filtros">
-    <div class="hf"><label>Tipo</label>
-      <select id="fhTipo" onchange="renderHistorico()">
-        <option value="">Todos</option><option value="entrada">Entrada</option><option value="saida">Saída</option>
-      </select>
+  <div class="hx-topo">
+    <!-- Navegação por período -->
+    <div class="hx-periodo">
+      <button class="hx-seta" onclick="periodoPasso(-1)" title="Período anterior" aria-label="Período anterior">‹</button>
+      <div class="hx-periodo-sel">
+        <button class="hx-periodo-rotulo" id="hxPeriodoRotulo" onclick="alternarMenuPeriodo(event)">Este mês</button>
+        <div class="hx-pop hx-menu-periodo" id="hxMenuPeriodo">
+          <button onclick="definirPeriodo('dia')">Hoje</button>
+          <button onclick="definirPeriodo('semana')">Esta semana</button>
+          <button onclick="definirPeriodo('mes')">Este mês</button>
+          <button onclick="definirPeriodo('tudo')">Todo o período</button>
+          <button onclick="abrirPeriodoPersonalizado()">Escolher período</button>
+        </div>
+      </div>
+      <button class="hx-seta" onclick="periodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
     </div>
-    <div class="hf"><label>Categoria</label><select id="fhCategoria" onchange="renderHistorico()"></select></div>
-    <div class="hf"><label>Produto</label><input type="text" id="fhProduto" placeholder="nome / marca" oninput="renderHistorico()"></div>
-    <div class="hf"><label>De</label><input type="date" id="fhDataDe" onchange="renderHistorico()"></div>
-    <div class="hf"><label>Até</label><input type="date" id="fhDataAte" onchange="renderHistorico()"></div>
-    <div class="hf"><label>Valor R$ (mín–máx)</label>
-      <div style="display:flex;gap:6px">
-        <input type="number" id="fhValMin" placeholder="mín" oninput="renderHistorico()">
-        <input type="number" id="fhValMax" placeholder="máx" oninput="renderHistorico()">
+
+    <!-- Filtros discretos -->
+    <div class="hx-filtros">
+      <label class="hx-chip"><select id="fhTipo" onchange="renderHistorico()">
+        <option value="">Tipo</option>
+        <option value="venda">Venda</option>
+        <option value="aquisicao">Aquisição</option>
+        <option value="areceber">A receber</option>
+        <option value="outras">Outras saídas</option>
+      </select></label>
+      <label class="hx-chip"><select id="fhCategoria" onchange="renderHistorico()"></select></label>
+      <div class="hx-chip-wrap">
+        <button class="hx-chip hx-chip-btn" id="hxValorBtn" onclick="alternarPop('hxPopValor',event)">Valor</button>
+        <div class="hx-pop hx-pop-valor" id="hxPopValor" onclick="event.stopPropagation()">
+          <label>Valor total da movimentação (R$)</label>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="fhValMin" placeholder="mín" oninput="renderHistorico()">
+            <input type="number" id="fhValMax" placeholder="máx" oninput="renderHistorico()">
+          </div>
+          <button class="btn btn-claro btn-mini" style="margin-top:8px" onclick="limparValor()">Limpar</button>
+        </div>
+      </div>
+      <label class="hx-chip"><select id="histOrdenar" onchange="renderHistorico()" title="Ordem dentro de cada dia">
+        <option value="data">Ordenar</option>
+        <option value="tipo">Tipo</option>
+        <option value="categoria">Categoria</option>
+        <option value="nome">Produto</option>
+        <option value="valor">Valor</option>
+      </select></label>
+      <button class="hx-chip hx-chip-btn" id="histDir" onclick="histAlternarDir()" title="Inverter a ordem dos dias">Mais recentes ↓</button>
+      <div class="hx-busca">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="fhProduto" placeholder="Produto ou marca" oninput="renderHistorico()">
       </div>
     </div>
-    <div class="hf"><label>Ordenar</label>
-      <div style="display:flex;gap:6px">
-        <select id="histOrdenar" onchange="renderHistorico()">
-          <option value="data">Data</option>
-          <option value="tipo">Entrada / Saída</option>
-          <option value="categoria">Categoria</option>
-          <option value="nome">Nome do produto</option>
-          <option value="valor">Valor</option>
-        </select>
-        <button id="histDir" class="btn btn-claro btn-mini" onclick="histAlternarDir()" title="Inverter ordem">↓</button>
-      </div>
+
+    <div class="hx-cab">
+      <div>Movimentação</div><div class="col-cat">Categoria</div><div class="num">Qtd</div><div class="num">Valor</div>
     </div>
   </div>
-  <p class="dica" style="margin:-4px 0 12px">Toque e segure uma movimentação para editar (exige a senha do gerente).</p>
-  <div id="histConteudo"></div>
+
+  <div class="hx-lista" id="histConteudo"></div>
 </section>
 
 <!-- ===================== TELA: FINANCEIRO (Faturamento MEI) ===================== -->
@@ -149,6 +175,33 @@
   <div class="sub" style="display:flex;align-items:center">Notas fiscais <span class="dica" id="finContagem" style="margin:0 0 0 auto;font-family:var(--corpo);font-weight:400"></span></div>
   <div id="finNotas"></div>
   <p class="dica" style="margin-top:12px">Importe os XMLs de NF-e / NFC-e e também os XMLs de evento de cancelamento: a nota cancelada sai do total automaticamente.</p>
+</section>
+
+<!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
+<section class="view" id="viewConfig" hidden>
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Backup dos dados</h3>
+      <small>Os dados ficam salvos só neste navegador. Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
+      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
+    </div>
+    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Senha do gerente</h3>
+      <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
+    <div class="cfg-form">
+      <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Nova senha</label><input type="password" id="cfgSenhaNova" autocomplete="new-password"></div>
+        <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgSenhaRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenha()"></div>
+      </div>
+      <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
+      <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
+    </div>
+  </div>
 </section>
 </main>
 
@@ -472,6 +525,26 @@
   </div>
 </div>
 
+<!-- ===== Modal: escolher período (histórico) ===== -->
+<div class="overlay" id="modalPeriodo">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-cabecalho">
+      <h2>Escolher período</h2>
+      <button class="fechar" onclick="fechar('modalPeriodo')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="linha-campos">
+        <div class="campo"><label>De</label><input type="date" id="perDe"></div>
+        <div class="campo"><label>Até</label><input type="date" id="perAte"></div>
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalPeriodo')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="aplicarPeriodoPersonalizado()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ===== Botão de ação flutuante (⊕) ===== -->
@@ -502,7 +575,7 @@
     <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
     Financeiro
   </button>
-  <button class="nav-item" disabled title="Em desenvolvimento">
+  <button class="nav-item" data-nav="config" onclick="mostrarView('config')" title="Configurações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
     Configurações
   </button>
