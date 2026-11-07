@@ -32,6 +32,51 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.8.4] - 2026-11-07
+
+### Adicionado
+
+- **Nova compra em lote — código de barras:** botão com ícone de código de barras ao lado do campo de busca de cada item. Ele abre a câmera e, ao ler o código de um produto cadastrado, seleciona o produto na linha, preenche o custo da última compra e leva o cursor para a Quantidade.
+- Leitor USB na compra em lote: com o campo de busca focado, a leitura (que termina com Enter) seleciona o produto pelo código de barras ou SKU. Enter também seleciona quando a busca tem um único resultado.
+- Se o código lido não estiver cadastrado, o app avisa e guarda o código: ao escolher "Cadastrar novo produto" nessa linha, o produto novo já é criado com esse código de barras. Produtos arquivados não são selecionados (o app avisa para desarquivar).
+
+---
+
+## [0.8.3] - 2026-11-07
+
+### Alterado
+
+- Valores e números (preços, quantidades, totais, datas, gráficos) passaram a usar a fonte do texto, **IBM Plex Sans**, com algarismos de largura fixa (`tabular-nums`), para continuarem alinhados em colunas.
+
+### Removido
+
+- Fonte **IBM Plex Mono** removida do projeto (do carregamento do Google Fonts, da variável `--mono` do CSS e dos estilos no JavaScript).
+
+---
+
+## [0.8.2] - 2026-11-07
+
+### Alterado
+
+- Entradas sem fornecedor informado não são mais atribuídas ao fornecedor principal do produto. Na aba Fornecedores do Painel do Produto, elas aparecem num grupo próprio, **"Não informado"** (sempre por último, com borda tracejada), e na Composição do estoque aparecem como "Não informado".
+- A aba Fornecedores continua aparecendo só quando o produto tem ao menos um fornecedor informado. O contador da aba conta apenas os fornecedores com nome.
+- Na edição de movimentação, o campo Fornecedor vazio passou a significar "Não informado".
+
+### Removido
+
+- O asterisco (*) e a nota "Entrada antiga, atribuída ao fornecedor principal" da aba Fornecedores.
+
+---
+
+## [0.8.1] - 2026-11-07
+
+### Alterado
+
+- **Composição do estoque atual** (aba Estoque do Painel do Produto): os badges viraram uma lista agrupada por preço de custo. Cada grupo mostra o custo unitário, as unidades e o valor em estoque; abaixo, cada compra que ainda tem unidades, com data, fornecedor e quantas unidades restam (ex.: "5 de 30 un."). O lote mais antigo, que é o próximo a sair nas vendas, leva o selo "sai primeiro".
+- No celular, os cards da aba Estoque do Painel do Produto ficam em 2 colunas, deixando o modal mais compacto.
+
+---
+
 ## [0.8.0] - 2026-11-07
 
 ### Adicionado
@@ -335,6 +380,10 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.8.4]: #
+[0.8.3]: #
+[0.8.2]: #
+[0.8.1]: #
 [0.8.0]: #
 [0.7.0]: #
 [0.6.0]: #
