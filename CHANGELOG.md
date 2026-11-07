@@ -32,6 +32,100 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.8.0] - 2026-11-07
+
+### Adicionado
+
+**Módulo Desempenho**
+- Novo item **Desempenho** na barra inferior (Estoque · Histórico · Desempenho · Financeiro · Configurações), com métricas e gráficos das vendas.
+- Navegação por período igual à do Histórico: Hoje, Esta semana, Este mês, Este ano, Todo o período e Escolher período.
+- **Desempenho de lucro**: faturamento, custo das vendas, lucro bruto e margem do período. O custo de cada venda é o do lote vendido (as unidades mais antigas saem primeiro, a mesma lógica da Composição do estoque).
+- **Evolução no tempo**: gráfico de linha com faturamento e lucro por dia (ou por mês em períodos longos), com detalhes ao passar o mouse ou tocar.
+- **Vendas por categoria**: faturamento por categoria, com unidades e margem.
+- **Dias da semana**: faturamento por dia da semana, com o melhor dia em destaque e a média por dia nos detalhes.
+- **Melhores datas**: os 5 dias com maior faturamento no período.
+- **Produtos mais vendidos**: top 10 por unidades ou por faturamento, com o lucro de cada um.
+- **Produtos parados**: produtos com estoque e sem venda há 30 dias ou mais, com o custo parado (não depende do período). Tocar abre o Painel do Produto.
+- Vendas "a receber" ainda pendentes não entram nos números até o recebimento (o app avisa quantas unidades estão nessa situação).
+- Opção **Este ano** também no menu de período do Histórico.
+
+**Excluir movimentação**
+- Na edição de movimentação (Histórico ou aba Movimentações do Painel do Produto, com toque e segure e senha do gerente), uma área "Excluir movimentação" permite apagar o registro.
+- Dupla confirmação: a primeira mostra o efeito no estoque (de quantas para quantas unidades) e recomenda baixar um backup; a segunda avisa que a exclusão é definitiva.
+- Atalho "↓ Backup" ao lado do botão de excluir, e aviso após a exclusão com o novo estoque e o botão "Baixar backup agora".
+- A exclusão de uma aquisição é bloqueada se deixar o estoque negativo (parte das unidades já saiu); nesse caso o app sugere editar a quantidade.
+
+### Corrigido
+
+- Modais de confirmação, senha e aviso agora sempre aparecem por cima de outro modal aberto (antes, uma confirmação pedida de dentro da edição de movimentação podia ficar escondida atrás dela).
+- A rolagem acontecia na página inteira, e a barra de rolagem passava por cima do cabeçalho e da barra inferior (visível principalmente no Financeiro). Agora o cabeçalho e a barra inferior ficam fixos e só a área de conteúdo rola, em todas as telas. No Histórico, continua rolando só a lista.
+
+### Alterado
+
+- O campo "Fornecedor da compra" da Nova compra em lote passou a fazer parte do `index.html` (antes era criado pelo JavaScript).
+- Nome da loja padronizado como "Chinatown Imports" no `index.html` (título da página, `og:title`, texto alternativo do logo e subtítulo do cabeçalho).
+
+---
+
+## [0.7.0] - 2026-11-07
+
+### Adicionado
+
+**Painel do Produto em abas**
+- O painel aberto com um toque no produto foi reorganizado em abas:
+  - **Estoque**: os 6 cards (estoque atual, a receber, custo médio, preço de venda, lucro estimado, variação de custo) e a composição do estoque atual.
+  - **Registrar**: os blocos de registrar entrada e registrar saída.
+  - **Movimentações**: histórico do produto agrupado por dia, no mesmo layout do Histórico geral (com toque e segure para editar). Só aparece se houver movimentações.
+  - **Dados**: edição do produto direto no painel, com Salvar, Arquivar/Desarquivar e Excluir.
+  - **Fornecedores**: cada fornecedor com total comprado, unidades, data da última compra e a lista de entradas (data, quantidade e custo). Só aparece se houver fornecedor informado.
+- "Editar informações do produto", nas ações rápidas (toque e segure), abre o painel direto na aba Dados.
+
+**Fornecedor por entrada**
+- Cada entrada agora pode registrar de qual fornecedor veio: campo "Fornecedor" no registro de entrada (já preenchido com o último fornecedor usado ou o principal do produto) e "Fornecedor da compra" na Nova compra em lote (vale para todos os itens).
+- O campo sugere os fornecedores já usados, para evitar o mesmo nome escrito de jeitos diferentes.
+- O fornecedor da entrada também pode ser corrigido na edição de movimentação.
+- Entradas antigas, sem fornecedor próprio, são atribuídas ao fornecedor principal do produto (marcadas com * na aba Fornecedores).
+
+### Alterado
+
+- O campo "Fornecedor" do cadastro passou a se chamar "Fornecedor principal" na aba Dados. Se o produto ainda não tem fornecedor, o primeiro informado numa entrada vira o principal.
+- O leitor de código de barras por câmera agora preenche o campo de onde foi aberto (cadastro de novo produto ou aba Dados).
+
+---
+
+## [0.6.0] - 2026-11-07
+
+### Adicionado
+
+**Tela Configurações**
+- O item "Configurações" da barra inferior foi habilitado, com:
+  - **Backup dos dados**: "Baixar backup" e "Restaurar backup", com a data do último backup baixado (em vermelho se nunca foi feito ou se tem 7 dias ou mais).
+  - **Senha do gerente**: alteração com senha atual, nova senha e repetição (mínimo de 4 caracteres). A nova senha fica salva com os dados do navegador e entra no backup; sem alteração, vale a senha padrão do código.
+
+**Histórico — navegação por período**
+- Seletor "‹ Novembro 2026 ›" no topo, com menu: Hoje, Esta semana, Este mês, Todo o período e Escolher período. As setas avançam ou voltam um dia, semana, mês ou intervalo escolhido. Abre em "Este mês".
+
+### Alterado
+
+**Histórico — novo layout**
+- Movimentações agrupadas por dia, com uma linha de data por dia (com dia da semana) e "Saldo no dia" ao fim de cada grupo. A coluna Data saiu da tabela.
+- A coluna Valor mostra o total da movimentação com sinal do caixa (+ venda, − aquisição) e o valor unitário embaixo.
+- Filtros numa barra discreta de fundo próprio: Tipo, Categoria, Valor (mín–máx, em pop-up), Ordenar (ordem dentro de cada dia), Mais recentes / Mais antigos e busca por produto ou marca. Filtros ativos ficam destacados.
+- O filtro Tipo agora separa Venda, Aquisição, A receber e Outras saídas.
+- Período, filtros e cabeçalho da lista ficam sempre visíveis; só a lista de movimentações rola. A data de cada dia também fica presa no topo enquanto o dia é rolado.
+
+**Cores das movimentações (ponto de vista do caixa)**
+- "Venda" e "Recebido" em verde; entradas de estoque passam a se chamar **"Aquisição"**, em vermelho; "A receber" pendente em âmbar; Perda, Devolução, Ajuste e Outros em cinza. Vale para o Histórico, o mini-histórico do painel do produto e o modal de edição.
+
+- O botão ⊕ também não aparece na tela Configurações.
+
+### Removido
+
+- Botões "↓ Backup" e "↑ Restaurar" do cabeçalho (agora em Configurações).
+- Campos "De" e "Até" dos filtros do Histórico (substituídos pela navegação por período).
+
+---
+
 ## [0.5.1] - 2026-11-07
 
 ### Corrigido
@@ -241,6 +335,9 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.8.0]: #
+[0.7.0]: #
+[0.6.0]: #
 [0.5.1]: #
 [0.5.0]: #
 [0.4.1]: #

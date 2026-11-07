@@ -83,8 +83,9 @@
           <button onclick="definirPeriodo('dia')">Hoje</button>
           <button onclick="definirPeriodo('semana')">Esta semana</button>
           <button onclick="definirPeriodo('mes')">Este mês</button>
+          <button onclick="definirPeriodo('ano')">Este ano</button>
           <button onclick="definirPeriodo('tudo')">Todo o período</button>
-          <button onclick="abrirPeriodoPersonalizado()">Escolher período</button>
+          <button onclick="abrirPeriodoPersonalizado('hx')">Escolher período</button>
         </div>
       </div>
       <button class="hx-seta" onclick="periodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
@@ -131,6 +132,26 @@
   </div>
 
   <div class="hx-lista" id="histConteudo"></div>
+</section>
+
+<!-- ===================== TELA: DESEMPENHO (métricas de vendas) ===================== -->
+<section class="view" id="viewDesempenho" hidden>
+  <div class="hx-periodo">
+    <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(-1)" title="Período anterior" aria-label="Período anterior">‹</button>
+    <div class="hx-periodo-sel">
+      <button class="hx-periodo-rotulo" id="dsPeriodoRotulo" onclick="alternarPop('dsMenuPeriodo',event)">Este mês</button>
+      <div class="hx-pop hx-menu-periodo" id="dsMenuPeriodo">
+        <button onclick="dsDefinirPeriodo('dia')">Hoje</button>
+        <button onclick="dsDefinirPeriodo('semana')">Esta semana</button>
+        <button onclick="dsDefinirPeriodo('mes')">Este mês</button>
+        <button onclick="dsDefinirPeriodo('ano')">Este ano</button>
+        <button onclick="dsDefinirPeriodo('tudo')">Todo o período</button>
+        <button onclick="abrirPeriodoPersonalizado('ds')">Escolher período</button>
+      </div>
+    </div>
+    <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
+  </div>
+  <div id="dsConteudo"></div>
 </section>
 
 <!-- ===================== TELA: FINANCEIRO (Faturamento MEI) ===================== -->
@@ -291,6 +312,7 @@
     </div>
     <div class="modal-corpo">
       <div class="campo"><label>Data da compra</label><input type="date" id="compraData"></div>
+      <div class="campo"><label>Fornecedor da compra (opcional)</label><input type="text" id="compraFornecedor" list="listaFornecedores" placeholder="Vale para todos os itens desta compra"></div>
       <div id="compraLinhas"></div>
       <button class="btn btn-claro btn-mini" onclick="adicionarLinhaCompra()">+ Adicionar item</button>
       <div class="rodape-modal" style="margin-top:16px">
@@ -546,6 +568,7 @@
 </div>
 
 <div id="toast"></div>
+<div class="ds-tip" id="dsTip" role="tooltip"></div>
 
 <!-- ===== Botão de ação flutuante (⊕) ===== -->
 <div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
@@ -570,6 +593,10 @@
   <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     Histórico
+  </button>
+  <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Desempenho das vendas">
+    <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+    Desempenho
   </button>
   <button class="nav-item" data-nav="financeiro" onclick="mostrarView('financeiro')" title="Módulo financeiro">
     <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>

@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.6.0';
+const VERSAO = '0.8.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -228,7 +228,7 @@ function abrirAcoes(id){
 }
 function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroEntrada(id); }
 function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
-function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirProduto(id); }
+function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id, 'dados'); }
 function acaoArquivar(){ const id=acaoAtivo; fechar('modalAcoes'); arquivarProduto(id, !prod(id).arquivado); }
 
 /* =========================================================
@@ -273,6 +273,8 @@ function abrirProduto(id){
   sel.innerHTML = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   const p = id ? prod(id) : null;
   document.getElementById('tituloProduto').textContent = p ? 'Editar produto' : 'Novo produto';
+  atualizarListaFornecedores();
+  document.getElementById('pFornecedor').setAttribute('list','listaFornecedores');
   document.getElementById('produtoId').value = p ? p.id : '';
   document.getElementById('pMarca').value        = p ? (p.marca||'') : '';
   document.getElementById('pNome').value         = p ? p.nome : '';
@@ -319,14 +321,14 @@ function salvarProduto(){
     salvar(); fechar('modalProduto'); render(); toast('Produto salvo.');
   }
 }
-function excluirProduto(){
-  const id = document.getElementById('produtoId').value;
+function excluirProduto(){ excluirProdutoId(document.getElementById('produtoId').value); }
+function excluirProdutoId(id){
   const p = prod(id);
   const n = p.movimentacoes.length;
   pedirConfirmacao(`Excluir “${p.nome}” e ${n?`as ${n} movimentação(ões) do histórico dele`:'o cadastro'}? Isso não pode ser desfeito. Para só tirar o produto da lista, use “Arquivar”.`, ()=>{
     pedirSenha(()=>{
       estado.produtos = estado.produtos.filter(x=>x.id!==id);
-      salvar(); fechar('modalProduto'); render(); renderViewAtual(); toast('Produto excluído.');
+      salvar(); fechar('modalProduto'); fechar('modalMov'); render(); renderViewAtual(); toast('Produto excluído.');
     }, 'Excluir um produto apaga o histórico dele. Digite a senha do gerente para confirmar.');
   }, 'Excluir produto');
 }
@@ -459,8 +461,9 @@ async function abrirScannerVenda(){
 }
 
 /* ===== Leitor de código de barras por câmera (BarcodeDetector) ===== */
-let scanStream = null, scanTimer = null, scanDetector = null;
-async function abrirScanner(){
+let scanStream = null, scanTimer = null, scanDetector = null, scanAlvo = 'pCodigoBarras';
+async function abrirScanner(alvo){
+  if(typeof alvo==='string') scanAlvo = alvo; else if(!vendaScanAtivo) scanAlvo = 'pCodigoBarras';
   if(!('BarcodeDetector' in window)){
     toast('Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
     vendaScanAtivo = false; return;
@@ -495,7 +498,7 @@ async function loopScan(){
         if(p){ vendaAdicionarItem(p.id); toast('Produto adicionado.'); }
         else { toast('Código não encontrado. Digite na busca.'); document.getElementById('vendaBusca').value=raw; vendaFiltrar(); }
       } else {
-        document.getElementById('pCodigoBarras').value = raw;
+        document.getElementById(scanAlvo).value = raw;
         toast('Código de barras lido.');
       }
       return;
@@ -513,12 +516,17 @@ function fecharScanner(){
 /* =========================================================
    BLOCOS REUTILIZÁVEIS (entrada / saída)
    ========================================================= */
+function ultimoFornecedorDe(p){
+  const ent = [...entradas(p)].sort((a,b)=>b.data.localeCompare(a.data));
+  return (ent.length && ent[0].fornecedor) || p.fornecedor || '';
+}
 function blocoEntrada(p){
   return `<div class="bloco entrada">
     <h4>Registrar entrada (compra)</h4>
     <div class="mini-campo"><label>Data</label><input type="date" id="eData" value="${hoje()}"></div>
     <div class="mini-campo"><label>Quantidade</label><input type="number" id="eQtd" min="1" placeholder="0"></div>
     <div class="mini-campo"><label>Custo por unidade (R$)</label><input type="number" id="eCusto" min="0" step="0.01" value="${ultimoCustoDe(p)||''}" placeholder="0,00"></div>
+    <div class="mini-campo"><label>Fornecedor (opcional)</label><input type="text" id="eForn" list="listaFornecedores" value="${escapar(ultimoFornecedorDe(p))}" placeholder="De quem foi comprado"></div>
     <button class="btn btn-amarelo btn-mini" style="width:100%;margin-top:4px" onclick="registrarEntrada()">+ Adicionar entrada</button>
   </div>`;
 }
@@ -555,6 +563,7 @@ function blocoSaida(p){
 
 function abrirRegistroEntrada(id){
   produtoAtivo = id;
+  atualizarListaFornecedores();
   document.getElementById('tituloRegEntrada').textContent = prod(id).nome;
   document.getElementById('corpoRegEntrada').innerHTML = blocoEntrada(prod(id));
   abrir('modalRegEntrada');
@@ -575,6 +584,8 @@ function abrirRegistroSaida(id){
 let compraSeq = 0;
 function abrirCompra(){
   compraSeq = 0;
+  atualizarListaFornecedores();
+  document.getElementById('compraFornecedor').value = '';
   document.getElementById('compraData').value = hoje();
   document.getElementById('compraLinhas').innerHTML = '';
   adicionarLinhaCompra();
@@ -679,6 +690,7 @@ function selecionarLinhaProduto(idx, id){
 }
 function registrarCompraLote(){
   const data = document.getElementById('compraData').value || hoje();
+  const fornCompra = val('compraFornecedor').trim();
   const linhas = [...document.querySelectorAll('#compraLinhas .linha-compra')];
   const itens = [];
   for(const el of linhas){
@@ -705,63 +717,125 @@ function registrarCompraLote(){
     let p;
     if(it.novo){
       p = { id:uid(), marca:it.marca, nome:it.nome, categoria:it.categoria,
-            fornecedor:it.fornecedor||'',
+            fornecedor:it.fornecedor||fornCompra||'',
             codigo:gerarSku(it.categoria), codigoBarras:'', preco:it.preco, minimo:0, movimentacoes:[] };
       estado.produtos.push(p);
     } else {
       p = prod(it.id);
     }
-    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo });
+    const forn = fornCompra || (it.novo ? it.fornecedor : '') || '';
+    if(forn && !p.fornecedor) p.fornecedor = forn;
+    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, ...(forn?{fornecedor:forn}:{}) });
   });
   salvar(); fechar('modalCompra'); render();
   toast(`Compra registrada: ${itens.length} item(ns).`);
 }
 
 /* =========================================================
-   PAINEL COMPLETO DO PRODUTO (toque simples)
+   PAINEL DO PRODUTO (toque simples na lista) — em abas
+   Estoque · Registrar · Movimentações · Dados · Fornecedores
    ========================================================= */
 let produtoAtivo = null;
-function abrirMov(id){
+let ppAba = 'estoque';
+const PP_ABAS = [
+  { id:'estoque',      nome:'Estoque' },
+  { id:'registrar',    nome:'Registrar' },
+  { id:'movimentacoes',nome:'Movimentações' },
+  { id:'dados',        nome:'Dados' },
+  { id:'fornecedores', nome:'Fornecedores' }
+];
+function abrirMov(id, aba){
   produtoAtivo = id;
-  document.getElementById('tituloMov').textContent = prod(id).nome;
+  ppAba = aba || 'estoque';
   renderMov();
   abrir('modalMov');
 }
+function trocarAbaProduto(aba){ ppAba = aba; renderMov(); }
+
+/* Fornecedor de cada entrada: o informado na entrada; entradas antigas usam o do produto */
+function fornecedorDaEntrada(p, m){ return (m.fornecedor || p.fornecedor || '').trim(); }
+function fornecedoresDe(p){
+  const grupos = {};
+  entradas(p).forEach(m=>{
+    const f = fornecedorDaEntrada(p, m);
+    if(!f) return;
+    (grupos[f] = grupos[f] || []).push(m);
+  });
+  return Object.entries(grupos).map(([nome, ents])=>{
+    ents.sort((a,b)=>b.data.localeCompare(a.data));
+    return { nome, ents, qtd:ents.reduce((s,m)=>s+m.qtd,0), total:ents.reduce((s,m)=>s+m.qtd*m.custoUnit,0) };
+  }).sort((a,b)=>b.ents[0].data.localeCompare(a.ents[0].data));
+}
+/* Todos os fornecedores já usados (para sugerir no campo, evitando nomes escritos de jeitos diferentes) */
+function todosFornecedores(){
+  const s = new Set();
+  estado.produtos.forEach(p=>{ if(p.fornecedor) s.add(p.fornecedor.trim()); entradas(p).forEach(m=>{ if(m.fornecedor) s.add(m.fornecedor.trim()); }); });
+  return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function atualizarListaFornecedores(){
+  let dl = document.getElementById('listaFornecedores');
+  if(!dl){ dl = document.createElement('datalist'); dl.id = 'listaFornecedores'; document.body.appendChild(dl); }
+  dl.innerHTML = todosFornecedores().map(f=>`<option value="${escapar(f)}">`).join('');
+}
+
+function abasVisiveis(p){
+  return PP_ABAS.filter(a=>{
+    if(a.id==='movimentacoes') return p.movimentacoes.length>0;
+    if(a.id==='fornecedores')  return fornecedoresDe(p).length>0;
+    return true;
+  });
+}
+
 function renderMov(){
   const p = prod(produtoAtivo);
+  if(!p){ fechar('modalMov'); return; }
+  const abas = abasVisiveis(p);
+  if(!abas.some(a=>a.id===ppAba)) ppAba = 'estoque';
+  document.getElementById('tituloMov').innerHTML = escapar(p.nome) +
+    (p.arquivado ? ' <span class="badge-arquivado">Arquivado</span>' : '');
+  atualizarListaFornecedores();
+
+  const nav = `<div class="pp-abas" role="tablist">${abas.map(a=>
+    `<button role="tab" class="pp-aba${a.id===ppAba?' ativa':''}" aria-selected="${a.id===ppAba}" onclick="trocarAbaProduto('${a.id}')">${a.nome}${
+      a.id==='movimentacoes' ? ` <small>${p.movimentacoes.length}</small>` :
+      a.id==='fornecedores'  ? ` <small>${fornecedoresDe(p).length}</small>` : ''}</button>`).join('')}</div>`;
+
+  const corpo = {
+    estoque: ppEstoque, registrar: ppRegistrar, movimentacoes: ppMovimentacoes,
+    dados: ppDados, fornecedores: ppFornecedores
+  }[ppAba](p);
+
+  document.getElementById('corpoMov').innerHTML = nav + `<div class="pp-conteudo">${corpo}</div>`;
+
+  const abaAtiva = document.querySelector('#corpoMov .pp-aba.ativa');
+  if(abaAtiva) abaAtiva.scrollIntoView({block:'nearest', inline:'nearest'});   // no celular, mantém a aba ativa visível
+  if(ppAba==='registrar') ajustarCamposSaida();
+  if(ppAba==='dados') document.getElementById('dpCategoria').value = p.categoria;
+  if(ppAba==='movimentacoes'){
+    document.querySelectorAll('#corpoMov .hx-linha[data-mid]').forEach(el=>
+      toqueLongo(el, ()=>pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+  }
+}
+
+/* ----- Aba 1: Estoque ----- */
+function ppEstoque(p){
   const cm = custoMedioDe(p);
   const lotes = custosLotes(p);
   const variacao = lotes && lotes.min!==lotes.max
     ? `${fmtBRL(lotes.min)} → ${fmtBRL(lotes.max)}` : (lotes ? fmtBRL(lotes.min) : '—');
   const ar = aReceberDe(p);
   const l = lucroDe(p);
-
   const cardLucro = l
     ? `<div class="caixa destaque"><span>Lucro estimado / un.</span>
          <b style="color:${l.unit>=0?'var(--verde)':'var(--vermelho)'}">${fmtBRL(l.unit)}</b>
          <div class="margem">margem ${l.margem.toFixed(1)}% · estoque ${fmtBRL(l.total)}</div></div>`
     : `<div class="caixa"><span>Lucro estimado</span>
          <b style="font-size:14px;font-family:var(--corpo);color:var(--texto-sec)">defina preço e custo</b></div>`;
-
   const comp = composicaoEstoque(p);
   const compHtml = comp.length
     ? comp.map(g=>`<div class="lote"><b>${g.qtd} un.</b> <span>a</span> <b>${fmtBRL(g.custo)}</b></div>`).join('')
     : '<p style="color:var(--texto-sec)">Sem unidades em estoque.</p>';
-
-  const movs = [...p.movimentacoes].sort((a,b)=>b.data.localeCompare(a.data)).map(m=>{
-    let valor = '';
-    if(m.tipo==='entrada') valor = fmtBRL(m.custoUnit)+'/un';
-    else if(m.motivo==='Venda') valor = fmtBRL(m.precoVenda)+'/un';
-    else if(m.motivo==='A receber') valor = m.recebido ? fmtBRL(m.precoVenda)+'/un' : 'a receber';
-    return `<div class="mov">
-      <span class="hx-tag ${classeMov(m)}">${escapar(rotuloMov(m))}</span>
-      <span class="data">${fmtData(m.data)}</span>
-      <span>${m.qtd} un.</span>
-      <span class="valor">${valor}</span>
-    </div>`;
-  }).join('');
-
-  document.getElementById('corpoMov').innerHTML = `
+  return `
     <div class="resumo">
       <div class="caixa"><span>Estoque atual</span><b>${estoqueDe(p)} un.</b></div>
       <div class="caixa"><span>Unidades a receber</span><b>${ar} un.</b></div>
@@ -770,26 +844,107 @@ function renderMov(){
       ${cardLucro}
       <div class="caixa"><span>Variação de custo entre lotes</span><b style="font-size:15px">${variacao}</b></div>
     </div>
+    ${ar>0?`<div class="acoes-painel"><button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento (${ar})</button></div>`:''}
+    <div class="sub" style="margin-top:4px">Composição do estoque atual</div>
+    <div class="composicao">${compHtml}</div>`;
+}
 
-    <div class="acoes-painel">
-      <button class="btn btn-claro btn-mini" onclick="fechar('modalMov');abrirProduto('${p.id}')">Editar dados do produto</button>
-      <button class="btn btn-claro btn-mini" onclick="arquivarProduto('${p.id}', ${!p.arquivado})">${p.arquivado?'Desarquivar':'Arquivar'}</button>
-      ${p.arquivado?'<span class="badge-arquivado" style="align-self:center">Arquivado</span>':''}
-      ${ar>0?`<button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento (${ar})</button>`:''}
+/* ----- Aba 2: Registrar ----- */
+function ppRegistrar(p){
+  return `<div class="forms-mov" style="margin-top:0">${blocoEntrada(p)}${blocoSaida(p)}</div>`;
+}
+
+/* ----- Aba 3: Movimentações (mesmo layout do histórico geral) ----- */
+function ppMovimentacoes(p){
+  const movs = [...p.movimentacoes].sort((a,b)=>b.data.localeCompare(a.data));
+  const dias = [];
+  movs.forEach(m=>{ const u = dias[dias.length-1]; if(u && u.data===m.data) u.itens.push(m); else dias.push({ data:m.data, itens:[m] }); });
+  const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
+  const sem = ['dom','seg','ter','qua','qui','sex','sáb'];
+  return `<p class="dica" style="margin:0 0 8px">Toque e segure uma movimentação para editar (exige a senha do gerente).</p>
+    <div class="pp-movs">` + dias.map(d=>`
+    <div class="hx-dia">
+      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem[dataDe(d.data).getDay()]}</small></span><i></i></div>
+      ${d.itens.map(m=>{ const c = classeMov(m), v = valorMov(m);
+        const extra = m.tipo==='entrada' ? fornecedorDaEntrada(p, m) : '';
+        return `<div class="hx-linha pp-linha" data-pid="${p.id}" data-mid="${m.id}" title="Toque e segure para editar">
+          <div class="hx-mov"><span class="hx-tag ${c}">${escapar(rotuloMov(m))}</span>${extra?`<small class="pp-forn">${escapar(extra)}</small>`:''}</div>
+          <div class="num">${m.qtd} un.</div>
+          <div class="num hx-valor ${v?c:''}">${v ? sinal(v.total)+fmtBRL(Math.abs(v.total))+`<small>${fmtBRL(v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
+        </div>`; }).join('')}
+    </div>`).join('') + `</div>`;
+}
+
+/* ----- Aba 4: Dados (edição do produto dentro do painel) ----- */
+function ppDados(p){
+  const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
+  return `
+    <div class="linha-campos">
+      <div class="campo" style="flex:.8"><label>Marca / fabricante</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
+      <div class="campo" style="flex:1.4"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
     </div>
-
-    <div class="sub">Composição do estoque atual</div>
-    <div class="composicao">${compHtml}</div>
-
-    <div class="forms-mov">
-      ${blocoEntrada(p)}
-      ${blocoSaida(p)}
+    <div class="linha-campos">
+      <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
+      <div class="campo"><label>Fornecedor principal (opcional)</label><input type="text" id="dpFornecedor" list="listaFornecedores" value="${escapar(p.fornecedor||'')}">
+        <div class="dica">Sugerido ao registrar novas entradas.</div></div>
     </div>
+    <div class="campo"><label>Código (SKU)</label>
+      <div style="display:flex;gap:8px"><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Gerado automaticamente se vazio" style="flex:1">
+        <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('dpCodigo').value=gerarSku(document.getElementById('dpCategoria').value)">Gerar</button></div>
+    </div>
+    <div class="campo"><label>Código de barras (opcional)</label>
+      <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
+        <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
+    </div>
+    <div class="linha-campos">
+      <div class="campo"><label>Preço de venda (R$)</label><input type="number" id="dpPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
+        <div class="dica">Alterar exige senha do gerente.</div></div>
+      <div class="campo"><label>Estoque mínimo</label><input type="number" id="dpMinimo" min="0" value="${p.minimo||0}">
+        <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div></div>
+    </div>
+    <div class="rodape-modal pp-rodape">
+      <button class="btn btn-vermelho" onclick="excluirProdutoId('${p.id}')">Excluir</button>
+      <button class="btn btn-claro" style="margin-right:auto" onclick="arquivarProduto('${p.id}', ${!p.arquivado})">${p.arquivado?'Desarquivar':'Arquivar'}</button>
+      <button class="btn btn-amarelo" onclick="salvarDadosPainel()">Salvar alterações</button>
+    </div>`;
+}
+function salvarDadosPainel(){
+  const p = prod(produtoAtivo);
+  const nome = val('dpNome').trim();
+  if(!nome){ toast('Dê um nome ao produto.'); return; }
+  const precoVal = parseFloat(val('dpPreco'));
+  const dados = {
+    marca: val('dpMarca').trim(), nome, categoria: val('dpCategoria'),
+    fornecedor: val('dpFornecedor').trim(),
+    codigo: val('dpCodigo').trim(), codigoBarras: val('dpCodigoBarras').trim(),
+    preco: isNaN(precoVal) ? 0 : precoVal,
+    minimo: parseInt(val('dpMinimo'))||0
+  };
+  if(!dados.codigo) dados.codigo = gerarSku(dados.categoria);
+  const aplicar = ()=>{ Object.assign(p, dados); salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
+  if(Math.abs((dados.preco||0)-(p.preco||0)) > 0.001)
+    pedirSenha(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
+  else aplicar();
+}
 
-    <div class="sub">Histórico de movimentações</div>
-    <div class="historico">${movs || '<p style="color:var(--texto-sec);padding:8px 0">Nenhuma movimentação ainda.</p>'}</div>`;
-
-  ajustarCamposSaida();
+/* ----- Aba 5: Fornecedores ----- */
+function ppFornecedores(p){
+  const fs = fornecedoresDe(p);
+  const semForn = entradas(p).filter(m=>!fornecedorDaEntrada(p, m)).length;
+  return fs.map(f=>`
+    <div class="pp-forn-bloco">
+      <div class="pp-forn-cab">
+        <div><b>${escapar(f.nome)}</b>${p.fornecedor && p.fornecedor.trim()===f.nome?' <span class="pp-principal">principal</span>':''}
+          <small>${f.ents.length} entrada(s) · ${f.qtd} un. · última em ${fmtData(f.ents[0].data)}</small></div>
+        <div class="pp-forn-total">${fmtBRL(f.total)}<small>total comprado</small></div>
+      </div>
+      ${f.ents.map(m=>`<div class="pp-forn-ent">
+        <span>${fmtData(m.data)}</span><span>${m.qtd} un.</span><span>${fmtBRL(m.custoUnit)}/un</span>
+        ${m.fornecedor?'':'<small title="Entrada registrada antes do campo Fornecedor por entrada; atribuída ao fornecedor do produto">*</small>'}
+      </div>`).join('')}
+    </div>`).join('') +
+    (fs.some(f=>f.ents.some(m=>!m.fornecedor)) ? '<p class="dica">* Entrada antiga, sem fornecedor próprio: atribuída ao fornecedor principal do produto.</p>' : '') +
+    (semForn ? `<p class="dica">${semForn} entrada(s) sem fornecedor informado.</p>` : '');
 }
 
 function ajustarCamposSaida(){
@@ -815,14 +970,15 @@ function registrarEntrada(){
   const qtd = parseInt(document.getElementById('eQtd').value);
   const custo = parseFloat(document.getElementById('eCusto').value);
   const data = document.getElementById('eData').value;
+  const fornecedor = val('eForn').trim();
   if(!qtd||qtd<1){ toast('Informe a quantidade.'); return; }
   if(isNaN(custo)||custo<0){ toast('Informe o custo por unidade.'); return; }
 
   if(entradas(p).length > 0){
-    entradaPendente = { pid:p.id, data, qtd, custo };
+    entradaPendente = { pid:p.id, data, qtd, custo, fornecedor };
     abrirConfirmaEntrada(p, custo, qtd);
   } else {
-    commitEntrada(p, { data, qtd, custoUnit:custo });
+    commitEntrada(p, { data, qtd, custoUnit:custo, fornecedor });
   }
 }
 function abrirConfirmaEntrada(p, custo, qtd){
@@ -852,7 +1008,7 @@ function abrirConfirmaEntrada(p, custo, qtd){
 }
 function entradaSim(){
   const p = prod(entradaPendente.pid);
-  commitEntrada(p, { data:entradaPendente.data, qtd:entradaPendente.qtd, custoUnit:entradaPendente.custo });
+  commitEntrada(p, { data:entradaPendente.data, qtd:entradaPendente.qtd, custoUnit:entradaPendente.custo, fornecedor:entradaPendente.fornecedor });
   fechar('modalEntrada');
 }
 function entradaNao(){
@@ -876,10 +1032,12 @@ function entradaConfirmaNovo(){
   const v = parseFloat(document.getElementById('novoPreco').value);
   if(isNaN(c)||c<0){ toast('Informe o novo custo.'); return; }
   if(!isNaN(v) && v>=0) p.preco = v;
-  commitEntrada(p, { data:entradaPendente.data, qtd:entradaPendente.qtd, custoUnit:c });
+  commitEntrada(p, { data:entradaPendente.data, qtd:entradaPendente.qtd, custoUnit:c, fornecedor:entradaPendente.fornecedor });
   fechar('modalEntrada');
 }
 function commitEntrada(p, mov){
+  if(!mov.fornecedor) delete mov.fornecedor;
+  else if(!p.fornecedor) p.fornecedor = mov.fornecedor;   // primeiro fornecedor vira o principal do produto
   p.movimentacoes.push({ id:uid(), tipo:'entrada', ...mov });
   salvar(); entradaPendente = null;
   aposMovimento(); toast('Entrada registrada.');
@@ -989,11 +1147,12 @@ function tipoFiltroMov(m){
 
 /* ----- Período (navegação estilo "‹ Novembro 2026 ›") ----- */
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-let hxPeriodo = { tipo:'mes', ref:hoje() };   // tipo: dia | semana | mes | tudo | custom
+/* Um "período" é { tipo, ref } ou { tipo:'custom', de, ate }.
+   tipo: dia | semana | mes | ano | tudo | custom. Usado pelo Histórico e pelo Desempenho. */
+let hxPeriodo = { tipo:'mes', ref:hoje() };
 function isoDe(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dataDe(iso){ const [a,m,d]=iso.split('-').map(Number); return new Date(a,m-1,d); }
-function intervaloPeriodo(){
-  const P = hxPeriodo;
+function intervaloDe(P){
   if(P.tipo==='tudo') return { de:'', ate:'' };
   if(P.tipo==='custom') return { de:P.de, ate:P.ate };
   const r = dataDe(P.ref);
@@ -1003,21 +1162,22 @@ function intervaloPeriodo(){
     const fim = new Date(ini); fim.setDate(ini.getDate()+6);
     return { de:isoDe(ini), ate:isoDe(fim) };
   }
+  if(P.tipo==='ano') return { de:`${r.getFullYear()}-01-01`, ate:`${r.getFullYear()}-12-31` };
   const ini = new Date(r.getFullYear(), r.getMonth(), 1), fim = new Date(r.getFullYear(), r.getMonth()+1, 0);
   return { de:isoDe(ini), ate:isoDe(fim) };
 }
-function rotuloPeriodo(){
-  const P = hxPeriodo, h = hoje();
+function rotuloDe(P){
+  const h = hoje();
   if(P.tipo==='tudo') return 'Todo o período';
   if(P.tipo==='custom') return `${fmtData(P.de)} – ${fmtData(P.ate)}`;
-  const { de, ate } = intervaloPeriodo();
+  const { de, ate } = intervaloDe(P);
   if(P.tipo==='dia') return de===h ? 'Hoje' : fmtData(de);
   if(P.tipo==='semana') return (h>=de && h<=ate) ? 'Esta semana' : `${fmtData(de).slice(0,5)} – ${fmtData(ate).slice(0,5)}`;
   const r = dataDe(P.ref);
+  if(P.tipo==='ano') return String(r.getFullYear());
   return `${MESES[r.getMonth()]} ${r.getFullYear()}`;
 }
-function periodoPasso(dir){
-  const P = hxPeriodo;
+function passoDe(P, dir){
   if(P.tipo==='tudo') return;
   if(P.tipo==='custom'){   // anda pelo tamanho do intervalo escolhido
     const dias = Math.round((dataDe(P.ate)-dataDe(P.de))/86400000)+1;
@@ -1028,15 +1188,23 @@ function periodoPasso(dir){
     const r = dataDe(P.ref);
     if(P.tipo==='dia') r.setDate(r.getDate()+dir);
     else if(P.tipo==='semana') r.setDate(r.getDate()+7*dir);
+    else if(P.tipo==='ano') { r.setDate(1); r.setMonth(0); r.setFullYear(r.getFullYear()+dir); }
     else { r.setDate(1); r.setMonth(r.getMonth()+dir); }
     P.ref = isoDe(r);
   }
-  renderHistorico();
 }
+/* Histórico */
+function intervaloPeriodo(){ return intervaloDe(hxPeriodo); }
+function rotuloPeriodo(){ return rotuloDe(hxPeriodo); }
+function periodoPasso(dir){ passoDe(hxPeriodo, dir); renderHistorico(); }
 function definirPeriodo(tipo){ hxPeriodo = { tipo, ref:hoje() }; fecharPops(); renderHistorico(); }
-function abrirPeriodoPersonalizado(){
+
+/* Escolher período (modal compartilhado): alvo 'hx' = Histórico, 'ds' = Desempenho */
+let periodoAlvo = 'hx';
+function abrirPeriodoPersonalizado(alvo){
+  periodoAlvo = alvo || 'hx';
   fecharPops();
-  const { de, ate } = intervaloPeriodo();
+  const { de, ate } = intervaloDe(periodoAlvo==='ds' ? dsPeriodo : hxPeriodo);
   document.getElementById('perDe').value = de || hoje().slice(0,8)+'01';
   document.getElementById('perAte').value = ate || hoje();
   abrir('modalPeriodo');
@@ -1045,8 +1213,9 @@ function aplicarPeriodoPersonalizado(){
   let de = val('perDe'), ate = val('perAte');
   if(!de || !ate){ toast('Informe as duas datas.'); return; }
   if(de>ate) [de,ate] = [ate,de];
-  hxPeriodo = { tipo:'custom', de, ate };
-  fechar('modalPeriodo'); renderHistorico();
+  fechar('modalPeriodo');
+  if(periodoAlvo==='ds'){ dsPeriodo = { tipo:'custom', de, ate }; renderDesempenho(); }
+  else { hxPeriodo = { tipo:'custom', de, ate }; renderHistorico(); }
 }
 
 /* ----- Pop-ups dos filtros ----- */
@@ -1065,7 +1234,6 @@ function prepararHistorico(){
   const sel = document.getElementById('fhCategoria');
   const atual = sel.value;
   sel.innerHTML = '<option value="">Categoria</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
-  ajustarAlturaHistorico();
   renderHistorico();
 }
 function histAlternarDir(){
@@ -1073,15 +1241,7 @@ function histAlternarDir(){
   document.getElementById('histDir').textContent = histDir==='asc' ? 'Mais antigos ↑' : 'Mais recentes ↓';
   renderHistorico();
 }
-/* A tela ocupa exatamente o espaço entre o cabeçalho e a barra inferior: só a lista rola */
-function ajustarAlturaHistorico(){
-  const v = document.getElementById('viewHistorico');
-  if(v.hidden) return;
-  const topo = v.getBoundingClientRect().top + window.scrollY;
-  const barra = document.querySelector('.barra-inferior').offsetHeight;
-  v.style.height = Math.max(320, window.innerHeight - topo - barra - 12) + 'px';
-}
-window.addEventListener('resize', ajustarAlturaHistorico);
+/* A altura do Histórico vem do CSS (layout em "casca": só a área de conteúdo rola; no Histórico, só a lista) */
 
 function renderHistorico(){
   histPor = document.getElementById('histOrdenar').value;
@@ -1196,6 +1356,7 @@ function pedirEdicaoMov(pid, mid){
     `Editar ${m.tipo==='entrada'?'a entrada':'a saída'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)}). Digite a senha do gerente.`);
 }
 function abrirEdicaoMov(pid, mid){
+  atualizarListaFornecedores();
   const p = prod(pid), m = p.movimentacoes.find(x=>x.id===mid);
   editMov = { pid, mid };
   const ent = m.tipo==='entrada';
@@ -1209,6 +1370,7 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
+    <div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="${escapar(p.fornecedor?'Vazio = '+p.fornecedor+' (principal)':'Não informado')}"></div>
     ` : `
     <div class="campo"><label>Motivo</label>
       <select id="emMotivo" onchange="ajustarEdicaoMov()">${motivos.map(x=>`<option ${x===m.motivo?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -1222,6 +1384,14 @@ function abrirEdicaoMov(pid, mid){
     <div class="rodape-modal">
       <button class="btn btn-claro" onclick="fechar('modalEditMov')">Cancelar</button>
       <button class="btn btn-amarelo" onclick="salvarEdicaoMov()">Salvar alterações</button>
+    </div>
+    <div class="em-perigo">
+      <div><b>Excluir movimentação</b>
+        <small>Apaga este registro de vez e ${ent?`<b>tira ${m.qtd} un.</b> do estoque`:`<b>devolve ${m.qtd} un.</b> ao estoque`}. Recomendado: baixe um backup antes.</small></div>
+      <div class="em-perigo-acoes">
+        <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
+        <button class="btn btn-vermelho btn-mini" onclick="excluirMovimentacao()">Excluir</button>
+      </div>
     </div>`;
   abrir('modalEditMov');
   ajustarEdicaoMov();
@@ -1236,6 +1406,39 @@ function ajustarEdicaoMov(){
   document.getElementById('emCampoValor').style.display = mostraValor ? 'block' : 'none';
   document.getElementById('emValorLabel').textContent = mot==='Venda' ? 'Preço de venda (un.)' : 'Valor recebido (un.)';
 }
+/* Excluir movimentação: só a partir da edição (já passou pela senha do gerente) e com dupla confirmação */
+function excluirMovimentacao(){
+  const p = prod(editMov.pid), m = p.movimentacoes.find(x=>x.id===editMov.mid);
+  if(!m) return;
+  const ent = m.tipo==='entrada';
+  const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
+  if(depois < 0){
+    mostrarAviso('Não é possível excluir',
+      `<p>Excluir esta aquisição de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+       <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
+    return;
+  }
+  const desc = `${ent?'a aquisição':'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  // 1ª confirmação: o efeito no estoque
+  pedirConfirmacao(
+    `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
+    (ent ? ' O custo médio e a composição do estoque também mudam.' : ' Os números de vendas e lucro do Desempenho também mudam.') +
+    ' Recomendamos baixar um backup antes (botão “↓ Backup” na tela de edição ou em Configurações).',
+    ()=>{
+      // 2ª confirmação: ação irreversível
+      pedirConfirmacao(
+        `Tem certeza? A exclusão é definitiva e não pode ser desfeita no app — só restaurando um backup. Confirmar a exclusão d${desc}?`,
+        ()=>{
+          p.movimentacoes = p.movimentacoes.filter(x=>x.id!==m.id);
+          salvar(); fechar('modalEditMov');
+          render(); renderViewAtual(); if(aberto('modalMov')) renderMov();
+          mostrarAviso('Movimentação excluída',
+            `<p>O estoque de “${escapar(p.nome)}” agora é de <b>${estoqueDe(p)} un.</b></p>
+             <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Recomendamos baixar um backup agora, para guardar os dados já com essa alteração.</p>
+             <p style="margin-top:12px"><button class="btn btn-claro btn-mini" onclick="exportar()">↓ Baixar backup agora</button></p>`);
+        }, 'Confirmar exclusão definitiva');
+    }, 'Excluir movimentação');
+}
 function salvarEdicaoMov(){
   const p = prod(editMov.pid), m = p.movimentacoes.find(x=>x.id===editMov.mid);
   const data = val('emData'), qtd = parseInt(val('emQtd'));
@@ -1246,6 +1449,7 @@ function salvarEdicaoMov(){
     const c = parseFloat(val('emValor'));
     if(isNaN(c)||c<0){ toast('Informe o custo por unidade.'); return; }
     novo.custoUnit = c;
+    novo.fornecedor = val('emForn').trim();
   } else {
     const mot = val('emMotivo');
     novo.motivo = mot;
@@ -1273,7 +1477,7 @@ function salvarEdicaoMov(){
   }
   // sobrescreve no lugar (mantém o id da movimentação)
   m.data = novo.data; m.qtd = novo.qtd;
-  if(m.tipo==='entrada') m.custoUnit = novo.custoUnit;
+  if(m.tipo==='entrada'){ m.custoUnit = novo.custoUnit; if(novo.fornecedor) m.fornecedor = novo.fornecedor; else delete m.fornecedor; }
   else {
     ['precoVenda','motivoTexto','recebido','dataRecebimento'].forEach(k=>{ if(!(k in novo)) delete m[k]; });
     Object.assign(m, novo);
@@ -1439,6 +1643,7 @@ const VIEWS = {
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
+  desempenho: { secao:'viewDesempenho', titulo:'Desempenho' },
   config:     { secao:'viewConfig',     titulo:'Configurações' }
 };
 let viewAtual = 'inicio';
@@ -1450,9 +1655,9 @@ function mostrarView(v){
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
-  document.getElementById('fab').style.display = (v==='financeiro' || v==='config') ? 'none' : '';   // ⊕ só nas telas de estoque
+  document.getElementById('fab').style.display = ['financeiro','config','desempenho'].includes(v) ? 'none' : '';   // ⊕ só nas telas de estoque
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
-  window.scrollTo(0,0);
+  document.querySelector('main').scrollTop = 0;
   renderViewAtual();
 }
 function renderViewAtual(){
@@ -1460,6 +1665,7 @@ function renderViewAtual(){
   if(viewAtual==='historico')  prepararHistorico();
   if(viewAtual==='financeiro') renderFinanceiro();
   if(viewAtual==='config')     renderConfig();
+  if(viewAtual==='desempenho') renderDesempenho();
 }
 
 /* =========================================================
@@ -1553,6 +1759,329 @@ function renderInicio(){
 function alternarFab(){ document.getElementById('fabMenu').classList.contains('aberto') ? fecharFab() : abrirFab(); }
 function abrirFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto')); }
 function fecharFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.remove('aberto')); }
+
+/* =========================================================
+   DESEMPENHO — métricas e gráficos das vendas
+   Venda = saída "Venda" ou "A receber" já recebida (A receber pendente não entra).
+   Lucro = receita − custo do lote vendido (FIFO: as unidades mais antigas saem primeiro,
+   a mesma lógica da Composição do estoque).
+   Gráficos em SVG puro (sem bibliotecas).
+   ========================================================= */
+let dsPeriodo = { tipo:'mes', ref:hoje() };
+let dsRanking = 'unidades';   // produtos mais vendidos: 'unidades' | 'faturamento'
+const DS_COR = { fat:'#2a78d6', lucro:'#eda100', neutro:'#D6D3CA' };   // paleta validada (CVD ok)
+const DS_DIAS_PARADO = 30;
+const SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const SEMANA_CURTA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function dsPeriodoPasso(dir){ passoDe(dsPeriodo, dir); renderDesempenho(); }
+function dsDefinirPeriodo(tipo){ dsPeriodo = { tipo, ref:hoje() }; fecharPops(); renderDesempenho(); }
+function dsTrocarRanking(t){ dsRanking = t; renderDesempenho(); }
+
+/* Custo FIFO de cada saída: Map(id da movimentação → custo total das unidades que saíram) */
+function custosFIFO(){
+  const mapa = new Map();
+  estado.produtos.forEach(p=>{
+    const lotes = entradas(p).map((m,i)=>({ data:m.data, i, qtd:m.qtd, custo:m.custoUnit }))
+      .sort((a,b)=>a.data.localeCompare(b.data) || a.i-b.i);
+    const cm = custoMedioDe(p) || 0;
+    saidas(p).map((m,i)=>({ m, i })).sort((a,b)=>a.m.data.localeCompare(b.m.data) || a.i-b.i).forEach(({m})=>{
+      let falta = m.qtd, custo = 0;
+      for(const l of lotes){
+        if(falta<=0) break;
+        if(l.qtd<=0) continue;
+        const tira = Math.min(l.qtd, falta);
+        custo += tira*l.custo; l.qtd -= tira; falta -= tira;
+      }
+      if(falta>0) custo += falta*cm;   // dados inconsistentes (saída sem entrada suficiente): usa custo médio
+      mapa.set(m.id, custo);
+    });
+  });
+  return mapa;
+}
+function vendasDe(de, ate){
+  const custos = custosFIFO(), lista = [];
+  estado.produtos.forEach(p=>saidas(p).forEach(m=>{
+    const ehVenda = m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido);
+    if(!ehVenda) return;
+    if(de && m.data<de) return;
+    if(ate && m.data>ate) return;
+    const receita = m.qtd*(m.precoVenda||0), custo = custos.get(m.id)||0;
+    lista.push({ p, m, data:m.data, qtd:m.qtd, receita, custo, lucro:receita-custo });
+  }));
+  return lista;
+}
+function soma(lista, k){ return lista.reduce((s,x)=>s+x[k],0); }
+function fmtCompacto(v){
+  const a = Math.abs(v);
+  if(a>=1e6) return 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi';
+  if(a>=1e4) return 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil';
+  return 'R$ '+Math.round(v).toLocaleString('pt-BR');
+}
+function fmtPctDs(v){ return isFinite(v) ? v.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%' : '—'; }
+/* "Topo" redondo para o eixo */
+function topoEixo(max){
+  if(max<=0) return 1;
+  const pot = Math.pow(10, Math.floor(Math.log10(max)));
+  for(const m of [1,1.2,1.5,2,2.5,3,4,5,6,8,10]) if(m*pot>=max) return m*pot;
+  return 10*pot;
+}
+
+function renderDesempenho(){
+  document.getElementById('dsPeriodoRotulo').textContent = rotuloDe(dsPeriodo) + ' ▾';
+  document.querySelectorAll('.ds-seta').forEach(b=>b.disabled = dsPeriodo.tipo==='tudo');
+  const { de, ate } = intervaloDe(dsPeriodo);
+  const vendas = vendasDe(de, ate);
+  const cont = document.getElementById('dsConteudo');
+
+  const pendentes = [];
+  estado.produtos.forEach(p=>saidas(p).forEach(m=>{
+    if(m.motivo==='A receber' && !m.recebido && (!de || m.data>=de) && (!ate || m.data<=ate)) pendentes.push(m);
+  }));
+  const notaPend = pendentes.length
+    ? `<p class="dica ds-nota">${soma(pendentes,'qtd')} un. em vendas “a receber” ainda pendentes neste período não entram nos números até o recebimento.</p>` : '';
+
+  if(!vendas.length){
+    cont.innerHTML = `<div class="ds-vazio"><b>Nenhuma venda em ${escapar(rotuloDe(dsPeriodo))}.</b><br>Use as setas ou o menu do período para ver outro intervalo.</div>${notaPend}` + dsBlocoParados();
+    return;
+  }
+
+  const fat = soma(vendas,'receita'), custo = soma(vendas,'custo'), lucro = fat-custo;
+  const margem = fat>0 ? lucro/fat*100 : NaN;
+
+  cont.innerHTML = `
+    <div class="ds-tiles">
+      <div class="ds-tile"><span>Faturamento</span><b>${fmtBRL(fat)}</b><small>${soma(vendas,'qtd')} un. vendidas</small></div>
+      <div class="ds-tile"><span>Custo das vendas</span><b>${fmtBRL(custo)}</b><small>custo dos lotes vendidos</small></div>
+      <div class="ds-tile"><span>Lucro bruto</span><b class="${lucro<0?'neg':''}">${fmtBRL(lucro)}</b><small>faturamento − custo</small></div>
+      <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b><small>lucro ÷ faturamento</small></div>
+    </div>
+    ${notaPend}
+    ${dsBlocoEvolucao(vendas, de, ate)}
+    <div class="ds-grade">
+      ${dsBlocoCategorias(vendas)}
+      ${dsBlocoSemana(vendas, de, ate)}
+    </div>
+    <div class="ds-grade">
+      ${dsBlocoMelhoresDatas(vendas)}
+      ${dsBlocoProdutos(vendas)}
+    </div>
+    ${dsBlocoParados()}`;
+  ligarTooltips(cont);
+  ligarCrosshair();
+}
+
+/* ----- Evolução no tempo (linha: faturamento e lucro, um eixo só em R$) ----- */
+let dsSerie = null;
+function dsBlocoEvolucao(vendas, de, ate){
+  const ini = de || vendas.reduce((a,v)=>v.data<a?v.data:a, vendas[0].data);
+  let fim = ate || vendas.reduce((a,v)=>v.data>a?v.data:a, vendas[0].data);
+  if(fim > hoje()) fim = hoje();   // período atual: o gráfico para em hoje (sem dias futuros zerados)
+  const dias = Math.round((dataDe(fim)-dataDe(ini))/86400000)+1;
+  if(dias<2) return '';
+  const porMes = dias>62;
+  const pontos = [];
+  if(porMes){
+    const d = dataDe(ini); d.setDate(1);
+    const f = dataDe(fim);
+    while(d<=f){ pontos.push({ chave:isoDe(d).slice(0,7), rotulo:MESES[d.getMonth()].slice(0,3)+'/'+String(d.getFullYear()).slice(2), fat:0, lucro:0, n:0 }); d.setMonth(d.getMonth()+1); }
+  } else {
+    const d = dataDe(ini), f = dataDe(fim);
+    while(d<=f){ pontos.push({ chave:isoDe(d), rotulo:fmtData(isoDe(d)).slice(0,5), fat:0, lucro:0, n:0 }); d.setDate(d.getDate()+1); }
+  }
+  const idx = new Map(pontos.map((p,i)=>[p.chave,i]));
+  vendas.forEach(v=>{ const i = idx.get(porMes ? v.data.slice(0,7) : v.data); if(i==null) return; pontos[i].fat+=v.receita; pontos[i].lucro+=v.lucro; pontos[i].n+=v.qtd; });
+  dsSerie = { pontos, porMes };
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Evolução no tempo</h3><small>${porMes?'Por mês':'Por dia'} · faturamento e lucro</small></div>
+      <div class="ds-legenda"><span><i style="background:${DS_COR.fat}"></i>Faturamento</span><span><i style="background:${DS_COR.lucro}"></i>Lucro</span></div></div>
+    <div class="ds-linha-wrap" id="dsLinha">${svgLinha(pontos)}</div>
+  </div>`;
+}
+function svgLinha(pontos){
+  const W = Math.max(300, Math.min(944, (document.getElementById('dsConteudo')?.clientWidth||900) - 34)), H = 220;
+  const m = { l:58, r:16, t:14, b:26 };
+  const iw = W-m.l-m.r, ih = H-m.t-m.b;
+  const maxV = topoEixo(Math.max(...pontos.map(p=>Math.max(p.fat,p.lucro)), 0));
+  const minV = Math.min(0, ...pontos.map(p=>p.lucro));
+  const minE = minV<0 ? -topoEixo(-minV) : 0;
+  const y = v=> m.t + ih - (v-minE)/(maxV-minE)*ih;
+  const x = i=> m.l + (pontos.length===1 ? iw/2 : i*iw/(pontos.length-1));
+  const ticks = [minE, ...[0.25,0.5,0.75,1].map(f=>minE+(maxV-minE)*f)].filter((v,i,a)=>a.indexOf(v)===i);
+  const grade = ticks.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" class="ds-grid${v===0?' zero':''}"/>
+    <text x="${m.l-8}" y="${y(v)+4}" class="ds-eixo" text-anchor="end">${fmtCompacto(v)}</text>`).join('');
+  const passo = Math.ceil(pontos.length/ Math.max(2, Math.floor(iw/62)));
+  const rot = pontos.map((p,i)=> (i%passo===0 || i===pontos.length-1) ? `<text x="${x(i)}" y="${H-6}" class="ds-eixo" text-anchor="middle">${p.rotulo}</text>` : '').join('');
+  const caminho = k=> pontos.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join('');
+  const area = `M${x(0)},${y(Math.max(0,minE))}` + pontos.map((p,i)=>`L${x(i).toFixed(1)},${y(p.fat).toFixed(1)}`).join('') + `L${x(pontos.length-1)},${y(Math.max(0,minE))}Z`;
+  const ult = pontos.length-1;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Faturamento e lucro ${dsSerie&&dsSerie.porMes?'por mês':'por dia'}">
+    ${grade}${rot}
+    <path d="${area}" fill="${DS_COR.fat}" opacity=".1"/>
+    <path d="${caminho('fat')}" fill="none" stroke="${DS_COR.fat}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${caminho('lucro')}" fill="none" stroke="${DS_COR.lucro}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(ult)}" cy="${y(pontos[ult].fat)}" r="4" fill="${DS_COR.fat}" stroke="#fff" stroke-width="2"/>
+    <circle cx="${x(ult)}" cy="${y(pontos[ult].lucro)}" r="4" fill="${DS_COR.lucro}" stroke="#fff" stroke-width="2"/>
+    <g id="dsCruz" style="display:none"><line class="ds-cruz" y1="${m.t}" y2="${m.t+ih}"/>
+      <circle class="ds-cruz-f" r="5" fill="${DS_COR.fat}" stroke="#fff" stroke-width="2"/><circle class="ds-cruz-l" r="5" fill="${DS_COR.lucro}" stroke="#fff" stroke-width="2"/></g>
+    <rect id="dsCaptura" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"
+      data-ml="${m.l}" data-iw="${iw}" data-n="${pontos.length}" data-min="${minE}" data-max="${maxV}" data-t="${m.t}" data-ih="${ih}"/>
+  </svg>`;
+}
+function ligarCrosshair(){
+  const r = document.getElementById('dsCaptura');
+  if(!r || !dsSerie) return;
+  const d = r.dataset, n = +d.n, pontos = dsSerie.pontos;
+  const y = v=> +d.t + +d.ih - (v - +d.min)/(+d.max - +d.min) * +d.ih;
+  const xi = i=> +d.ml + (n===1 ? +d.iw/2 : i * +d.iw/(n-1));
+  const g = document.getElementById('dsCruz');
+  const mover = ev=>{
+    const svg = r.ownerSVGElement, bx = svg.getBoundingClientRect();
+    const px = (ev.touches?ev.touches[0].clientX:ev.clientX) - bx.left;
+    const i = Math.max(0, Math.min(n-1, Math.round((px - +d.ml)/(+d.iw/Math.max(1,n-1)))));
+    const p = pontos[i], X = xi(i);
+    g.style.display = '';
+    g.querySelector('line').setAttribute('x1',X); g.querySelector('line').setAttribute('x2',X);
+    const cf = g.querySelector('.ds-cruz-f'), cl = g.querySelector('.ds-cruz-l');
+    cf.setAttribute('cx',X); cf.setAttribute('cy',y(p.fat)); cl.setAttribute('cx',X); cl.setAttribute('cy',y(p.lucro));
+    mostrarTip(`<b>${dsSerie.porMes ? p.rotulo : fmtData(p.chave)+' · '+SEMANA_CURTA[dataDe(p.chave).getDay()]}</b>
+      <span><i style="background:${DS_COR.fat}"></i>Faturamento <em>${fmtBRL(p.fat)}</em></span>
+      <span><i style="background:${DS_COR.lucro}"></i>Lucro <em>${fmtBRL(p.lucro)}</em></span>
+      <span class="ds-tip-sec">${p.n} un. vendidas</span>`, bx.left+X, bx.top + +d.t);
+  };
+  r.addEventListener('mousemove', mover);
+  r.addEventListener('touchstart', mover, {passive:true});
+  r.addEventListener('touchmove', mover, {passive:true});
+  r.addEventListener('mouseleave', ()=>{ g.style.display='none'; esconderTip(); });
+}
+
+/* ----- Vendas por categoria (barras horizontais, uma cor) ----- */
+function dsBlocoCategorias(vendas){
+  const g = {};
+  vendas.forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; });
+  const lista = Object.values(g).sort((a,b)=>b.fat-a.fat);
+  const max = lista[0].fat || 1, total = soma(lista,'fat') || 1;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Vendas por categoria</h3><small>Faturamento no período</small></div></div>
+    <div class="ds-barras">${lista.map(c=>`
+      <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Lucro <em>${fmtBRL(c.lucro)}</em></span><span>Margem <em>${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
+        <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.qtd} un. · margem ${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${DS_COR.fat}"></div></div>
+        <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
+      </div>`).join('')}</div>
+  </div>`;
+}
+
+/* ----- Dias da semana (colunas; destaque no melhor dia) ----- */
+function dsBlocoSemana(vendas, de, ate){
+  const tot = Array.from({length:7},()=>({ fat:0, qtd:0 }));
+  vendas.forEach(v=>{ const d = dataDe(v.data).getDay(); tot[d].fat+=v.receita; tot[d].qtd+=v.qtd; });
+  // quantas vezes cada dia da semana aparece no período (para a média por dia)
+  const ini = de || vendas.reduce((a,v)=>v.data<a?v.data:a, vendas[0].data);
+  let fim = ate || vendas.reduce((a,v)=>v.data>a?v.data:a, vendas[0].data);
+  if(fim > hoje()) fim = hoje();
+  const ocorr = Array(7).fill(0);
+  for(const d=dataDe(ini), f=dataDe(fim); d<=f; d.setDate(d.getDate()+1)) ocorr[d.getDay()]++;
+  const max = Math.max(...tot.map(t=>t.fat)) || 1;
+  const melhor = tot.findIndex(t=>t.fat===max);
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Dias da semana</h3><small>Faturamento por dia da semana · melhor: <b>${SEMANA[melhor]}</b></small></div></div>
+    <div class="ds-colunas">${tot.map((t,i)=>`
+      <div class="ds-col" data-tip="<b>${SEMANA[i]}</b><span>Faturamento <em>${fmtBRL(t.fat)}</em></span><span>Média por ${SEMANA[i].toLowerCase()} <em>${fmtBRL(ocorr[i]?t.fat/ocorr[i]:0)}</em></span><span class='ds-tip-sec'>${t.qtd} un. · ${ocorr[i]} ${SEMANA[i].toLowerCase()}(s) no período</span>">
+        <div class="ds-col-val">${i===melhor?fmtCompacto(t.fat):''}</div>
+        <div class="ds-col-trilho"><div class="ds-col-barra" style="height:${t.fat?Math.max(3,t.fat/max*100):0}%;background:${i===melhor?DS_COR.fat:DS_COR.neutro}"></div></div>
+        <div class="ds-col-rot${i===melhor?' forte':''}">${SEMANA_CURTA[i]}</div>
+      </div>`).join('')}</div>
+  </div>`;
+}
+
+/* ----- Melhores datas (ranking) ----- */
+function dsBlocoMelhoresDatas(vendas){
+  const g = {};
+  vendas.forEach(v=>{ g[v.data] = g[v.data] || { data:v.data, fat:0, qtd:0, lucro:0 }; g[v.data].fat+=v.receita; g[v.data].qtd+=v.qtd; g[v.data].lucro+=v.lucro; });
+  const lista = Object.values(g).sort((a,b)=>b.fat-a.fat).slice(0,5);
+  const max = lista[0].fat || 1;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Melhores datas</h3><small>Os 5 dias com maior faturamento</small></div></div>
+    <ol class="ds-rank">${lista.map((d,i)=>`
+      <li data-tip="<b>${fmtData(d.data)} · ${SEMANA[dataDe(d.data).getDay()]}</b><span>Faturamento <em>${fmtBRL(d.fat)}</em></span><span>Lucro <em>${fmtBRL(d.lucro)}</em></span><span class='ds-tip-sec'>${d.qtd} un. vendidas</span>">
+        <span class="ds-rank-n">${i+1}</span>
+        <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${fmtData(d.data)} <small>${SEMANA_CURTA[dataDe(d.data).getDay()]}</small></span><b>${fmtBRL(d.fat)}</b></div>
+          <div class="ds-mini"><div style="width:${d.fat/max*100}%;background:${DS_COR.fat}"></div></div>
+          <small>${d.qtd} un. · lucro ${fmtBRL(d.lucro)}</small></div>
+      </li>`).join('')}</ol>
+  </div>`;
+}
+
+/* ----- Produtos mais vendidos ----- */
+function dsBlocoProdutos(vendas){
+  const g = {};
+  vendas.forEach(v=>{ const id = v.p.id; g[id] = g[id] || { p:v.p, qtd:0, fat:0, lucro:0 }; g[id].qtd+=v.qtd; g[id].fat+=v.receita; g[id].lucro+=v.lucro; });
+  const k = dsRanking==='unidades' ? 'qtd' : 'fat';
+  const lista = Object.values(g).sort((a,b)=>b[k]-a[k] || b.fat-a.fat).slice(0,10);
+  const max = lista[0][k] || 1;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Produtos mais vendidos</h3><small>Top ${lista.length} no período</small></div>
+      <div class="ds-alterna" role="group">
+        <button class="${dsRanking==='unidades'?'ativo':''}" onclick="dsTrocarRanking('unidades')">Unidades</button>
+        <button class="${dsRanking==='faturamento'?'ativo':''}" onclick="dsTrocarRanking('faturamento')">Faturamento</button>
+      </div></div>
+    <ol class="ds-rank">${lista.map((x,i)=>`
+      <li data-tip="<b>${escapar(x.p.nome)}</b><span>Unidades <em>${x.qtd}</em></span><span>Faturamento <em>${fmtBRL(x.fat)}</em></span><span>Lucro <em>${fmtBRL(x.lucro)}</em></span><span>Margem <em>${fmtPctDs(x.fat?x.lucro/x.fat*100:NaN)}</em></span>">
+        <span class="ds-rank-n">${i+1}</span>
+        <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${escapar(x.p.nome)}${x.p.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}</span><b>${k==='qtd'?x.qtd+' un.':fmtBRL(x.fat)}</b></div>
+          <div class="ds-mini"><div style="width:${x[k]/max*100}%;background:${DS_COR.fat}"></div></div>
+          <small>${k==='qtd'?fmtBRL(x.fat):x.qtd+' un.'} · lucro ${fmtBRL(x.lucro)}</small></div>
+      </li>`).join('')}</ol>
+  </div>`;
+}
+
+/* ----- Produtos parados (independe do período) ----- */
+function dsBlocoParados(){
+  const h = hoje();
+  const lista = estado.produtos.filter(p=>!p.arquivado && estoqueDe(p)>0).map(p=>{
+    const vendasP = saidas(p).filter(m=>m.motivo==='Venda' || m.motivo==='A receber').map(m=>m.data).sort();
+    const ultVenda = vendasP[vendasP.length-1] || null;
+    const desde = ultVenda || entradas(p).map(m=>m.data).sort()[0];
+    const dias = desde ? diasDesde(desde) : 0;
+    const custoParado = composicaoEstoque(p).reduce((s,g)=>s+g.qtd*g.custo,0);
+    return { p, ultVenda, dias, est:estoqueDe(p), custoParado };
+  }).filter(x=>x.dias>=DS_DIAS_PARADO).sort((a,b)=>b.custoParado-a.custoParado);
+  const total = soma(lista,'custoParado');
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Produtos parados</h3><small>Com estoque e sem venda há ${DS_DIAS_PARADO} dias ou mais · não depende do período</small></div>
+      ${lista.length?`<div class="ds-total">${fmtBRL(total)}<small>em custo parado</small></div>`:''}</div>
+    ${lista.length ? `<div class="ds-parados">${lista.map(x=>`
+      <div class="ds-parado" onclick="abrirMov('${x.p.id}')" title="Abrir o Painel do Produto">
+        <div class="nome">${escapar(x.p.nome)}<small>${x.p.marca?escapar(x.p.marca)+' · ':''}${x.ultVenda?'última venda em '+fmtData(x.ultVenda):'nunca vendido'}</small></div>
+        <div class="val">${x.dias} dias<small>${x.est} un.</small></div>
+        <div class="val">${fmtBRL(x.custoParado)}<small>custo</small></div>
+      </div>`).join('')}</div>` : '<div class="ini-vazio">Nenhum produto parado. Tudo girando.</div>'}
+  </div>`;
+}
+
+/* ----- Tooltip compartilhado ----- */
+function mostrarTip(html, x, y){
+  const t = document.getElementById('dsTip');
+  t.innerHTML = html; t.classList.add('mostra');
+  const w = t.offsetWidth, hgt = t.offsetHeight;
+  let left = x - w/2, top = y - hgt - 10;
+  left = Math.max(8, Math.min(window.innerWidth - w - 8, left));
+  if(top < 8) top = y + 18;
+  t.style.left = left+'px'; t.style.top = top+'px';
+}
+function esconderTip(){ document.getElementById('dsTip').classList.remove('mostra'); }
+function ligarTooltips(raiz){
+  raiz.querySelectorAll('[data-tip]').forEach(el=>{
+    const mostra = ()=>{ const r = el.getBoundingClientRect(); mostrarTip(el.dataset.tip, r.left + r.width/2, r.top); };
+    el.addEventListener('mouseenter', mostra);
+    el.addEventListener('mouseleave', esconderTip);
+    el.addEventListener('touchstart', mostra, {passive:true});
+  });
+}
+document.addEventListener('scroll', esconderTip, true);
+let dsResizeT;
+window.addEventListener('resize', ()=>{ clearTimeout(dsResizeT); dsResizeT = setTimeout(()=>{ if(viewAtual==='desempenho') renderDesempenho(); }, 150); });
 
 /* =========================================================
    FINANCEIRO — FATURAMENTO MEI
