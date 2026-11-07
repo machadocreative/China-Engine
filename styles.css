@@ -629,19 +629,24 @@ header .acoes [data-view].fora{display:none}
 .fab.aberto svg{transform:rotate(45deg)}
 .fab-fundo{position:fixed;inset:0;z-index:70;background:rgba(26,26,23,.35);display:none}
 .fab-fundo.aberto{display:block}
-.fab-menu{
-  position:fixed;right:22px;bottom:148px;z-index:71;
-  display:flex;flex-direction:column;align-items:flex-end;gap:10px;
-  pointer-events:none;opacity:0;transform:translateY(10px);transition:opacity .15s,transform .15s;
+.fab-menu{   /* caixa com as opções de acesso rápido, logo acima do botão ⊕ */
+  position:fixed;right:18px;bottom:146px;z-index:71;min-width:236px;
+  display:flex;flex-direction:column;gap:2px;padding:6px;
+  background:#2B2B27;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.3);
+  pointer-events:none;opacity:0;transform:translateY(10px);transform-origin:bottom right;transition:opacity .15s,transform .15s;
 }
 .fab-menu.aberto{pointer-events:auto;opacity:1;transform:translateY(0)}
-.fab-opcao{display:flex;align-items:center;gap:10px;background:none;border:none;padding:0}
-.fab-opcao span{background:var(--preto);color:#fff;font-weight:600;font-size:14px;padding:7px 12px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-.fab-opcao i{
-  width:46px;height:46px;border-radius:50%;background:#fff;border:2px solid var(--preto);
-  display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.2)
+.fab-opcao{   /* ícone à esquerda, texto à direita (o HTML tem texto antes do ícone) */
+  display:flex;flex-direction:row-reverse;justify-content:flex-end;align-items:center;gap:12px;
+  width:100%;background:none;border:none;border-radius:11px;padding:8px 14px 8px 8px;text-align:left;
 }
-.fab-opcao i svg{width:21px;height:21px;stroke:var(--preto);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fab-opcao:hover,.fab-opcao:focus-visible{background:rgba(255,255,255,.1);outline:none}
+.fab-opcao span{color:#fff;font-weight:600;font-size:14px}
+.fab-opcao i{
+  width:34px;height:34px;border-radius:9px;background:#fff;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.fab-opcao i svg{width:19px;height:19px;stroke:var(--preto);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .fab-opcao:hover i{background:var(--amarelo)}
 
 /* ===== Navegação inferior ===== */

@@ -32,6 +32,20 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.8.6] - 2026-11-07
+
+### Alterado
+
+- **Acesso rápido (botão ⊕):** as opções Nova venda, Novo produto e Nova compra em lote agora ficam dentro de uma caixa escura, com o ícone à esquerda e o nome à direita, e destaque na opção sob o cursor.
+- **Fornecedor só nas entradas:** o fornecedor passa a ser informado apenas no registro de entrada e na Nova compra em lote ("Fornecedor da compra"). O campo de entrada sugere o fornecedor da compra mais recente desse produto que tenha um.
+
+### Removido
+
+- Campo "Fornecedor" do cadastro de novo produto, do formulário de produto novo dentro da compra em lote e da aba Dados do Painel do Produto ("Fornecedor principal").
+- Selo "principal" na aba Fornecedores. O produto também não adota mais automaticamente o primeiro fornecedor informado numa entrada.
+
+---
+
 ## [0.8.5] - 2026-11-07
 
 ### Alterado
@@ -388,6 +402,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.8.6]: #
 [0.8.5]: #
 [0.8.4]: #
 [0.8.3]: #

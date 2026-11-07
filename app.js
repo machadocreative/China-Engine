@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.8.5';
+const VERSAO = '0.8.6';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -294,12 +294,10 @@ function abrirProduto(id){
   const p = id ? prod(id) : null;
   document.getElementById('tituloProduto').textContent = p ? 'Editar produto' : 'Novo produto';
   atualizarListaFornecedores();
-  document.getElementById('pFornecedor').setAttribute('list','listaFornecedores');
   document.getElementById('produtoId').value = p ? p.id : '';
   document.getElementById('pMarca').value        = p ? (p.marca||'') : '';
   document.getElementById('pNome').value         = p ? p.nome : '';
   document.getElementById('pCategoria').value    = p ? p.categoria : (estado.categorias[0]||'');
-  document.getElementById('pFornecedor').value   = p ? (p.fornecedor||'') : '';
   document.getElementById('pCodigo').value       = p ? (p.codigo||'') : '';
   document.getElementById('pCodigoBarras').value = p ? (p.codigoBarras||'') : '';
   document.getElementById('pPreco').value        = p && p.preco ? p.preco : '';
@@ -319,7 +317,6 @@ function salvarProduto(){
     marca: document.getElementById('pMarca').value.trim(),
     nome,
     categoria: document.getElementById('pCategoria').value,
-    fornecedor: document.getElementById('pFornecedor').value.trim(),
     codigo: document.getElementById('pCodigo').value.trim(),
     codigoBarras: document.getElementById('pCodigoBarras').value.trim(),
     preco: isNaN(precoVal) ? 0 : precoVal,
@@ -542,7 +539,8 @@ function fecharScanner(){
    ========================================================= */
 function ultimoFornecedorDe(p){
   const ent = [...entradas(p)].sort((a,b)=>b.data.localeCompare(a.data));
-  return (ent.length && ent[0].fornecedor) || p.fornecedor || '';
+  const comForn = ent.find(m=>m.fornecedor);   // sugere o fornecedor da compra mais recente que tem um
+  return comForn ? comForn.fornecedor : '';
 }
 function blocoEntrada(p){
   return `<div class="bloco entrada">
@@ -641,7 +639,6 @@ function linhaCompraHTML(idx){
      </div>
      <div class="linha-campos">
        <div class="mini-campo"><label>Categoria</label><select id="lc_cat_${idx}">${cats}</select></div>
-       <div class="mini-campo"><label>Fornecedor (opcional)</label><input type="text" id="lc_forn_${idx}" placeholder="Ex: Atacado China"></div>
      </div>
      <div class="linha-campos">
        <div class="mini-campo"><label>Preço de venda (R$)</label><input type="number" id="lc_preco_${idx}" min="0" step="0.01" placeholder="0,00"></div>
@@ -758,7 +755,6 @@ function registrarCompraLote(){
       const nome = val('lc_nome_'+idx).trim();
       if(!nome){ toast('Dê um nome ao novo produto.'); return; }
       itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(), codigoBarras:val('lc_cb_'+idx),
-                   fornecedor:val('lc_forn_'+idx).trim(),
                    categoria:val('lc_cat_'+idx),
                    preco:parseFloat(val('lc_preco_'+idx))||0, qtd, custo });
     } else {
@@ -771,14 +767,12 @@ function registrarCompraLote(){
     let p;
     if(it.novo){
       p = { id:uid(), marca:it.marca, nome:it.nome, categoria:it.categoria,
-            fornecedor:it.fornecedor||fornCompra||'',
             codigo:gerarSku(it.categoria), codigoBarras:it.codigoBarras||'', preco:it.preco, minimo:0, movimentacoes:[] };
       estado.produtos.push(p);
     } else {
       p = prod(it.id);
     }
-    const forn = fornCompra || (it.novo ? it.fornecedor : '') || '';
-    if(forn && !p.fornecedor) p.fornecedor = forn;
+    const forn = fornCompra;
     p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, ...(forn?{fornecedor:forn}:{}) });
   });
   salvar(); fechar('modalCompra'); render();
@@ -829,7 +823,7 @@ function fornecedoresDe(p, incluirSem){
 /* Todos os fornecedores já usados (para sugerir no campo, evitando nomes escritos de jeitos diferentes) */
 function todosFornecedores(){
   const s = new Set();
-  estado.produtos.forEach(p=>{ if(p.fornecedor) s.add(p.fornecedor.trim()); entradas(p).forEach(m=>{ if(m.fornecedor) s.add(m.fornecedor.trim()); }); });
+  estado.produtos.forEach(p=>entradas(p).forEach(m=>{ if(m.fornecedor) s.add(m.fornecedor.trim()); }));
   return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'));
 }
 function atualizarListaFornecedores(){
@@ -954,11 +948,7 @@ function ppDados(p){
       <div class="campo" style="flex:.8"><label>Marca / fabricante</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
       <div class="campo" style="flex:1.4"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
     </div>
-    <div class="linha-campos">
-      <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
-      <div class="campo"><label>Fornecedor principal (opcional)</label><input type="text" id="dpFornecedor" list="listaFornecedores" value="${escapar(p.fornecedor||'')}">
-        <div class="dica">Sugerido ao registrar novas entradas.</div></div>
-    </div>
+    <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
     <div class="campo"><label>Código (SKU)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Gerado automaticamente se vazio" style="flex:1">
         <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('dpCodigo').value=gerarSku(document.getElementById('dpCategoria').value)">Gerar</button></div>
@@ -986,7 +976,6 @@ function salvarDadosPainel(){
   const precoVal = parseFloat(val('dpPreco'));
   const dados = {
     marca: val('dpMarca').trim(), nome, categoria: val('dpCategoria'),
-    fornecedor: val('dpFornecedor').trim(),
     codigo: val('dpCodigo').trim(), codigoBarras: val('dpCodigoBarras').trim(),
     preco: isNaN(precoVal) ? 0 : precoVal,
     minimo: parseInt(val('dpMinimo'))||0
@@ -1003,7 +992,7 @@ function ppFornecedores(p){
   return fornecedoresDe(p, true).map(f=>`
     <div class="pp-forn-bloco${f.naoInformado?' nao-informado':''}">
       <div class="pp-forn-cab">
-        <div><b>${escapar(f.nome)}</b>${!f.naoInformado && p.fornecedor && p.fornecedor.trim()===f.nome?' <span class="pp-principal">principal</span>':''}
+        <div><b>${escapar(f.nome)}</b>
           <small>${f.ents.length} entrada(s) · ${f.qtd} un. · última em ${fmtData(f.ents[0].data)}</small></div>
         <div class="pp-forn-total">${fmtBRL(f.total)}<small>total comprado</small></div>
       </div>
@@ -1105,7 +1094,6 @@ function entradaConfirmaNovo(){
 }
 function commitEntrada(p, mov){
   if(!mov.fornecedor) delete mov.fornecedor;
-  else if(!p.fornecedor) p.fornecedor = mov.fornecedor;   // primeiro fornecedor vira o principal do produto
   p.movimentacoes.push({ id:uid(), tipo:'entrada', ...mov });
   salvar(); entradaPendente = null;
   aposMovimento(); toast('Entrada registrada.');
