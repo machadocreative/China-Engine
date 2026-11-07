@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.3.1';
+const VERSAO = '0.4.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -920,11 +920,11 @@ function confirmarConfirma(){
    HISTÓRICO GERAL (filtros + ordenação)
    ========================================================= */
 let histPor = 'data', histDir = 'desc';
-function abrirHistorico(){
-  document.getElementById('fhCategoria').innerHTML =
-    '<option value="">Todas</option>' + estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
+function prepararHistorico(){
+  const sel = document.getElementById('fhCategoria');
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
   renderHistorico();
-  abrir('modalHistorico');
 }
 function histAlternarDir(){
   histDir = histDir==='asc' ? 'desc' : 'asc';
@@ -1067,7 +1067,7 @@ function exportar(){
   const blob = new Blob([JSON.stringify(estado,null,2)],{type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `backup-estoque-${hoje()}.json`;
+  a.download = `backup-china-engine-${hoje()}.json`;   // estoque + financeiro num só arquivo
   a.click();
   toast('Backup gerado.');
 }
@@ -1077,9 +1077,17 @@ function importar(ev){
   leitor.onload = e=>{
     try{
       const dados = JSON.parse(e.target.result);
+      // Backup antigo do app "Controle de Faturamento MEI": só notas e tetos → junta ao financeiro
+      if(Array.isArray(dados.notas) && !dados.produtos){
+        pedirConfirmacao(`Este é um backup do Faturamento MEI com ${dados.notas.length} nota(s). Elas serão adicionadas ao Financeiro (notas repetidas são ignoradas). O estoque não muda. Continuar?`, ()=>{
+          const r = mesclarBackupMEI(dados);
+          salvar(); renderFinanceiro(); toast(`${r} nota(s) adicionada(s) ao Financeiro.`);
+        }, 'Importar backup do Faturamento MEI');
+        return;
+      }
       if(!dados.produtos||!dados.categorias) throw new Error();
-      pedirConfirmacao('Isso vai substituir os dados atuais pelo backup. Continuar?', ()=>{
-        estado = dados; salvar(); render(); toast('Backup restaurado.');
+      pedirConfirmacao('Isso vai substituir os dados atuais (estoque e financeiro) pelo backup. Continuar?', ()=>{
+        estado = garantirFinanceiro(dados); salvar(); render(); renderViewAtual(); toast('Backup restaurado.');
       });
     }catch(err){ toast('Arquivo inválido.'); }
   };
@@ -1138,6 +1146,330 @@ function criarExemplo(){
   };
 }
 
+/* =========================================================
+   NAVEGAÇÃO ENTRE MÓDULOS (barra inferior)
+   ========================================================= */
+const VIEWS = {
+  estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
+  historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
+  financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' }
+};
+let viewAtual = 'estoque';
+function mostrarView(v){
+  if(!VIEWS[v]) return;
+  viewAtual = v;
+  Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
+  document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('ativo', b.dataset.nav===v));
+  document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
+  document.getElementById('tituloView').textContent = VIEWS[v].titulo;
+  renderViewAtual();
+  window.scrollTo(0,0);
+}
+function renderViewAtual(){
+  if(viewAtual==='historico')  prepararHistorico();
+  if(viewAtual==='financeiro') renderFinanceiro();
+}
+
+/* =========================================================
+   FINANCEIRO — FATURAMENTO MEI
+   Dados em estado.financeiro = { notas, tetos, cancelamentos, abertura }
+   - notas: lidas dos XMLs de NF-e / NFC-e
+   - tetos: teto manual por ano (opcional), ex.: { "2027": 95000 }
+   - cancelamentos: chaves de notas canceladas (eventos 110111)
+   - abertura: mês de abertura do MEI ("AAAA-MM") → teto proporcional no 1º ano
+   ========================================================= */
+/* Teto anual do MEI por vigência (do mais novo para o mais antigo).
+   Para mudar o valor no futuro, basta acrescentar uma linha aqui. */
+const TETOS_MEI = [
+  { desde:2027, valor:110000 },
+  { desde:0,    valor:81000  }
+];
+const TOLERANCIA_MEI = 0.20;   // até 20% acima do teto: desenquadra só no ano seguinte
+
+function garantirFinanceiro(e){
+  if(!e.financeiro) e.financeiro = {};
+  const f = e.financeiro;
+  f.notas = f.notas || [];
+  f.tetos = f.tetos || {};
+  f.cancelamentos = f.cancelamentos || [];
+  f.abertura = f.abertura || '';
+  return e;
+}
+garantirFinanceiro(estado);
+function fin(){ return estado.financeiro; }
+let finAnoAtual = new Date().getFullYear();
+
+function idNota(n){ return n.chave || `${n.numero}-${n.serie}-${n.ano}`; }
+function notaCancelada(n){ return !!n.chave && fin().cancelamentos.some(c=>c.chave===n.chave); }
+function tetoBase(ano){ return TETOS_MEI.find(t=>ano>=t.desde).valor; }
+function tetoDoAno(ano){
+  const manual = fin().tetos[ano];
+  if(manual!=null) return { valor:manual, origem:'manual' };
+  const base = tetoBase(ano);
+  const ab = fin().abertura;
+  if(ab && parseInt(ab.slice(0,4))===ano){
+    const meses = 12 - parseInt(ab.slice(5,7)) + 1;
+    return { valor: base/12*meses, origem:'proporcional', meses };
+  }
+  return { valor:base, origem:'padrao' };
+}
+function notasDoAno(ano){
+  return fin().notas.filter(n=>n.ano===ano).sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+}
+function faturadoDoAno(ano){
+  return notasDoAno(ano).filter(n=>!notaCancelada(n)).reduce((s,n)=>s+(n.valor||0),0);
+}
+function fmtPct(p){ return (Math.round(p*10)/10).toLocaleString('pt-BR'); }
+
+/* Faixas de alerta. nivel cresce com o uso: 0 ok · 1 50% · 2 75% · 3 90% · 4 tolerância · 5 acima de 20% */
+function faixaDe(ano){
+  const teto = tetoDoAno(ano).valor, fat = faturadoDoAno(ano);
+  const pct = teto>0 ? fat/teto*100 : 0;
+  const limiteTol = teto*(1+TOLERANCIA_MEI);
+  if(fat>limiteTol) return { nivel:5, cor:'var(--vermelho)', fraca:'var(--vermelho-claro)', icone:'⛔',
+    texto:`Faturamento acima da tolerância de 20% (${fmtBRL(limiteTol)}). Nesse caso o desenquadramento do MEI é retroativo a 1º de janeiro de ${ano} (ou à data de abertura). Procure seu contador.` };
+  if(fat>teto) return { nivel:4, cor:'var(--vermelho)', fraca:'var(--vermelho-claro)', icone:'⚠',
+    texto:`Faixa de tolerância: o teto foi ultrapassado em ${fmtBRL(fat-teto)}. Até ${fmtBRL(limiteTol)} (20% acima), o MEI é desenquadrado a partir de 1º de janeiro de ${ano+1} e paga imposto complementar sobre o excesso. Restam ${fmtBRL(limiteTol-fat)} até o fim da tolerância.` };
+  if(pct>=90) return { nivel:3, cor:'var(--vermelho)', fraca:'var(--vermelho-claro)', icone:'⚠',
+    texto:`Cuidado: ${fmtPct(pct)}% do teto usado. Restam apenas ${fmtBRL(teto-fat)} para ${ano}.` };
+  if(pct>=75) return { nivel:2, cor:'var(--laranja)', fraca:'#FBEADB', icone:'▲',
+    texto:`Atenção: você já usou ${fmtPct(pct)}% do teto anual.` };
+  if(pct>=50) return { nivel:1, cor:'var(--ambar)', fraca:'var(--amarelo-claro)', icone:'●',
+    texto:`Você atingiu ${fmtPct(pct)}% do teto anual.` };
+  return { nivel:0, cor:'var(--verde)', fraca:'#E5F2E6', icone:'✓', texto:'' };
+}
+const NOMES_FAIXA = ['', 'passou de 50% do teto', 'passou de 75% do teto', 'passou de 90% do teto', 'ultrapassou o teto e entrou na faixa de tolerância', 'passou de 20% acima do teto'];
+
+function anosFinanceiro(){
+  const anos = new Set(fin().notas.map(n=>n.ano));
+  anos.add(new Date().getFullYear()); anos.add(finAnoAtual);
+  if(fin().abertura) anos.add(parseInt(fin().abertura.slice(0,4)));
+  return [...anos].filter(Boolean).sort((a,b)=>b-a);
+}
+
+function renderFinanceiro(){
+  const ano = finAnoAtual;
+  const t = tetoDoAno(ano), teto = t.valor;
+  const fat = faturadoDoAno(ano);
+  const pct = teto>0 ? fat/teto*100 : 0;
+  const faixa = faixaDe(ano);
+  const raiz = document.getElementById('viewFinanceiro');
+  raiz.style.setProperty('--faixa', faixa.cor);
+  raiz.style.setProperty('--faixa-fraca', faixa.fraca);
+
+  document.getElementById('finAno').innerHTML =
+    anosFinanceiro().map(a=>`<option value="${a}" ${a===ano?'selected':''}>${a}</option>`).join('');
+
+  const origem = t.origem==='manual' ? 'definido manualmente'
+    : t.origem==='proporcional' ? `proporcional: ${t.meses} ${t.meses===1?'mês':'meses'} desde a abertura em ${fin().abertura.slice(5,7)}/${fin().abertura.slice(0,4)}`
+    : 'padrão do MEI';
+  document.getElementById('finTetoInfo').textContent = `Teto ${ano}: ${fmtBRL(teto)} (${origem})`;
+
+  if(fat<=teto){
+    document.getElementById('finRotulo').textContent = 'Disponível para faturar';
+    document.getElementById('finDisponivel').textContent = fmtBRL(teto-fat);
+  } else {
+    document.getElementById('finRotulo').textContent = 'Acima do teto';
+    document.getElementById('finDisponivel').textContent = '+ ' + fmtBRL(fat-teto);
+  }
+  document.getElementById('finUso').textContent = `${fmtBRL(fat)} de ${fmtBRL(teto)} utilizados · ${fmtPct(pct)}%`;
+
+  // Medidor: a escala vai até 120% do teto; o trecho final listrado é a faixa de tolerância
+  const escala = 100*(1+TOLERANCIA_MEI);
+  const pos = p=>(p/escala*100)+'%';
+  document.getElementById('finBarra').style.width = Math.min(100, pct/escala*100)+'%';
+  const trilho = document.getElementById('finTrilho');
+  trilho.querySelectorAll('.marca').forEach(m=>m.remove());
+  [50,75,90].forEach(p=>{ const m=document.createElement('span'); m.className='marca'; m.style.left=pos(p); trilho.appendChild(m); });
+  document.getElementById('finLegendas').innerHTML =
+    `<span style="left:0">0</span><span style="left:${pos(50)}">50%</span><span style="left:${pos(100)}">Teto</span><span style="left:100%">+20%</span>`;
+
+  const al = document.getElementById('finAlerta');
+  al.classList.toggle('mostrar', !!faixa.texto);
+  document.getElementById('finAlertaIcone').textContent = faixa.icone;
+  document.getElementById('finAlertaTexto').textContent = faixa.texto;
+
+  const notas = notasDoAno(ano);
+  const validas = notas.filter(n=>!notaCancelada(n));
+  const canc = notas.length - validas.length;
+  document.getElementById('finStFaturado').textContent = fmtBRL(fat);
+  document.getElementById('finStNotas').textContent = validas.length;
+  document.getElementById('finStMedia').textContent = fmtBRL(validas.length ? fat/validas.length : 0);
+  document.getElementById('finStCanc').textContent = canc;
+  document.getElementById('finContagem').textContent = `${notas.length} ${notas.length===1?'nota':'notas'} em ${ano}`;
+
+  const cont = document.getElementById('finNotas');
+  if(!notas.length){
+    cont.innerHTML = `<div class="nf-tabela"><div class="vazio" style="padding:34px 20px">
+      <h3>Nenhuma nota em ${ano}</h3><p>Clique em “+ Importar XML” para adicionar notas fiscais.</p></div></div>`;
+    return;
+  }
+  cont.innerHTML = `<div class="nf-tabela">
+    <div class="nf-cab"><div>Nº / Série</div><div class="nf-col-data">Emissão</div><div>Cliente</div><div class="num">Valor</div><div></div></div>` +
+    notas.map(n=>{
+      const c = notaCancelada(n);
+      return `<div class="nf-linha ${c?'cancelada':''}">
+        <div class="mono">${escapar(n.numero||'—')}${n.serie?'/'+escapar(n.serie):''}${c?'<span class="tag-canc">cancelada</span>':''}</div>
+        <div class="mono nf-col-data">${fmtData((n.dataEmissao||'').slice(0,10))}</div>
+        <div>${escapar(n.cliente)}<small class="nf-data-mob">${fmtData((n.dataEmissao||'').slice(0,10))}</small></div>
+        <div class="num">${fmtBRL(n.valor)}</div>
+        <div><button class="btn-x" title="Remover nota" onclick="removerNota('${escapar(idNota(n))}')">✕</button></div>
+      </div>`;
+    }).join('') + `</div>`;
+}
+
+/* ===== Leitura de XML: NF-e / NFC-e ou evento de cancelamento ===== */
+function lerXmlFiscal(texto){
+  const doc = new DOMParser().parseFromString(texto, 'text/xml');
+  if(doc.getElementsByTagName('parsererror').length) return null;
+  const t = (tag, ctx=doc)=>ctx.getElementsByTagName(tag)[0]?.textContent?.trim() || '';
+
+  const infNFe = doc.getElementsByTagName('infNFe')[0];
+  if(infNFe){
+    const dataEmissao = t('dhEmi') || t('dEmi');
+    if(!dataEmissao) return null;
+    const emit = doc.getElementsByTagName('emit')[0];
+    const dest = doc.getElementsByTagName('dest')[0];
+    return { tipo:'nota', nota:{
+      chave: (infNFe.getAttribute('Id')||'').replace(/^NFe/i,''),
+      numero: t('nNF'), serie: t('serie'),
+      dataEmissao, ano: parseInt(dataEmissao.slice(0,4),10),
+      emitente: emit ? t('xNome',emit) : '',
+      cliente: (dest ? t('xNome',dest) : '') || 'Consumidor não identificado',
+      valor: parseFloat(t('vNF')||'0') || 0
+    }};
+  }
+
+  const infEvento = doc.getElementsByTagName('infEvento')[0];
+  if(infEvento){
+    if(t('tpEvento',infEvento)!=='110111') return { tipo:'outroEvento' };
+    // Se o XML traz o retorno da SEFAZ, só aceita evento registrado (135 / 155)
+    const ret = doc.getElementsByTagName('retEvento')[0];
+    if(ret){ const st = t('cStat',ret); if(st && !['135','136','155'].includes(st)) return { tipo:'eventoRejeitado' }; }
+    return { tipo:'cancelamento', chave:t('chNFe',infEvento), data:(t('dhEvento',infEvento)||'').slice(0,10) };
+  }
+  return null;
+}
+
+async function importarXMLs(ev){
+  const arquivos = [...ev.target.files];
+  ev.target.value = '';
+  if(!arquivos.length) return;
+
+  // faixas antes da importação, para avisar quando alguma for cruzada
+  const anosAntes = new Set(fin().notas.map(n=>n.ano));
+  const nivelAntes = {};
+  const nivelDe = ano=>faixaDe(ano).nivel;
+
+  let add=0, dup=0, inval=0, canc=0, outros=0, ultimoAno=null;
+  const lidos = [];
+  for(const f of arquivos){
+    const r = lerXmlFiscal(await f.text());
+    if(!r){ inval++; continue; }
+    lidos.push(r);
+  }
+  // anos afetados (notas novas e notas canceladas)
+  lidos.forEach(r=>{
+    if(r.tipo==='nota') nivelAntes[r.nota.ano] ??= nivelDe(r.nota.ano);
+    if(r.tipo==='cancelamento'){ const n=fin().notas.find(x=>x.chave===r.chave); if(n) nivelAntes[n.ano] ??= nivelDe(n.ano); }
+  });
+
+  for(const r of lidos){
+    if(r.tipo==='nota'){
+      const id = idNota(r.nota);
+      if(fin().notas.some(n=>idNota(n)===id)){ dup++; continue; }
+      fin().notas.push(r.nota); add++; ultimoAno = r.nota.ano;
+    } else if(r.tipo==='cancelamento'){
+      if(!r.chave){ inval++; continue; }
+      if(fin().cancelamentos.some(c=>c.chave===r.chave)){ dup++; continue; }
+      fin().cancelamentos.push({ chave:r.chave, data:r.data });   // vale mesmo se a nota for importada depois
+      canc++;
+    } else outros++;
+  }
+  salvar();
+  if(ultimoAno) finAnoAtual = ultimoAno;
+  renderFinanceiro();
+
+  const partes = [];
+  if(add)   partes.push(`${add} nota(s) importada(s)`);
+  if(canc)  partes.push(`${canc} cancelamento(s) registrado(s)`);
+  if(dup)   partes.push(`${dup} já existia(m)`);
+  if(outros)partes.push(`${outros} evento(s) ignorado(s)`);
+  if(inval) partes.push(`${inval} arquivo(s) não reconhecido(s)`);
+  const resumo = partes.join(' · ') || 'Nada importado.';
+
+  // aviso quando a importação faz o faturamento subir de faixa
+  const cruzou = Object.keys(nivelAntes).map(Number).filter(a=>nivelDe(a)>nivelAntes[a]);
+  if(cruzou.length){
+    const linhas = cruzou.map(a=>{ const fx=faixaDe(a);
+      return `<p style="margin-bottom:10px"><b>${a}:</b> o faturamento ${NOMES_FAIXA[fx.nivel]}.<br><span style="color:var(--texto-sec);font-size:14px">${escapar(fx.texto)}</span></p>`; }).join('');
+    mostrarAviso('Faturamento mudou de faixa', `<p style="margin-bottom:12px">${escapar(resumo)}.</p>${linhas}`);
+  } else {
+    toast(resumo);
+  }
+}
+
+function removerNota(id){
+  const n = fin().notas.find(x=>idNota(x)===id);
+  if(!n) return;
+  pedirConfirmacao(`Remover a nota ${n.numero||''} de ${n.cliente} (${fmtBRL(n.valor)})? Ela deixa de contar no faturamento.`, ()=>{
+    fin().notas = fin().notas.filter(x=>x!==n);
+    salvar(); renderFinanceiro(); toast('Nota removida.');
+  }, 'Remover nota fiscal');
+}
+
+/* Junta um backup antigo do app Faturamento MEI ({notas, tetos}) ao financeiro */
+function mesclarBackupMEI(dados){
+  let add = 0;
+  (dados.notas||[]).forEach(n=>{
+    if(!fin().notas.some(x=>idNota(x)===idNota(n))){ fin().notas.push(n); add++; }
+  });
+  Object.entries(dados.tetos||{}).forEach(([ano,v])=>{
+    // o app antigo gravava 81000 como teto de todo ano; só mantém tetos diferentes do padrão
+    if(fin().tetos[ano]==null && Number(v)!==tetoBase(Number(ano))) fin().tetos[ano] = Number(v);
+  });
+  return add;
+}
+
+/* ===== Configurar teto ===== */
+function abrirConfigTeto(){
+  document.getElementById('tetoAnoLabel').textContent = finAnoAtual;
+  document.getElementById('tetoAbertura').value = fin().abertura || '';
+  const m = fin().tetos[finAnoAtual];
+  document.getElementById('tetoManual').value = m!=null ? m : '';
+  previaTeto();
+  abrir('modalTeto');
+}
+function previaTeto(){
+  const ano = finAnoAtual;
+  const ab = val('tetoAbertura');
+  const manual = parseFloat(val('tetoManual'));
+  const base = tetoBase(ano);
+  let valor = base, info = `Padrão do MEI para ${ano}.`;
+  if(!isNaN(manual) && manual>0){ valor = manual; info = 'Valor definido manualmente.'; }
+  else if(ab && parseInt(ab.slice(0,4))===ano){
+    const meses = 12 - parseInt(ab.slice(5,7)) + 1;
+    valor = base/12*meses; info = `${fmtBRL(base/12)} × ${meses} ${meses===1?'mês':'meses'} (ano de abertura).`;
+  }
+  document.getElementById('tetoPrevia').textContent = fmtBRL(valor);
+  document.getElementById('tetoPreviaInfo').textContent = info;
+}
+function salvarConfigTeto(){
+  const manual = parseFloat(val('tetoManual'));
+  fin().abertura = val('tetoAbertura') || '';
+  if(!isNaN(manual) && manual>0) fin().tetos[finAnoAtual] = manual;
+  else delete fin().tetos[finAnoAtual];
+  salvar(); fechar('modalTeto'); renderFinanceiro(); toast('Teto atualizado.');
+}
+
+/* ===== Aviso informativo (modal) ===== */
+function mostrarAviso(titulo, html){
+  document.getElementById('avisoTitulo').textContent = titulo;
+  document.getElementById('avisoTexto').innerHTML = html;
+  abrir('modalAviso');
+}
+
 /* ===== Início ===== */
 document.getElementById('versao').textContent = 'v'+VERSAO;
 render();
+mostrarView('estoque');

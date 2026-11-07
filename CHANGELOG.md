@@ -20,14 +20,50 @@ e o projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/):
 
 ## Planejado (futuro — fora do escopo atual)
 
-Módulo financeiro, a ser desenvolvido **após** o polimento das funcionalidades de estoque,
+Próximas etapas do módulo financeiro (iniciado na 0.4.0 com o Faturamento MEI),
 integrando as movimentações de entrada e saída com a gestão financeira da loja:
 
+- Decidir se as vendas registradas no estoque também contam no faturamento do MEI (hoje só as notas fiscais importadas contam) e como evitar contar duas vezes uma venda que tem nota.
 - Exportação em `.ofx`.
 - Registro do tipo de recebimento na saída (venda em espécie, cartão de crédito, Pix, conta bancária em que foi recebido etc.).
 - Emissão/registro de recibo fiscal.
 - Registro de despesas da loja (aluguel, energia, internet, funcionários, compra de insumos etc.).
 - Apuração de lucro da operação (entender se o negócio dá lucro de fato).
+
+---
+
+## [0.4.0] - 2026-11-06
+
+### Adicionado
+
+**Módulo Financeiro — Faturamento MEI**
+- Integração do app "Controle de Faturamento MEI" ao China Engine, como tela **Financeiro** da barra inferior, com o visual do app principal.
+- Importação de XML de NF-e / NFC-e (vários arquivos de uma vez): número, série, data de emissão, cliente e valor total. A mesma nota não entra duas vezes (confere a chave de acesso).
+- Teto anual por ano fiscal, com seletor de ano: R$ 81.000 até 2026 e R$ 110.000 a partir de 2027. Os valores ficam numa tabela no início do bloco financeiro do `app.js`, para facilitar mudanças futuras.
+- Valor disponível para faturar em destaque, medidor com marcas em 50%, 75% e 90% e alertas por faixa (âmbar, laranja, vermelho).
+- Faixa de tolerância de 20%: o medidor vai até 120% do teto, com o trecho acima do teto listrado. Acima do teto, o app mostra o excesso e quanto falta para o fim da tolerância; acima de 20%, avisa sobre o desenquadramento retroativo.
+- Teto proporcional automático no ano de abertura: basta informar o mês de abertura do MEI em "Configurar teto" (teto ÷ 12 × meses, contando o mês de abertura). Também é possível definir um teto manual por ano.
+- Notas canceladas: importar o XML do evento de cancelamento (110111) tira a nota do total; ela continua na lista, riscada e marcada como "cancelada". O cancelamento vale mesmo se a nota for importada depois.
+- Aviso ao cruzar faixa: quando uma importação faz o faturamento passar de 50%, 75%, 90%, do teto ou da tolerância, um modal informa a nova situação.
+- Remoção de nota com o modal de confirmação do app.
+
+**Navegação**
+- A barra inferior agora alterna entre as telas **Estoque**, **Histórico** e **Financeiro**. **Configurações** continua desabilitado.
+- O título do cabeçalho muda conforme a tela, e os botões do cabeçalho mostram só as ações do módulo aberto. Backup e Restaurar aparecem em todas as telas.
+
+### Alterado
+
+- O histórico geral de movimentações deixou de ser um modal aberto pelo cabeçalho e passou a ser uma tela da barra inferior, com os mesmos filtros e ordenação.
+- "Gestão", na barra inferior, deu lugar a "Financeiro".
+- Backup único: o arquivo de backup (agora `backup-china-engine-AAAA-MM-DD.json`) inclui estoque e financeiro. Restaurar um backup antigo do app Faturamento MEI adiciona as notas ao Financeiro sem mexer no estoque.
+
+### Corrigido
+
+- O aviso (toast) vazio não aparece mais como uma pequena forma no rodapé quando está oculto.
+
+### Removido
+
+- Botão "Histórico" do cabeçalho (substituído pelo item da barra inferior).
 
 ---
 
@@ -156,6 +192,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.4.0]: #
 [0.3.1]: #
 [0.3.0]: #
 [0.2.1]: #
