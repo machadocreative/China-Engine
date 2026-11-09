@@ -32,6 +32,20 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.9.3] - 2026-11-09
+
+### Adicionado
+
+- **Servidor intermediário da API GTIN (Cloudflare Worker):** novo arquivo `cloudflare/gtin-worker.js`, que roda no Cloudflare (plano gratuito). O usuário e a senha da API ficam guardados nele como segredos (`GTIN_USUARIO`, `GTIN_SENHA`). Ele gera e reaproveita o token e repassa só a consulta do código de barras para o app. Aceita apenas chamadas do site do China Engine que enviem a chave do app (`CHAVE_APP`). O arquivo não contém senhas e pode ficar no GitHub.
+
+### Alterado
+
+- **Consulta por código de barras:** o app passa a consultar a API GTIN pelo Worker, porque a API não aceita chamadas direto do navegador (bloqueio de CORS confirmado no teste).
+- Em **Configurações → Consulta por código de barras**, os campos "Usuário" e "Senha" da API deram lugar a **"Endereço do Worker"** e **"Chave do app"**, salvos só no aparelho e fora do backup. "Salvar e testar" confere a chave e o login da API pelo Worker.
+- Usuário e senha da API salvos no aparelho pela 0.9.0 são apagados automaticamente.
+
+---
+
 ## [0.9.2] - 2026-11-09
 
 ### Removido
@@ -444,6 +458,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.9.3]: #
 [0.9.2]: #
 [0.9.1]: #
 [0.9.0]: #

@@ -235,12 +235,10 @@
 
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Consulta por código de barras</h3>
-      <small>Preenche marca, nome e categoria ao cadastrar um produto novo, usando a API GTIN (gtin.rscsistemas.com.br). Informe o usuário e a senha da sua conta na API. Eles ficam salvos <b>só neste aparelho</b>: não vão para o GitHub nem para o arquivo de backup.</small></div>
+      <small>Preenche marca, nome e categoria ao cadastrar um produto novo, usando a API GTIN por meio do servidor intermediário (Cloudflare Worker). O usuário e a senha da API ficam guardados no Worker; aqui vão só o endereço dele e a chave do app, salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
     <div class="cfg-form">
-      <div class="linha-campos">
-        <div class="campo"><label>Usuário da API</label><input type="text" id="cfgGtinUsuario" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-        <div class="campo"><label>Senha da API</label><input type="password" id="cfgGtinSenha" autocomplete="new-password"></div>
-      </div>
+      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgGtinUrl" placeholder="https://china-engine-gtin.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="campo"><label>Chave do app</label><input type="password" id="cfgGtinChave" autocomplete="new-password" placeholder="A mesma CHAVE_APP cadastrada no Worker"></div>
       <div class="cfg-acoes">
         <button class="btn btn-escuro" onclick="gtinSalvarCredenciais()">Salvar e testar</button>
         <button class="btn btn-claro" id="cfgGtinRemover" onclick="gtinRemoverCredenciais()">Remover deste aparelho</button>

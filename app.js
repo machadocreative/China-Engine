@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.9.2';
+const VERSAO = '0.9.3';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -1767,19 +1767,21 @@ function alterarSenha(){
 
 /* =========================================================
    CONSULTA POR CÓDIGO DE BARRAS — API GTIN (gtin.rscsistemas.com.br)
-   - Usuário e senha da API ficam SÓ neste aparelho (localStorage próprio),
-     fora do `estado`: não entram no backup nem no código do GitHub.
-   - Fluxo da API: usuário+senha (Basic) → token de 1 h; renovação com refresh token (7 dias).
+   A API não aceita chamadas direto do navegador (CORS), então o app fala com um
+   servidor intermediário no Cloudflare (Worker — código em cloudflare/gtin-worker.js).
+   - O usuário e a senha da API ficam guardados no Worker, nunca no app nem no GitHub.
+   - O app guarda só o endereço do Worker e a "chave do app", e só neste aparelho
+     (localStorage próprio, fora do `estado`: não vão para o backup).
    - O código é validado (dígito verificador) antes de consultar: a API suspende a conta
      por 1 h depois de 10 códigos inválidos em 20 min.
    ========================================================= */
-const GTIN_API = 'https://gtin.rscsistemas.com.br';
-const GTIN_CHAVE = 'chinatown_gtin_v1';   // localStorage separado do estado do app
+const GTIN_CHAVE = 'chinatown_gtin_v2';   // localStorage separado do estado do app
+try{ localStorage.removeItem('chinatown_gtin_v1'); }catch(e){}   // limpa usuário/senha salvos pela 0.9.0
 
 const Gtin = {
   ler(){ try{ return JSON.parse(localStorage.getItem(GTIN_CHAVE)) || null; }catch(e){ return null; } },
   gravar(d){ try{ if(d) localStorage.setItem(GTIN_CHAVE, JSON.stringify(d)); else localStorage.removeItem(GTIN_CHAVE); }catch(e){} },
-  configurado(){ const d = this.ler(); return !!(d && d.usuario && d.senha); }
+  configurado(){ const d = this.ler(); return !!(d && d.url && d.chave); }
 };
 
 /* Dígito verificador GTIN-8/12/13/14 */
@@ -1789,54 +1791,35 @@ function gtinValido(cod){
   const soma = dig.reverse().reduce((s,d,i)=>s + d*(i%2===0?3:1), 0);
   return (10 - soma%10)%10 === dv;
 }
-function base64Utf8(t){ return btoa(String.fromCharCode(...new TextEncoder().encode(t))); }
+function normalizarUrlWorker(u){
+  u = String(u||'').trim().replace(/\/+$/,'');
+  if(u && !/^https?:\/\//i.test(u)) u = 'https://' + u;
+  return u;
+}
 
 class ErroGtin extends Error{ constructor(tipo, msg){ super(msg); this.tipo = tipo; } }
 
-async function gtinFetch(caminho, opcoes){
+/* Chamada ao Worker: devolve { r, corpo } ou lança ErroGtin com mensagem amigável */
+async function gtinWorker(caminho){
+  const d = Gtin.ler();
+  if(!d || !d.url || !d.chave) throw new ErroGtin('config', 'Configure a consulta por código de barras em Configurações.');
   let r;
-  try{ r = await fetch(GTIN_API + caminho, opcoes); }
+  try{ r = await fetch(d.url + caminho, { headers:{ 'X-Chave-App': d.chave } }); }
   catch(e){
-    // Falha de rede antes de qualquer resposta: sem internet ou o navegador bloqueou (CORS)
     throw new ErroGtin('rede', navigator.onLine===false
       ? 'Sem conexão com a internet.'
-      : 'O navegador não conseguiu falar com a API GTIN. Se a internet estiver funcionando, a API provavelmente não aceita chamadas direto do navegador (CORS) e vamos precisar do servidor intermediário.');
+      : 'Não foi possível falar com o servidor intermediário (Worker). Confira o endereço em Configurações.');
   }
   let corpo = null;
   try{ corpo = await r.clone().json(); }catch(e){}
-  return { r, corpo };
-}
-
-/* Token válido (gera, renova ou reaproveita) */
-async function gtinToken(forcarLogin){
-  const d = Gtin.ler();
-  if(!d || !d.usuario || !d.senha) throw new ErroGtin('config', 'Configure a consulta por código de barras em Configurações.');
-  const agora = Date.now();
-  if(!forcarLogin && d.token && d.expira > agora + 60000) return d.token;
-  // tenta renovar com o refresh token
-  if(!forcarLogin && d.refresh && d.refreshExpira > agora + 60000){
-    const { r, corpo } = await gtinFetch('/api/auth/refresh', {
-      method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
-      body: JSON.stringify({ refresh_token:d.refresh })
-    });
-    if(r.ok && corpo && (corpo.access_token||corpo.token)){ gtinGuardarToken(d, corpo); return d.token; }
-  }
-  // login com usuário e senha
-  const { r, corpo } = await gtinFetch('/api/v3/oauth/token', {
-    method:'POST', body:'',
-    headers:{ 'Authorization':'Basic ' + base64Utf8(d.usuario + ':' + d.senha), 'Accept':'application/json' }
-  });
-  if(r.status===401) throw new ErroGtin('credenciais', 'Usuário ou senha da API GTIN incorretos.');
+  if(r.status===401 && corpo && corpo.erro==='chave_app') throw new ErroGtin('chave', 'Chave de acesso do app incorreta: ela precisa ser igual à CHAVE_APP cadastrada no Worker.');
+  if(corpo && (corpo.erro==='credenciais_api' || corpo.erro==='config')) throw new ErroGtin('credenciais', corpo.mensagem);
   if(r.status===403) throw new ErroGtin('plano', gtinMotivo403(corpo));
-  if(!r.ok || !corpo) throw new ErroGtin('api', `A API GTIN respondeu com erro (${r.status}).`);
-  gtinGuardarToken(d, corpo);
-  return d.token;
-}
-function gtinGuardarToken(d, c){
-  d.token = c.access_token || c.token;
-  d.expira = Date.now() + (c.expires_in||3600)*1000;
-  if(c.refresh_token){ d.refresh = c.refresh_token; d.refreshExpira = Date.now() + (c.refresh_expires_in||604800)*1000; }
-  Gtin.gravar(d);
+  if(r.status===429){
+    const ate = corpo && corpo.liberado_em ? new Date(corpo.liberado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : null;
+    throw new ErroGtin('suspenso', 'Consultas suspensas pela API por códigos inválidos repetidos' + (ate?` (liberadas às ${ate}).`:'.'));
+  }
+  return { r, corpo };
 }
 function gtinMotivo403(c){
   const m = c && (c.motivo || c.message || c.erro || '');
@@ -1848,17 +1831,9 @@ function gtinMotivo403(c){
 /* Consulta um código: devolve { nome, marca, categoriaApi, ncm } ou null se não encontrado */
 async function gtinConsultar(cod){
   if(!gtinValido(cod)) throw new ErroGtin('invalido', 'Código de barras inválido (o dígito verificador não confere).');
-  let tok = await gtinToken(false);
-  const pedir = t=>gtinFetch(`/api/v3/gtin/${cod}`, { headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json' } });
-  let { r, corpo } = await pedir(tok);
-  if(r.status===401){ tok = await gtinToken(true); ({ r, corpo } = await pedir(tok)); }   // token expirou: novo login
+  const { r, corpo } = await gtinWorker('/gtin/' + cod);
   if(r.status===404) return null;
-  if(r.status===403) throw new ErroGtin('plano', gtinMotivo403(corpo));
-  if(r.status===429){
-    const ate = corpo && corpo.liberado_em ? new Date(corpo.liberado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : null;
-    throw new ErroGtin('suspenso', 'Consultas suspensas pela API por códigos inválidos repetidos' + (ate?` (liberadas às ${ate}).`:'.'));
-  }
-  if(!r.ok || !corpo) throw new ErroGtin('api', `A API GTIN respondeu com erro (${r.status}).`);
+  if(!r.ok || !corpo) throw new ErroGtin('api', (corpo && corpo.mensagem) || `A consulta falhou (erro ${r.status}).`);
   return {
     nome: arrumarCaixa(corpo.nome_acento || corpo.nome || ''),
     marca: arrumarCaixa(corpo.marca || ''),
@@ -1942,8 +1917,8 @@ async function gtinPreencherLinhaCompra(idx){
 /* ----- Configurações ----- */
 function gtinRenderConfig(){
   const d = Gtin.ler();
-  document.getElementById('cfgGtinUsuario').value = d && d.usuario || '';
-  document.getElementById('cfgGtinSenha').value = d && d.senha ? '••••••••' : '';
+  document.getElementById('cfgGtinUrl').value = d && d.url || '';
+  document.getElementById('cfgGtinChave').value = d && d.chave ? '••••••••' : '';
   document.getElementById('cfgGtinRemover').style.display = d ? '' : 'none';
   const st = document.getElementById('cfgGtinStatus');
   st.textContent = d ? (d.testadoEm ? `Configurada neste aparelho · conexão testada em ${new Date(d.testadoEm).toLocaleDateString('pt-BR')}.` : 'Configurada neste aparelho.') : 'Não configurada.';
@@ -1951,28 +1926,29 @@ function gtinRenderConfig(){
 }
 async function gtinSalvarCredenciais(){
   const atual = Gtin.ler();
-  const usuario = val('cfgGtinUsuario').trim();
-  let senha = val('cfgGtinSenha');
-  if(senha==='••••••••' && atual) senha = atual.senha;   // não mudou a senha
+  const url = normalizarUrlWorker(val('cfgGtinUrl'));
+  let chave = val('cfgGtinChave');
+  if(chave==='••••••••' && atual) chave = atual.chave;   // não mudou a chave
   const st = document.getElementById('cfgGtinStatus');
-  if(!usuario || !senha){ st.textContent = 'Informe usuário e senha.'; st.style.color = 'var(--vermelho)'; return; }
-  Gtin.gravar({ usuario, senha });
+  if(!url || !chave){ st.textContent = 'Informe o endereço do Worker e a chave do app.'; st.style.color = 'var(--vermelho)'; return; }
+  Gtin.gravar({ url, chave });
+  document.getElementById('cfgGtinUrl').value = url;
   st.textContent = 'Testando conexão…'; st.style.color = '';
   try{
-    await gtinToken(true);
+    const { r, corpo } = await gtinWorker('/status');
+    if(!r.ok || !corpo || !corpo.ok) throw new ErroGtin('api', (corpo && corpo.mensagem) || `O servidor respondeu com erro (${r.status}).`);
     const d = Gtin.ler(); d.testadoEm = new Date().toISOString(); Gtin.gravar(d);
     gtinRenderConfig();
     st.textContent = '✓ Conexão com a API GTIN funcionando. Os dados serão buscados ao cadastrar produtos.'; st.style.color = 'var(--verde)';
   }catch(e){
-    st.textContent = e.message + (e.tipo==='credenciais' ? '' : ' As credenciais foram salvas; você pode testar de novo depois.');
+    st.textContent = e.message + ' Os dados foram salvos; você pode testar de novo depois.';
     st.style.color = 'var(--vermelho)';
-    if(e.tipo==='credenciais') Gtin.gravar(null);
-    document.getElementById('cfgGtinRemover').style.display = Gtin.ler() ? '' : 'none';
+    document.getElementById('cfgGtinRemover').style.display = '';
   }
 }
 function gtinRemoverCredenciais(){
-  pedirConfirmacao('Remover o usuário e a senha da API GTIN deste aparelho? O cadastro de produtos volta a ser só manual.', ()=>{
-    Gtin.gravar(null); gtinRenderConfig(); toast('Credenciais removidas deste aparelho.');
+  pedirConfirmacao('Remover o endereço do Worker e a chave do app deste aparelho? O cadastro de produtos volta a ser só manual.', ()=>{
+    Gtin.gravar(null); gtinRenderConfig(); toast('Configuração removida deste aparelho.');
   }, 'Remover credenciais');
 }
 
