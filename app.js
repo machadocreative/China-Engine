@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.8.6';
+const VERSAO = '0.9.2';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -293,6 +293,9 @@ function abrirProduto(id){
   sel.innerHTML = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   const p = id ? prod(id) : null;
   document.getElementById('tituloProduto').textContent = p ? 'Editar produto' : 'Novo produto';
+  gtinUltimoCodigo = '';
+  const gst = document.getElementById('gtinStatus');
+  gst.className = 'dica'; gst.textContent = 'Use a câmera ou um leitor USB com este campo focado. Os dados do produto são buscados automaticamente.';
   atualizarListaFornecedores();
   document.getElementById('produtoId').value = p ? p.id : '';
   document.getElementById('pMarca').value        = p ? (p.marca||'') : '';
@@ -307,6 +310,7 @@ function abrirProduto(id){
   bArq.style.display = p ? 'inline-flex' : 'none';
   bArq.textContent = p && p.arquivado ? 'Desarquivar' : 'Arquivar';
   abrir('modalProduto');
+  if(!p) setTimeout(()=>document.getElementById('pCodigoBarras').focus(), 80);   // pronto para o leitor USB
 }
 function salvarProduto(){
   const id = document.getElementById('produtoId').value;
@@ -521,6 +525,7 @@ async function loopScan(){
       } else {
         document.getElementById(scanAlvo).value = raw;
         toast('Código de barras lido.');
+        if(scanAlvo==='pCodigoBarras') gtinPreencherCadastro();
       }
       return;
     }
@@ -727,6 +732,7 @@ function selecionarLinhaProduto(idx, id){
     const nomeEl = document.getElementById('lc_nome_'+idx);
     if(nomeEl && q) nomeEl.value = q;
     novoDiv.style.display = 'block';
+    if(val('lc_cb_'+idx)) gtinPreencherLinhaCompra(idx);   // código lido e não cadastrado: busca os dados na API
     selDiv.style.display = 'none';
   } else {
     const p = prod(id);
@@ -1549,29 +1555,35 @@ function salvarEdicaoMov(){
    CATEGORIAS (criar / editar / remover)
    ========================================================= */
 let catEditando = null;
-function abrirCategorias(){ catEditando=null; renderCategorias(); abrir('modalCat'); }
+/* Categorias são gerenciadas só em Configurações (bloco "Categorias de produtos") */
 function renderCategorias(){
-  document.getElementById('listaCat').innerHTML = estado.categorias.map((c,i)=>{
-    const emUso = estado.produtos.some(p=>p.categoria===c);
+  const ativa = document.getElementById('cfgListaCat');
+  if(!ativa) return;
+  const total = document.getElementById('cfgCatTotal');
+  if(total) total.textContent = `${estado.categorias.length} categoria(s)`;
+  if(!estado.categorias.length){ ativa.innerHTML = '<li class="cat-vazia">Nenhuma categoria cadastrada.</li>'; return; }
+  ativa.innerHTML = estado.categorias.map((c,i)=>{
+    const n = estado.produtos.filter(p=>p.categoria===c).length;
     if(catEditando===i){
       return `<li>
-        <input type="text" id="catInput" value="${escapar(c)}" style="flex:1;padding:7px 9px;border:1px solid var(--borda);border-radius:8px;font-size:14px" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')salvarEdicaoCategoria(${i})">
+        <input type="text" id="catInput" value="${escapar(c)}" style="flex:1;padding:7px 9px;border:1px solid var(--borda);border-radius:8px;font-size:14px" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')salvarEdicaoCategoria(${i});if(event.key==='Escape'){catEditando=null;renderCategorias()}">
         <button class="btn btn-amarelo btn-mini" onclick="salvarEdicaoCategoria(${i})">Salvar</button>
         <button class="btn btn-claro btn-mini" onclick="catEditando=null;renderCategorias()">Cancelar</button>
       </li>`;
     }
-    return `<li><span style="flex:1">${escapar(c)}</span>
+    return `<li><span class="cat-nome">${escapar(c)}<small>${n ? n+(n===1?' produto':' produtos') : 'sem produtos'}</small></span>
       <button class="btn btn-claro btn-mini" onclick="catEditando=${i};renderCategorias()">Editar</button>
-      <button class="btn btn-claro btn-mini" onclick="removerCategoriaIdx(${i})" ${emUso?'disabled title="Em uso por produtos" style="opacity:.4"':''}>Remover</button></li>`;
+      <button class="btn btn-claro btn-mini" onclick="removerCategoriaIdx(${i})" ${n?'disabled title="Em uso por produtos: mova os produtos para outra categoria antes de remover" style="opacity:.4"':''}>Remover</button></li>`;
   }).join('');
   if(catEditando!==null){ const inp=document.getElementById('catInput'); if(inp) setTimeout(()=>inp.focus(),30); }
 }
 function adicionarCategoria(){
-  const v = sanitizarCategoria(document.getElementById('novaCat').value).trim();
+  const campo = document.getElementById('cfgNovaCat');
+  const v = sanitizarCategoria(campo.value).trim();
   if(!v){ toast('Informe um nome válido.'); return; }
   if(estado.categorias.some(c=>c.toLowerCase()===v.toLowerCase())){ toast('Essa categoria já existe.'); return; }
   estado.categorias.push(v);
-  document.getElementById('novaCat').value='';
+  campo.value='';
   salvar(); renderCategorias(); render(); toast('Categoria adicionada.');
 }
 function salvarEdicaoCategoria(i){
@@ -1597,8 +1609,10 @@ function salvarEdicaoCategoria(i){
 function removerCategoriaIdx(i){
   const c = estado.categorias[i];
   if(estado.produtos.some(p=>p.categoria===c)){ toast('Categoria em uso — não pode ser removida.'); return; }
-  estado.categorias.splice(i,1);
-  salvar(); renderCategorias(); render();
+  pedirConfirmacao(`Remover a categoria “${c}”?`, ()=>{
+    estado.categorias.splice(i,1); catEditando = null;
+    salvar(); renderCategorias(); render(); toast('Categoria removida.');
+  }, 'Remover categoria');
 }
 
 /* =========================================================
@@ -1729,6 +1743,8 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
+  gtinRenderConfig();
+  catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
   if(!u){ el.textContent = 'Nenhum backup baixado ainda neste navegador.'; el.style.color='var(--vermelho)'; return; }
@@ -1747,6 +1763,217 @@ function alterarSenha(){
   salvar();
   ['cfgSenhaAtual','cfgSenhaNova','cfgSenhaRep'].forEach(id=>document.getElementById(id).value='');
   mostrarAviso('Senha alterada', '<p>A senha do gerente foi alterada.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Ela vale para este navegador e entra no próximo backup. Se você restaurar um backup antigo, volta a senha que estava nele.</p>');
+}
+
+/* =========================================================
+   CONSULTA POR CÓDIGO DE BARRAS — API GTIN (gtin.rscsistemas.com.br)
+   - Usuário e senha da API ficam SÓ neste aparelho (localStorage próprio),
+     fora do `estado`: não entram no backup nem no código do GitHub.
+   - Fluxo da API: usuário+senha (Basic) → token de 1 h; renovação com refresh token (7 dias).
+   - O código é validado (dígito verificador) antes de consultar: a API suspende a conta
+     por 1 h depois de 10 códigos inválidos em 20 min.
+   ========================================================= */
+const GTIN_API = 'https://gtin.rscsistemas.com.br';
+const GTIN_CHAVE = 'chinatown_gtin_v1';   // localStorage separado do estado do app
+
+const Gtin = {
+  ler(){ try{ return JSON.parse(localStorage.getItem(GTIN_CHAVE)) || null; }catch(e){ return null; } },
+  gravar(d){ try{ if(d) localStorage.setItem(GTIN_CHAVE, JSON.stringify(d)); else localStorage.removeItem(GTIN_CHAVE); }catch(e){} },
+  configurado(){ const d = this.ler(); return !!(d && d.usuario && d.senha); }
+};
+
+/* Dígito verificador GTIN-8/12/13/14 */
+function gtinValido(cod){
+  if(!/^(\d{8}|\d{12,14})$/.test(cod)) return false;
+  const dig = cod.split('').map(Number), dv = dig.pop();
+  const soma = dig.reverse().reduce((s,d,i)=>s + d*(i%2===0?3:1), 0);
+  return (10 - soma%10)%10 === dv;
+}
+function base64Utf8(t){ return btoa(String.fromCharCode(...new TextEncoder().encode(t))); }
+
+class ErroGtin extends Error{ constructor(tipo, msg){ super(msg); this.tipo = tipo; } }
+
+async function gtinFetch(caminho, opcoes){
+  let r;
+  try{ r = await fetch(GTIN_API + caminho, opcoes); }
+  catch(e){
+    // Falha de rede antes de qualquer resposta: sem internet ou o navegador bloqueou (CORS)
+    throw new ErroGtin('rede', navigator.onLine===false
+      ? 'Sem conexão com a internet.'
+      : 'O navegador não conseguiu falar com a API GTIN. Se a internet estiver funcionando, a API provavelmente não aceita chamadas direto do navegador (CORS) e vamos precisar do servidor intermediário.');
+  }
+  let corpo = null;
+  try{ corpo = await r.clone().json(); }catch(e){}
+  return { r, corpo };
+}
+
+/* Token válido (gera, renova ou reaproveita) */
+async function gtinToken(forcarLogin){
+  const d = Gtin.ler();
+  if(!d || !d.usuario || !d.senha) throw new ErroGtin('config', 'Configure a consulta por código de barras em Configurações.');
+  const agora = Date.now();
+  if(!forcarLogin && d.token && d.expira > agora + 60000) return d.token;
+  // tenta renovar com o refresh token
+  if(!forcarLogin && d.refresh && d.refreshExpira > agora + 60000){
+    const { r, corpo } = await gtinFetch('/api/auth/refresh', {
+      method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
+      body: JSON.stringify({ refresh_token:d.refresh })
+    });
+    if(r.ok && corpo && (corpo.access_token||corpo.token)){ gtinGuardarToken(d, corpo); return d.token; }
+  }
+  // login com usuário e senha
+  const { r, corpo } = await gtinFetch('/api/v3/oauth/token', {
+    method:'POST', body:'',
+    headers:{ 'Authorization':'Basic ' + base64Utf8(d.usuario + ':' + d.senha), 'Accept':'application/json' }
+  });
+  if(r.status===401) throw new ErroGtin('credenciais', 'Usuário ou senha da API GTIN incorretos.');
+  if(r.status===403) throw new ErroGtin('plano', gtinMotivo403(corpo));
+  if(!r.ok || !corpo) throw new ErroGtin('api', `A API GTIN respondeu com erro (${r.status}).`);
+  gtinGuardarToken(d, corpo);
+  return d.token;
+}
+function gtinGuardarToken(d, c){
+  d.token = c.access_token || c.token;
+  d.expira = Date.now() + (c.expires_in||3600)*1000;
+  if(c.refresh_token){ d.refresh = c.refresh_token; d.refreshExpira = Date.now() + (c.refresh_expires_in||604800)*1000; }
+  Gtin.gravar(d);
+}
+function gtinMotivo403(c){
+  const m = c && (c.motivo || c.message || c.erro || '');
+  if(/termos/i.test(m)) return 'Aceite os termos de uso no site da API GTIN para liberar as consultas.';
+  if(/limite/i.test(m)) return 'O limite de consultas do seu plano na API GTIN foi atingido.';
+  return 'A API GTIN recusou a consulta (limite do plano ou termos de uso pendentes).';
+}
+
+/* Consulta um código: devolve { nome, marca, categoriaApi, ncm } ou null se não encontrado */
+async function gtinConsultar(cod){
+  if(!gtinValido(cod)) throw new ErroGtin('invalido', 'Código de barras inválido (o dígito verificador não confere).');
+  let tok = await gtinToken(false);
+  const pedir = t=>gtinFetch(`/api/v3/gtin/${cod}`, { headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json' } });
+  let { r, corpo } = await pedir(tok);
+  if(r.status===401){ tok = await gtinToken(true); ({ r, corpo } = await pedir(tok)); }   // token expirou: novo login
+  if(r.status===404) return null;
+  if(r.status===403) throw new ErroGtin('plano', gtinMotivo403(corpo));
+  if(r.status===429){
+    const ate = corpo && corpo.liberado_em ? new Date(corpo.liberado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : null;
+    throw new ErroGtin('suspenso', 'Consultas suspensas pela API por códigos inválidos repetidos' + (ate?` (liberadas às ${ate}).`:'.'));
+  }
+  if(!r.ok || !corpo) throw new ErroGtin('api', `A API GTIN respondeu com erro (${r.status}).`);
+  return {
+    nome: arrumarCaixa(corpo.nome_acento || corpo.nome || ''),
+    marca: arrumarCaixa(corpo.marca || ''),
+    categoriaApi: corpo.categoria || '',
+    ncm: String(corpo.ncm || '').replace(/\D/g,'')
+  };
+}
+/* "CABO USB C 1M" → "Cabo USB C 1M" (só mexe em textos todos em maiúsculas) */
+function arrumarCaixa(t){
+  t = String(t).trim();
+  if(!t || t !== t.toUpperCase() || !/[A-ZÀ-Ý]{2}/.test(t)) return t;
+  return t.toLowerCase().replace(/(^|[\s\-\/(])([a-zà-ÿ])/g, (m,a,b)=>a+b.toUpperCase())
+    .replace(/\b(usb|hdmi|led|lcd|sd|ssd|hd|tv|pc|ps\d|gb|tb|mb|mah|rgb|uv)\b/gi, x=>x.toUpperCase());
+}
+
+/* Categoria sugerida, só se existir no China Engine.
+   Ordem: palavras do nome (mais específicas) → NCM → categoria da API. */
+function semAcento(t){ return String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+const GTIN_REGRAS = [
+  { cat:'Joysticks', nome:/\b(controle|joystick|gamepad|dualsense|dualshock)\b/ },
+  { cat:'Consoles',  nome:/\b(console|playstation|xbox series|xbox one|nintendo switch)\b/ },
+  { cat:'Games',     nome:/\b(jogo|game|midia fisica)\b/ },
+  { cat:'Celulares', nome:/\b(celular|smartphone|iphone)\b/, ncm:/^85171[34]/ },
+  { cat:'Cabos',     nome:/\bcabo\b/, ncm:/^8544/ },
+  { cat:'Memória e armazenamento', nome:/\b(pen ?drive|cartao de memoria|micro ?sd|ssd|hd externo|memoria ram)\b/, ncm:/^(8523|847170)/ },
+  { cat:'Acessórios', nome:/\b(fone|headset|carregador|fonte|capa|capinha|pelicula|suporte|power ?bank|adaptador|mouse|teclado)\b/, ncm:/^(8518|850440|8507)/ }
+];
+function categoriaSugerida(d){
+  const existe = nome=>estado.categorias.find(c=>semAcento(c)===semAcento(nome));
+  const nome = semAcento(d.nome);
+  for(const r of GTIN_REGRAS) if(r.nome && r.nome.test(nome) && existe(r.cat)) return existe(r.cat);
+  for(const r of GTIN_REGRAS) if(r.ncm && d.ncm && r.ncm.test(d.ncm) && existe(r.cat)) return existe(r.cat);
+  if(d.categoriaApi && existe(d.categoriaApi)) return existe(d.categoriaApi);
+  return null;
+}
+
+/* ----- Cadastro de Novo produto: preenche marca, nome e categoria ----- */
+let gtinUltimoCodigo = '';
+async function gtinPreencherCadastro(){
+  const st = document.getElementById('gtinStatus');
+  const cod = val('pCodigoBarras').trim();
+  if(!cod || cod===gtinUltimoCodigo || !aberto('modalProduto') || val('produtoId')) return;   // só para produto novo
+  gtinUltimoCodigo = cod;
+  const status = (txt, tipo)=>{ st.textContent = txt; st.className = 'dica gtin-st ' + (tipo||''); };
+  if(!Gtin.configurado()){ status('Dica: configure a consulta por código de barras em Configurações para preencher os dados automaticamente.'); return; }
+  if(!gtinValido(cod)){ status('Código de barras inválido: confira os números.', 'erro'); return; }
+  status('Buscando dados do produto…', 'carregando');
+  try{
+    const d = await gtinConsultar(cod);
+    if(val('pCodigoBarras').trim()!==cod) return;   // o código mudou enquanto consultava
+    if(!d){ status('Produto não encontrado na base da API. Preencha os dados manualmente.', 'aviso'); return; }
+    const preenchidos = [];
+    const pore = (id, v, rot)=>{ const el = document.getElementById(id); if(v && !el.value.trim()){ el.value = v; preenchidos.push(rot); } };
+    pore('pMarca', d.marca, 'marca');
+    pore('pNome', d.nome, 'nome');
+    const cat = categoriaSugerida(d);
+    if(cat){ document.getElementById('pCategoria').value = cat; preenchidos.push('categoria'); }
+    status(preenchidos.length
+      ? `Encontrado: ${preenchidos.join(', ')} preenchido(s). Confira antes de salvar.${cat?'':' Categoria não identificada: escolha na lista.'}`
+      : 'Produto encontrado, mas os campos já estavam preenchidos.', 'ok');
+  }catch(e){
+    gtinUltimoCodigo = '';   // permite tentar de novo
+    status(e.message || 'Não foi possível consultar a API GTIN.', 'erro');
+  }
+}
+
+/* ----- Compra em lote: produto novo com código lido ----- */
+async function gtinPreencherLinhaCompra(idx){
+  const cod = val('lc_cb_'+idx);
+  if(!cod || !Gtin.configurado() || !gtinValido(cod)) return;
+  try{
+    const d = await gtinConsultar(cod);
+    if(!d || !document.getElementById('lc_nome_'+idx)) { if(!d) toast('Produto não encontrado na base da API GTIN.'); return; }
+    const pore = (id, v)=>{ const el = document.getElementById(id); if(v && el && !el.value.trim()) el.value = v; };
+    pore('lc_marca_'+idx, d.marca); pore('lc_nome_'+idx, d.nome);
+    const cat = categoriaSugerida(d); if(cat) document.getElementById('lc_cat_'+idx).value = cat;
+    toast('Dados do produto preenchidos pela API GTIN. Confira antes de registrar.');
+  }catch(e){ toast(e.message); }
+}
+
+/* ----- Configurações ----- */
+function gtinRenderConfig(){
+  const d = Gtin.ler();
+  document.getElementById('cfgGtinUsuario').value = d && d.usuario || '';
+  document.getElementById('cfgGtinSenha').value = d && d.senha ? '••••••••' : '';
+  document.getElementById('cfgGtinRemover').style.display = d ? '' : 'none';
+  const st = document.getElementById('cfgGtinStatus');
+  st.textContent = d ? (d.testadoEm ? `Configurada neste aparelho · conexão testada em ${new Date(d.testadoEm).toLocaleDateString('pt-BR')}.` : 'Configurada neste aparelho.') : 'Não configurada.';
+  st.style.color = '';
+}
+async function gtinSalvarCredenciais(){
+  const atual = Gtin.ler();
+  const usuario = val('cfgGtinUsuario').trim();
+  let senha = val('cfgGtinSenha');
+  if(senha==='••••••••' && atual) senha = atual.senha;   // não mudou a senha
+  const st = document.getElementById('cfgGtinStatus');
+  if(!usuario || !senha){ st.textContent = 'Informe usuário e senha.'; st.style.color = 'var(--vermelho)'; return; }
+  Gtin.gravar({ usuario, senha });
+  st.textContent = 'Testando conexão…'; st.style.color = '';
+  try{
+    await gtinToken(true);
+    const d = Gtin.ler(); d.testadoEm = new Date().toISOString(); Gtin.gravar(d);
+    gtinRenderConfig();
+    st.textContent = '✓ Conexão com a API GTIN funcionando. Os dados serão buscados ao cadastrar produtos.'; st.style.color = 'var(--verde)';
+  }catch(e){
+    st.textContent = e.message + (e.tipo==='credenciais' ? '' : ' As credenciais foram salvas; você pode testar de novo depois.');
+    st.style.color = 'var(--vermelho)';
+    if(e.tipo==='credenciais') Gtin.gravar(null);
+    document.getElementById('cfgGtinRemover').style.display = Gtin.ler() ? '' : 'none';
+  }
+}
+function gtinRemoverCredenciais(){
+  pedirConfirmacao('Remover o usuário e a senha da API GTIN deste aparelho? O cadastro de produtos volta a ser só manual.', ()=>{
+    Gtin.gravar(null); gtinRenderConfig(); toast('Credenciais removidas deste aparelho.');
+  }, 'Remover credenciais');
 }
 
 /* =========================================================

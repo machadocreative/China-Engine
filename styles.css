@@ -281,6 +281,12 @@ main{
 .lista-cat{list-style:none}
 .lista-cat li{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--borda)}
 .lista-cat li:first-child{border-top:none}
+.lista-cat .cat-nome{flex:1;min-width:0}
+.lista-cat .cat-nome small{display:block;font-size:12px;color:var(--texto-sec)}
+.lista-cat .cat-vazia{color:var(--texto-sec);font-size:14px}
+.cfg-cat-nova{display:flex;gap:8px;margin-bottom:6px}
+.cfg-cat-nova input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--borda);border-radius:10px;background:#fff}
+.cfg-lista-cat{border-top:1px solid var(--borda);margin-top:10px}
 
 /* ===== Histórico (layout por dia, inspirado em extrato) ===== */
 /* No Histórico, o main não rola: a tela ocupa a altura toda e só a lista rola */
@@ -501,6 +507,12 @@ body.modo-historico main{overflow:hidden;display:flex;flex-direction:column;padd
 .ds-tip .ds-tip-sec{color:#C9C7BE}
 
 /* ===== Configurações ===== */
+.gtin-st.carregando{color:var(--texto-sec)}
+.gtin-st.carregando::before{content:"";display:inline-block;width:10px;height:10px;margin-right:6px;border:2px solid #CFCCC2;border-top-color:var(--texto);border-radius:50%;vertical-align:-1px;animation:gtin-gira .7s linear infinite}
+@keyframes gtin-gira{to{transform:rotate(360deg)}}
+.gtin-st.ok{color:var(--verde)}
+.gtin-st.aviso{color:#8A6D00}
+.gtin-st.erro{color:var(--vermelho)}
 .cfg-bloco{background:var(--card);border:1px solid var(--borda);border-radius:var(--raio);padding:18px;margin-bottom:16px;max-width:640px}
 .cfg-cab h3{font-family:var(--display);font-weight:700;font-size:17px;margin-bottom:3px}
 .cfg-cab small{display:block;color:var(--texto-sec);font-size:13px;margin-bottom:14px}

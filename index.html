@@ -36,7 +36,6 @@
   </button>
   <!-- Ações do cabeçalho: data-view indica em qual módulo o botão aparece (sem data-view = sempre) -->
   <div class="acoes">
-    <button class="btn btn-claro btn-mini" data-view="estoque" onclick="abrirCategorias()">Categorias</button>
     <button class="btn btn-claro btn-mini" data-view="financeiro" onclick="abrirConfigTeto()">Configurar teto</button>
     <button class="btn btn-amarelo" data-view="financeiro" onclick="document.getElementById('arquivoXml').click()">+ Importar XML</button>
     <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
@@ -211,6 +210,16 @@
   </div>
 
   <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Categorias de produtos</h3>
+      <small>Crie, renomeie ou remova categorias. Renomear move os produtos para o novo nome; só é possível remover categorias sem produtos. <span id="cfgCatTotal"></span></small></div>
+    <div class="cfg-cat-nova">
+      <input type="text" id="cfgNovaCat" placeholder="Nova categoria (ex: Áudio)" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')adicionarCategoria()">
+      <button class="btn btn-amarelo" onclick="adicionarCategoria()">Adicionar</button>
+    </div>
+    <ul class="lista-cat cfg-lista-cat" id="cfgListaCat"></ul>
+  </div>
+
+  <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Senha do gerente</h3>
       <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
     <div class="cfg-form">
@@ -221,6 +230,22 @@
       </div>
       <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
       <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
+    </div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Consulta por código de barras</h3>
+      <small>Preenche marca, nome e categoria ao cadastrar um produto novo, usando a API GTIN (gtin.rscsistemas.com.br). Informe o usuário e a senha da sua conta na API. Eles ficam salvos <b>só neste aparelho</b>: não vão para o GitHub nem para o arquivo de backup.</small></div>
+    <div class="cfg-form">
+      <div class="linha-campos">
+        <div class="campo"><label>Usuário da API</label><input type="text" id="cfgGtinUsuario" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="campo"><label>Senha da API</label><input type="password" id="cfgGtinSenha" autocomplete="new-password"></div>
+      </div>
+      <div class="cfg-acoes">
+        <button class="btn btn-escuro" onclick="gtinSalvarCredenciais()">Salvar e testar</button>
+        <button class="btn btn-claro" id="cfgGtinRemover" onclick="gtinRemoverCredenciais()">Remover deste aparelho</button>
+      </div>
+      <div class="dica" id="cfgGtinStatus" style="margin-top:10px"></div>
     </div>
   </div>
 </section>
@@ -343,6 +368,16 @@
     </div>
     <div class="modal-corpo">
       <input type="hidden" id="produtoId">
+      <!-- Código de barras primeiro: ao ler o código, a consulta GTIN preenche os campos abaixo -->
+      <div class="campo">
+        <label>Código de barras (opcional)</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();gtinPreencherCadastro();}" onchange="gtinPreencherCadastro()">
+          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
+        </div>
+        <div class="dica" id="gtinStatus">Use a câmera ou um leitor USB com este campo focado. Os dados do produto são buscados automaticamente.</div>
+      </div>
       <div class="linha-campos">
         <div class="campo" style="flex:.8">
           <label>Marca / fabricante</label>
@@ -364,14 +399,6 @@
           <input type="text" id="pCodigo" placeholder="Gerado automaticamente se vazio" style="flex:1">
           <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('pCodigo').value=gerarSku(document.getElementById('pCategoria').value)">Gerar</button>
         </div>
-      </div>
-      <div class="campo">
-        <label>Código de barras (opcional)</label>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
-          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
-        </div>
-        <div class="dica">Use a câmera (precisa de permissão) ou um leitor USB com este campo focado.</div>
       </div>
       <div class="linha-campos">
         <div class="campo">
@@ -429,26 +456,6 @@
       <button class="fechar" onclick="fechar('modalEntrada')">&times;</button>
     </div>
     <div class="modal-corpo" id="corpoEntrada"></div>
-  </div>
-</div>
-
-<!-- ===== Modal: categorias ===== -->
-<div class="overlay" id="modalCat">
-  <div class="modal">
-    <div class="modal-cabecalho">
-      <h2>Categorias</h2>
-      <button class="fechar" onclick="fechar('modalCat')">&times;</button>
-    </div>
-    <div class="modal-corpo">
-      <div class="linha-campos" style="align-items:flex-end">
-        <div class="campo" style="margin-bottom:0">
-          <label>Nova categoria</label>
-          <input type="text" id="novaCat" placeholder="Ex: Áudio" oninput="this.value=sanitizarCategoria(this.value)">
-        </div>
-        <button class="btn btn-amarelo" style="margin-bottom:0" onclick="adicionarCategoria()">Adicionar</button>
-      </div>
-      <ul class="lista-cat" id="listaCat" style="margin-top:16px"></ul>
-    </div>
   </div>
 </div>
 

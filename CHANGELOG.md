@@ -32,6 +32,48 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.9.2] - 2026-11-09
+
+### Removido
+
+- Botão "Categorias" do cabeçalho da tela Estoque e o modal de categorias. As categorias agora são gerenciadas só em **Configurações → Categorias de produtos**, deixando o cabeçalho limpo.
+
+---
+
+## [0.9.1] - 2026-11-09
+
+### Adicionado
+
+- **Configurações → Categorias de produtos:** gerenciamento completo das categorias direto na tela de Configurações. É possível adicionar (Enter ou botão), renomear (Enter salva, Esc cancela) e remover. Cada categoria mostra quantos produtos usa.
+- As mesmas regras de antes valem aqui: nomes sanitizados, sem duplicados; renomear uma categoria com estoque ativo pede confirmação e move os produtos para o novo nome; remover só é possível em categorias sem produtos.
+
+### Alterado
+
+- Remover uma categoria agora pede confirmação.
+
+---
+
+## [0.9.0] - 2026-11-09
+
+### Adicionado
+
+**Consulta por código de barras (API GTIN)**
+- Integração com a API GTIN (gtin.rscsistemas.com.br) para preencher **marca, nome e categoria** ao cadastrar um produto novo.
+- Em **Configurações**, novo bloco "Consulta por código de barras": usuário e senha da conta na API, com "Salvar e testar" (testa a conexão na hora) e "Remover deste aparelho". As credenciais ficam salvas só no aparelho, separadas dos dados do app: não vão para o GitHub nem para o arquivo de backup.
+- **Novo produto:** ao ler o código de barras (câmera ou leitor USB) ou digitá-lo, o app consulta a API e preenche os campos que estiverem vazios. Uma linha de status abaixo do campo mostra o resultado: encontrado, não encontrado, código inválido ou erro.
+- **Nova compra em lote:** ao cadastrar um produto novo numa linha com código lido e não cadastrado no estoque, os dados também são buscados na API.
+- **Categoria:** só é sugerida se existir no China Engine. A sugestão usa palavras do nome (ex.: "controle" → Joysticks, "cabo" → Cabos), depois o NCM (ex.: 8544 → Cabos, 8517 → Celulares, 8523 → Memória e armazenamento) e, por fim, a categoria informada pela API.
+- Nomes que vêm em letras maiúsculas são ajustados (ex.: "CABO USB C 2M" → "Cabo USB C 2m").
+- O token da API (válido por 1 hora) é gerado e renovado automaticamente.
+- O dígito verificador é conferido antes de consultar, para evitar a suspensão da conta que a API aplica após vários códigos inválidos.
+- Mensagens claras para usuário ou senha incorretos, limite do plano, termos de uso pendentes, suspensão temporária e bloqueio de conexão pelo navegador.
+
+### Alterado
+
+- No cadastro de Novo produto, o campo "Código de barras" passou para o topo do formulário e já vem selecionado ao abrir, pronto para o leitor USB.
+
+---
+
 ## [0.8.6] - 2026-11-07
 
 ### Alterado
@@ -402,6 +444,9 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.9.2]: #
+[0.9.1]: #
+[0.9.0]: #
 [0.8.6]: #
 [0.8.5]: #
 [0.8.4]: #
