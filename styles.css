@@ -382,9 +382,6 @@ body.modo-historico main{overflow:hidden;display:flex;flex-direction:column;padd
 .hx-tag.neg{background:var(--vermelho-claro);color:var(--vermelho)}
 .hx-tag.pend{background:var(--amarelo-claro);color:#8A6D00}
 .hx-tag.neu{background:#ECEAE3;color:var(--texto-sec)}
-.hx-tag.ini{background:#ECEAE3;color:var(--texto-sec);border:1px dashed var(--borda-forte)}
-.hx-valor.ini{color:var(--texto-sec)}
-.hx-valor .hx-fora{display:block;font-size:10.5px;font-weight:500;color:var(--texto-sec)}
 
 /* ===== Painel do Produto (abas) ===== */
 #modalMov .modal-corpo{padding-top:0}
@@ -711,10 +708,3 @@ header .acoes [data-view].fora{display:none}
   .nf-linha .nf-data-mob{display:block}
   header .titulo b{font-size:18px}
 }
-
-/* ===== Estoque inicial no cadastro de produto (pi-) ===== */
-.pi-bloco{border:1px dashed var(--borda-forte);border-radius:12px;padding:12px 12px 10px;margin:2px 0 14px;background:#FBFAF6}
-.pi-tit{font-weight:600;font-size:14px;margin-bottom:8px}
-.pi-tit small{font-weight:500;color:var(--texto-sec);margin-left:4px}
-.pi-bloco .linha-campos .campo{margin-bottom:8px}
-.pi-bloco .dica{margin:0}

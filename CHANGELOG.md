@@ -32,24 +32,6 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
-## [0.9.4] - 2026-11-09
-
-### Adicionado
-
-**Estoque inicial (cadastro da loja)**
-- Novo bloco opcional "Estoque que já está na loja" no cadastro de **Novo produto**, com quantidade e custo por unidade. O produto já nasce com estoque, sem precisar registrar uma entrada depois.
-- Esse lançamento vira uma entrada marcada como **Estoque inicial**. Ela conta no estoque, no custo médio, na composição (FIFO) e no lucro, mas **não** é tratada como compra.
-- No Histórico, aparece com selo cinza tracejado "Estoque inicial", mostra o valor em estoque (sem sinal) com a nota "fora do saldo" e não entra no "Saldo no dia".
-- Novo tipo "Estoque inicial" no filtro Tipo do Histórico.
-
-### Alterado
-
-- Painel do Produto: na Composição, os lotes de estoque inicial aparecem como "Estoque inicial" em vez de "Não informado". Esses lotes também não entram na aba Fornecedores, já que não são compras.
-- Edição de movimentação: o estoque inicial pode ter data, quantidade e custo corrigidos, mas não tem campo de fornecedor.
-- Compras feitas daqui em diante, por Registrar entrada ou Compra em lote, continuam como "Aquisição" e pesam no saldo do dia.
-
----
-
 ## [0.9.3] - 2026-11-09
 
 ### Adicionado
@@ -476,7 +458,6 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
-[0.9.4]: #
 [0.9.3]: #
 [0.9.2]: #
 [0.9.1]: #

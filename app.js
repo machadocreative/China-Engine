@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.9.4';
+const VERSAO = '0.9.3';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -104,7 +104,7 @@ function composicaoDetalhada(p){
     let g = grupos.find(x=>Math.abs(x.custo-l.m.custoUnit)<0.001);
     if(!g){ g = { custo:l.m.custoUnit, qtd:0, lotes:[] }; grupos.push(g); }
     g.qtd += l.resta;
-    g.lotes.push({ data:l.m.data, qtdCompra:l.m.qtd, resta:l.resta, fornecedor:fornecedorDaEntrada(p, l.m), inicial:!!l.m.inicial });
+    g.lotes.push({ data:l.m.data, qtdCompra:l.m.qtd, resta:l.resta, fornecedor:fornecedorDaEntrada(p, l.m) });
   });
   return grupos;
 }
@@ -309,9 +309,6 @@ function abrirProduto(id){
   const bArq = document.getElementById('btnArquivarProduto');
   bArq.style.display = p ? 'inline-flex' : 'none';
   bArq.textContent = p && p.arquivado ? 'Desarquivar' : 'Arquivar';
-  document.getElementById('pBlocoInicial').style.display = p ? 'none' : 'block';   // só no produto novo
-  document.getElementById('pQtdInicial').value = '';
-  document.getElementById('pCustoInicial').value = '';
   abrir('modalProduto');
   if(!p) setTimeout(()=>document.getElementById('pCodigoBarras').focus(), 80);   // pronto para o leitor USB
 }
@@ -341,15 +338,8 @@ function salvarProduto(){
       aplicar();
     }
   } else {
-    // Estoque inicial (opcional): mercadoria que já estava na loja — não é compra, fica fora do saldo do dia
-    const qIni = parseInt(val('pQtdInicial'))||0;
-    const cTxt = val('pCustoInicial').trim(), cIni = parseFloat(cTxt);
-    if(qIni<0){ toast('A quantidade não pode ser negativa.'); return; }
-    if(qIni>0 && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
-    const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
-    estado.produtos.push({ id:uid(), ...dados, movimentacoes:movs });
-    salvar(); fechar('modalProduto'); render(); renderViewAtual();
-    toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque inicial.` : 'Produto salvo.');
+    estado.produtos.push({ id:uid(), ...dados, movimentacoes:[] });
+    salvar(); fechar('modalProduto'); render(); toast('Produto salvo.');
   }
 }
 function excluirProduto(){ excluirProdutoId(document.getElementById('produtoId').value); }
@@ -823,7 +813,6 @@ function fornecedorDaEntrada(p, m){ return (m.fornecedor || '').trim(); }
 function fornecedoresDe(p, incluirSem){
   const grupos = {}, sem = [];
   entradas(p).forEach(m=>{
-    if(m.inicial) return;   // estoque inicial não é compra de fornecedor
     const f = fornecedorDaEntrada(p, m);
     if(!f){ sem.push(m); return; }
     (grupos[f] = grupos[f] || []).push(m);
@@ -912,7 +901,7 @@ function ppEstoque(p){
           </div>
           ${g.lotes.map((l,li)=>`<div class="cp-lote">
             <span class="cp-data">${fmtData(l.data)}</span>
-            <span class="cp-forn">${l.inicial?'<i>Estoque inicial</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
+            <span class="cp-forn">${l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
             <span class="cp-resta">${l.resta===l.qtdCompra ? l.resta+' un.' : `${l.resta} <small>de ${l.qtdCompra}</small> un.`}</span>
           </div>`).join('')}
         </div>`).join('')}</div>`
@@ -952,7 +941,7 @@ function ppMovimentacoes(p){
         return `<div class="hx-linha pp-linha" data-pid="${p.id}" data-mid="${m.id}" title="Toque e segure para editar">
           <div class="hx-mov"><span class="hx-tag ${c}">${escapar(rotuloMov(m))}</span>${extra?`<small class="pp-forn">${escapar(extra)}</small>`:''}</div>
           <div class="num">${m.qtd} un.</div>
-          <div class="num hx-valor ${v?c:''}">${valorHtml(v)}</div>
+          <div class="num hx-valor ${v?c:''}">${v ? sinal(v.total)+fmtBRL(Math.abs(v.total))+`<small>${fmtBRL(v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
         </div>`; }).join('')}
     </div>`).join('') + `</div>`;
 }
@@ -1194,34 +1183,25 @@ let histPor = 'data', histDir = 'desc';
    Venda / recebido = dinheiro entra (verde) · Aquisição = dinheiro sai (vermelho)
    A receber pendente = âmbar · Perda, devolução, ajuste, outros = neutro */
 function classeMov(m){
-  if(m.tipo==='entrada') return m.inicial ? 'ini' : 'neg';
+  if(m.tipo==='entrada') return 'neg';
   if(m.motivo==='Venda') return 'pos';
   if(m.motivo==='A receber') return m.recebido ? 'pos' : 'pend';
   return 'neu';
 }
 function rotuloMov(m){
-  if(m.tipo==='entrada') return m.inicial ? 'Estoque inicial' : 'Aquisição';
+  if(m.tipo==='entrada') return 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
   return m.motivo || 'Saída';
 }
-/* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
-   Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
+/* Valor total da movimentação com sinal do caixa (null = sem valor financeiro) */
 function valorMov(m){
-  if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
   if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
   return null;
 }
-/* Célula de valor (Histórico e Painel do Produto) */
-function valorHtml(v){
-  if(!v) return '<span class="hx-sem">—</span>';
-  if(v.foraCaixa) return `${fmtBRL(v.total)}<small>${fmtBRL(v.unit)}/un</small><span class="hx-fora">fora do saldo</span>`;
-  const s = v.total>0 ? '+' : v.total<0 ? '−' : '';
-  return `${s}${fmtBRL(Math.abs(v.total))}<small>${fmtBRL(v.unit)}/un</small>`;
-}
 function tipoFiltroMov(m){
-  if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
+  if(m.tipo==='entrada') return 'aquisicao';
   if(m.motivo==='Venda') return 'venda';
   if(m.motivo==='A receber') return 'areceber';
   return 'outras';
@@ -1394,7 +1374,7 @@ function renderHistorico(){
   const fmtSem = v=> fmtBRL(Math.abs(v));
 
   cont.innerHTML = dias.map(d=>{
-    const saldo = d.itens.reduce((s,l)=>s+(l.v && !l.v.foraCaixa ? l.v.total : 0),0);
+    const saldo = d.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
     const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
     return `<div class="hx-dia">
       <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
@@ -1406,7 +1386,7 @@ function renderHistorico(){
         </div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num">${l.qtd}</div>
-        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}</div>
+        <div class="num hx-valor ${l.v?c:''}">${l.v ? sinal(l.v.total)+fmtSem(l.v.total)+`<small>${fmtBRL(l.v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
       </div>`; }).join('')}
       <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
     </div>`;
@@ -1452,8 +1432,7 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
-    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque inicial: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
-      : `<div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>`}
+    <div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>
     ` : `
     <div class="campo"><label>Motivo</label>
       <select id="emMotivo" onchange="ajustarEdicaoMov()">${motivos.map(x=>`<option ${x===m.motivo?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -1497,11 +1476,11 @@ function excluirMovimentacao(){
   const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
   if(depois < 0){
     mostrarAviso('Não é possível excluir',
-      `<p>Excluir ${m.inicial?'este estoque inicial':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+      `<p>Excluir esta aquisição de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
        <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
     return;
   }
-  const desc = `${ent?(m.inicial?'o estoque inicial':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  const desc = `${ent?'a aquisição':'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
@@ -1532,7 +1511,7 @@ function salvarEdicaoMov(){
     const c = parseFloat(val('emValor'));
     if(isNaN(c)||c<0){ toast('Informe o custo por unidade.'); return; }
     novo.custoUnit = c;
-    novo.fornecedor = m.inicial ? (m.fornecedor||'') : val('emForn').trim();
+    novo.fornecedor = val('emForn').trim();
   } else {
     const mot = val('emMotivo');
     novo.motivo = mot;
