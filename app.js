@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.9.3';
+const VERSAO = '0.10.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -27,7 +27,7 @@ let estado = Armazenamento.ler() || criarExemplo();
 let ordenarPor = 'nome';
 let direcao = 'asc';
 
-function salvar(){ Armazenamento.gravar(estado); if(typeof atualizarInicio==='function') atualizarInicio(); }
+function salvar(){ Armazenamento.gravar(estado); if(typeof atualizarInicio==='function') atualizarInicio(); if(typeof syncMarcarAlteracao==='function') syncMarcarAlteracao(); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function prod(id){ return estado.produtos.find(p=>p.id===id); }
@@ -104,7 +104,7 @@ function composicaoDetalhada(p){
     let g = grupos.find(x=>Math.abs(x.custo-l.m.custoUnit)<0.001);
     if(!g){ g = { custo:l.m.custoUnit, qtd:0, lotes:[] }; grupos.push(g); }
     g.qtd += l.resta;
-    g.lotes.push({ data:l.m.data, qtdCompra:l.m.qtd, resta:l.resta, fornecedor:fornecedorDaEntrada(p, l.m) });
+    g.lotes.push({ data:l.m.data, qtdCompra:l.m.qtd, resta:l.resta, fornecedor:fornecedorDaEntrada(p, l.m), inicial:!!l.m.inicial });
   });
   return grupos;
 }
@@ -309,6 +309,9 @@ function abrirProduto(id){
   const bArq = document.getElementById('btnArquivarProduto');
   bArq.style.display = p ? 'inline-flex' : 'none';
   bArq.textContent = p && p.arquivado ? 'Desarquivar' : 'Arquivar';
+  document.getElementById('pBlocoInicial').style.display = p ? 'none' : 'block';   // só no produto novo
+  document.getElementById('pQtdInicial').value = '';
+  document.getElementById('pCustoInicial').value = '';
   abrir('modalProduto');
   if(!p) setTimeout(()=>document.getElementById('pCodigoBarras').focus(), 80);   // pronto para o leitor USB
 }
@@ -338,8 +341,15 @@ function salvarProduto(){
       aplicar();
     }
   } else {
-    estado.produtos.push({ id:uid(), ...dados, movimentacoes:[] });
-    salvar(); fechar('modalProduto'); render(); toast('Produto salvo.');
+    // Estoque inicial (opcional): mercadoria que já estava na loja — não é compra, fica fora do saldo do dia
+    const qIni = parseInt(val('pQtdInicial'))||0;
+    const cTxt = val('pCustoInicial').trim(), cIni = parseFloat(cTxt);
+    if(qIni<0){ toast('A quantidade não pode ser negativa.'); return; }
+    if(qIni>0 && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
+    const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
+    estado.produtos.push({ id:uid(), ...dados, movimentacoes:movs });
+    salvar(); fechar('modalProduto'); render(); renderViewAtual();
+    toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque inicial.` : 'Produto salvo.');
   }
 }
 function excluirProduto(){ excluirProdutoId(document.getElementById('produtoId').value); }
@@ -813,6 +823,7 @@ function fornecedorDaEntrada(p, m){ return (m.fornecedor || '').trim(); }
 function fornecedoresDe(p, incluirSem){
   const grupos = {}, sem = [];
   entradas(p).forEach(m=>{
+    if(m.inicial) return;   // estoque inicial não é compra de fornecedor
     const f = fornecedorDaEntrada(p, m);
     if(!f){ sem.push(m); return; }
     (grupos[f] = grupos[f] || []).push(m);
@@ -901,7 +912,7 @@ function ppEstoque(p){
           </div>
           ${g.lotes.map((l,li)=>`<div class="cp-lote">
             <span class="cp-data">${fmtData(l.data)}</span>
-            <span class="cp-forn">${l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
+            <span class="cp-forn">${l.inicial?'<i>Estoque inicial</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
             <span class="cp-resta">${l.resta===l.qtdCompra ? l.resta+' un.' : `${l.resta} <small>de ${l.qtdCompra}</small> un.`}</span>
           </div>`).join('')}
         </div>`).join('')}</div>`
@@ -941,7 +952,7 @@ function ppMovimentacoes(p){
         return `<div class="hx-linha pp-linha" data-pid="${p.id}" data-mid="${m.id}" title="Toque e segure para editar">
           <div class="hx-mov"><span class="hx-tag ${c}">${escapar(rotuloMov(m))}</span>${extra?`<small class="pp-forn">${escapar(extra)}</small>`:''}</div>
           <div class="num">${m.qtd} un.</div>
-          <div class="num hx-valor ${v?c:''}">${v ? sinal(v.total)+fmtBRL(Math.abs(v.total))+`<small>${fmtBRL(v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
+          <div class="num hx-valor ${v?c:''}">${valorHtml(v)}</div>
         </div>`; }).join('')}
     </div>`).join('') + `</div>`;
 }
@@ -1183,25 +1194,34 @@ let histPor = 'data', histDir = 'desc';
    Venda / recebido = dinheiro entra (verde) · Aquisição = dinheiro sai (vermelho)
    A receber pendente = âmbar · Perda, devolução, ajuste, outros = neutro */
 function classeMov(m){
-  if(m.tipo==='entrada') return 'neg';
+  if(m.tipo==='entrada') return m.inicial ? 'ini' : 'neg';
   if(m.motivo==='Venda') return 'pos';
   if(m.motivo==='A receber') return m.recebido ? 'pos' : 'pend';
   return 'neu';
 }
 function rotuloMov(m){
-  if(m.tipo==='entrada') return 'Aquisição';
+  if(m.tipo==='entrada') return m.inicial ? 'Estoque inicial' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
   return m.motivo || 'Saída';
 }
-/* Valor total da movimentação com sinal do caixa (null = sem valor financeiro) */
+/* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
+   Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
 function valorMov(m){
+  if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
   if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
   return null;
 }
+/* Célula de valor (Histórico e Painel do Produto) */
+function valorHtml(v){
+  if(!v) return '<span class="hx-sem">—</span>';
+  if(v.foraCaixa) return `${fmtBRL(v.total)}<small>${fmtBRL(v.unit)}/un</small><span class="hx-fora">fora do saldo</span>`;
+  const s = v.total>0 ? '+' : v.total<0 ? '−' : '';
+  return `${s}${fmtBRL(Math.abs(v.total))}<small>${fmtBRL(v.unit)}/un</small>`;
+}
 function tipoFiltroMov(m){
-  if(m.tipo==='entrada') return 'aquisicao';
+  if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
   if(m.motivo==='Venda') return 'venda';
   if(m.motivo==='A receber') return 'areceber';
   return 'outras';
@@ -1374,7 +1394,7 @@ function renderHistorico(){
   const fmtSem = v=> fmtBRL(Math.abs(v));
 
   cont.innerHTML = dias.map(d=>{
-    const saldo = d.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
+    const saldo = d.itens.reduce((s,l)=>s+(l.v && !l.v.foraCaixa ? l.v.total : 0),0);
     const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
     return `<div class="hx-dia">
       <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
@@ -1386,7 +1406,7 @@ function renderHistorico(){
         </div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num">${l.qtd}</div>
-        <div class="num hx-valor ${l.v?c:''}">${l.v ? sinal(l.v.total)+fmtSem(l.v.total)+`<small>${fmtBRL(l.v.unit)}/un</small>` : '<span class="hx-sem">—</span>'}</div>
+        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}</div>
       </div>`; }).join('')}
       <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
     </div>`;
@@ -1432,7 +1452,8 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
-    <div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>
+    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque inicial: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
+      : `<div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>`}
     ` : `
     <div class="campo"><label>Motivo</label>
       <select id="emMotivo" onchange="ajustarEdicaoMov()">${motivos.map(x=>`<option ${x===m.motivo?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -1476,11 +1497,11 @@ function excluirMovimentacao(){
   const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
   if(depois < 0){
     mostrarAviso('Não é possível excluir',
-      `<p>Excluir esta aquisição de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+      `<p>Excluir ${m.inicial?'este estoque inicial':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
        <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
     return;
   }
-  const desc = `${ent?'a aquisição':'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  const desc = `${ent?(m.inicial?'o estoque inicial':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
@@ -1511,7 +1532,7 @@ function salvarEdicaoMov(){
     const c = parseFloat(val('emValor'));
     if(isNaN(c)||c<0){ toast('Informe o custo por unidade.'); return; }
     novo.custoUnit = c;
-    novo.fornecedor = val('emForn').trim();
+    novo.fornecedor = m.inicial ? (m.fornecedor||'') : val('emForn').trim();
   } else {
     const mot = val('emMotivo');
     novo.motivo = mot;
@@ -1743,7 +1764,7 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
-  gtinRenderConfig();
+  gtinRenderConfig(); syncRenderConfig();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2635,10 +2656,362 @@ function salvarConfigTeto(){
 }
 
 /* ===== Aviso informativo (modal) ===== */
-function mostrarAviso(titulo, html){
+function mostrarAviso(titulo, html, botao){
   document.getElementById('avisoTitulo').textContent = titulo;
+  const b = document.getElementById('avisoBotao');
+  b.textContent = botao || 'Entendi';
+  b.className = 'btn ' + (botao ? 'btn-claro' : 'btn-amarelo');
   document.getElementById('avisoTexto').innerHTML = html;
   abrir('modalAviso');
+}
+
+/* =========================================================
+   SINCRONIZAÇÃO NA NUVEM (Cloudflare Worker + banco D1 — código em cloudflare/sync-worker.js)
+   - A nuvem guarda o mesmo conteúdo do backup JSON, com um número de versão.
+   - Cada aparelho guarda a "base": a última versão que ele recebeu/enviou. Ao enviar, diz em
+     qual versão se baseou; se a nuvem mudou nesse meio-tempo (outro aparelho enviou), o app
+     junta as alterações dos dois lados (mesclar3) e envia de novo. Nada é sobrescrito às cegas.
+   - Endereço, senha e base ficam em localStorage próprio, fora do `estado` e do backup.
+   - Status só em Configurações; erros também aparecem como toast.
+   ========================================================= */
+const SYNC_CHAVE = 'chinatown_sync_v1';
+const SYNC_BASE  = 'chinatown_sync_base';
+const Sync = {
+  _c: undefined, _base: undefined,
+  ler(){
+    if(this._c===undefined){ try{ this._c = JSON.parse(localStorage.getItem(SYNC_CHAVE)) || null; }catch(e){ this._c = null; } }
+    return this._c;
+  },
+  gravar(d){ this._c = d; try{ if(d) localStorage.setItem(SYNC_CHAVE, JSON.stringify(d)); else localStorage.removeItem(SYNC_CHAVE); }catch(e){} },
+  atualizar(p){ const d = this.ler(); if(d){ Object.assign(d, p); this.gravar(d); } },
+  conectado(){ const d = this.ler(); return !!(d && d.url && d.senha && d.conectado); },
+  lerBase(){
+    if(this._base===undefined){ try{ const t = localStorage.getItem(SYNC_BASE); this._base = t ? JSON.parse(t) : null; }catch(e){ this._base = null; } }
+    return this._base ? JSON.parse(JSON.stringify(this._base)) : undefined;
+  },
+  gravarBase(obj){
+    this._base = obj ? JSON.parse(JSON.stringify(obj)) : null;
+    try{ if(obj) localStorage.setItem(SYNC_BASE, JSON.stringify(obj)); else localStorage.removeItem(SYNC_BASE); }catch(e){}   // sem espaço: fica só na memória
+  }
+};
+
+/* ----- Junção de três vias: base (último estado em comum), local e remoto -----
+   - Mudou só de um lado → vale esse lado.
+   - Listas com identificação (produtos, movimentações, notas, categorias) → item por item:
+     itens novos dos dois lados entram; item apagado de um lado e intocado do outro sai;
+     apagado de um lado e editado do outro → a edição vence (nada se perde).
+   - Mesmo campo editado nos dois lados → vale o aparelho com a alteração mais recente. */
+const ehObjeto = v => v!==null && typeof v==='object' && !Array.isArray(v);
+function jsonEstavel(v){
+  return JSON.stringify(v, (k,x)=> ehObjeto(x) ? Object.keys(x).sort().reduce((o,c)=>(o[c]=x[c],o),{}) : x);
+}
+function iguais(a, b){ return a===b || jsonEstavel(a)===jsonEstavel(b); }
+function chaveItem(x){
+  if(typeof x==='string' || typeof x==='number') return 'v:'+x;
+  if(!ehObjeto(x)) return null;
+  if(x.id!=null) return 'id:'+x.id;
+  if(x.chave) return 'ch:'+x.chave;                                   // notas e cancelamentos
+  if(x.numero!=null) return `nf:${x.numero}-${x.serie}-${x.ano}`;      // notas sem chave
+  return null;
+}
+function mesclar3(b, l, r, localGanha){
+  if(iguais(l, r)) return l;
+  if(iguais(b, l)) return r;
+  if(iguais(b, r)) return l;
+  if(l===undefined) return r;    // apagado aqui, editado lá: mantém
+  if(r===undefined) return l;
+  if(ehObjeto(l) && ehObjeto(r)){
+    const bo = ehObjeto(b) ? b : {}, out = {};
+    new Set([...Object.keys(l), ...Object.keys(r)]).forEach(k=>{
+      const v = mesclar3(bo[k], l[k], r[k], localGanha);
+      if(v!==undefined) out[k] = v;
+    });
+    return out;
+  }
+  if(Array.isArray(l) && Array.isArray(r)){
+    const ba = Array.isArray(b) ? b : [];
+    const todos = [...ba, ...l, ...r];
+    if(todos.every(x=>chaveItem(x)!==null)){
+      const mapa = a=>{ const m = new Map(); a.forEach(x=>m.set(chaveItem(x), x)); return m; };
+      const mb = mapa(ba), ml = mapa(l), mr = mapa(r);
+      const ordem = [...new Set([...l.map(chaveItem), ...r.map(chaveItem)])];
+      const out = [];
+      ordem.forEach(k=>{ const v = mesclar3(mb.get(k), ml.get(k), mr.get(k), localGanha); if(v!==undefined) out.push(v); });
+      return out;
+    }
+  }
+  return localGanha ? l : r;
+}
+/* Depois de juntar: garante a estrutura e que toda categoria usada por um produto existe */
+function normalizarEstado(e){
+  e.categorias = Array.isArray(e.categorias) ? e.categorias : [];
+  e.produtos = Array.isArray(e.produtos) ? e.produtos : [];
+  e.produtos.forEach(p=>{
+    p.movimentacoes = Array.isArray(p.movimentacoes) ? p.movimentacoes : [];
+    if(p.categoria && !e.categorias.includes(p.categoria)) e.categorias.push(p.categoria);
+  });
+  e.config = e.config || {};
+  return garantirFinanceiro(e);
+}
+
+/* ----- Comunicação com o Worker ----- */
+class ErroSync extends Error{ constructor(tipo, msg){ super(msg); this.tipo = tipo; } }
+async function syncReq(metodo, caminho, corpo){
+  const d = Sync.ler();
+  let r;
+  try{
+    r = await fetch(d.url + caminho, {
+      method: metodo, cache: 'no-store',
+      headers: { 'Authorization': 'Bearer ' + d.senha, ...(corpo ? {'Content-Type':'application/json'} : {}) },
+      body: corpo ? JSON.stringify(corpo) : undefined
+    });
+  }catch(e){
+    throw new ErroSync('rede', navigator.onLine===false
+      ? 'Sem internet. As alterações deste aparelho serão enviadas quando a conexão voltar.'
+      : 'Não foi possível falar com o Worker da sincronização. Confira o endereço.');
+  }
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if(r.status===409) return { conflito:true, ...j };
+  if(r.status===401) throw new ErroSync('senha', 'Senha da sincronização incorreta: ela precisa ser igual à SENHA_SYNC cadastrada no Worker.');
+  if(!r.ok) throw new ErroSync('api', (j && j.mensagem) || `O Worker respondeu com erro (${r.status}).`);
+  return j || {};
+}
+
+/* ----- Status (aparece em Configurações) ----- */
+let syncFase = { tipo:'', msg:'' };
+function syncStatus(tipo, msg){
+  const mudou = syncFase.tipo!==tipo || syncFase.msg!==msg;
+  syncFase = { tipo, msg:msg||'' };
+  if(tipo==='erro' && mudou) toast(msg);
+  syncRenderStatus();
+}
+
+/* ----- Ciclo de sincronização ----- */
+let syncRodando = false, syncDeNovo = false, syncTimer = null, syncPendenteDesde = 0;
+const modalAberto = ()=> !!document.querySelector('.overlay.aberto');
+
+/* Chamada pelo salvar(): marca alteração local e agenda o envio */
+function syncMarcarAlteracao(){
+  try{ if(!Sync.conectado()) return; }catch(e){ return; }   // chamado antes do módulo carregar: ignora
+  const d = Sync.ler();
+  if(!d.pendente) syncPendenteDesde = Date.now();
+  Sync.atualizar({ pendente:true, modificadoEm:Date.now() });
+  syncAgendar(4000);
+}
+function syncAgendar(ms){
+  clearTimeout(syncTimer);
+  // alterações seguidas adiam o envio, mas nunca por mais de 30 s
+  const espera = (syncPendenteDesde && Date.now()-syncPendenteDesde > 30000) ? 0 : ms;
+  syncTimer = setTimeout(sincronizar, espera);
+}
+function sincronizarAgora(){ syncStatus('rodando'); sincronizar(); }
+
+async function sincronizar(){
+  if(!Sync.conectado()) return;
+  if(syncRodando){ syncDeNovo = true; return; }
+  syncRodando = true; clearTimeout(syncTimer);
+  let adiado = false;
+  try{
+    for(let tentativa=0; tentativa<4; tentativa++){
+      const d = Sync.ler();
+      if(d.pendente){
+        if(syncFase.tipo!=='rodando') syncStatus('rodando');
+        const marca = d.modificadoEm;
+        const enviado = JSON.parse(JSON.stringify(estado));
+        const r = await syncReq('PUT', '/dados', { base:d.versao||0, aparelho:d.aparelho, dados:enviado });
+        if(!r.conflito){
+          Sync.gravarBase(enviado);
+          const aindaPendente = Sync.ler().modificadoEm!==marca;   // mudou algo durante o envio
+          Sync.atualizar({ versao:r.versao, pendente:aindaPendente, sincronizadoEm:Date.now(), remotoEm:r.atualizadoEm, remotoAparelho:r.aparelho });
+          if(aindaPendente) syncDeNovo = true; else syncPendenteDesde = 0;
+          break;
+        }
+        // outro aparelho enviou antes: junta e tenta de novo (nunca com um formulário aberto)
+        if(modalAberto()){ adiado = true; break; }
+        syncAplicarJuncao(r);
+      } else {
+        const v = await syncReq('GET', '/versao');
+        if(v.versao===(d.versao||0)){ Sync.atualizar({ sincronizadoEm:Date.now(), remotoEm:v.atualizadoEm, remotoAparelho:v.aparelho }); break; }
+        if(modalAberto()){ adiado = true; break; }
+        const rem = await syncReq('GET', '/dados');
+        if(Sync.ler().pendente || modalAberto()){ if(modalAberto()){ adiado = true; break; } syncAplicarJuncao(rem); continue; }
+        syncAdotarRemoto(rem);
+        break;
+      }
+    }
+    syncStatus(Sync.ler() && Sync.ler().pendente ? 'pendente' : 'ok');
+  }catch(e){
+    syncStatus(e.tipo==='rede' && navigator.onLine===false ? 'offline' : 'erro', e.message);
+  }finally{
+    syncRodando = false;
+    if(adiado) syncAgendar(5000);
+    else if(syncDeNovo){ syncDeNovo = false; syncAgendar(1500); }
+  }
+}
+function syncAtualizarTela(){ render(); renderViewAtual(); if(typeof atualizarInicio==='function') atualizarInicio(); }
+/* Recebe os dados da nuvem quando este aparelho não tem nada pendente */
+function syncAdotarRemoto(rem){
+  if(!rem.dados) return;
+  estado = normalizarEstado(rem.dados);
+  Armazenamento.gravar(estado);
+  Sync.gravarBase(rem.dados);
+  Sync.atualizar({ versao:rem.versao, pendente:false, sincronizadoEm:Date.now(), remotoEm:rem.atualizadoEm, remotoAparelho:rem.aparelho });
+  syncAtualizarTela();
+}
+/* Junta as alterações deste aparelho com as que chegaram da nuvem (continua pendente para enviar) */
+function syncAplicarJuncao(rem){
+  const d = Sync.ler();
+  if(rem.dados){
+    const localGanha = (d.modificadoEm||0) > Date.parse(rem.atualizadoEm||0);
+    estado = normalizarEstado(mesclar3(Sync.lerBase(), estado, rem.dados, localGanha));
+    Armazenamento.gravar(estado);
+    Sync.gravarBase(rem.dados);
+    syncAtualizarTela();
+  }
+  Sync.atualizar({ versao:rem.versao||0, pendente:true, remotoEm:rem.atualizadoEm, remotoAparelho:rem.aparelho });
+}
+
+/* ----- Configurações: conectar, desconectar, cópias ----- */
+function syncNomePadrao(){ return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'Celular' : 'Computador'; }
+function contagemDados(e){
+  const p = (e && e.produtos) || [];
+  return `${p.length} produto(s) e ${p.reduce((s,x)=>s+((x.movimentacoes||[]).length),0)} movimentação(ões)`;
+}
+let syncRemotoEscolha = null;
+async function syncConectar(){
+  const atual = Sync.ler();
+  const url = normalizarUrlWorker(val('cfgSyncUrl'));
+  let senha = val('cfgSyncSenha');
+  if(senha==='••••••••' && atual) senha = atual.senha;
+  const aparelho = val('cfgSyncAparelho').trim() || syncNomePadrao();
+  if(!url || !senha){ syncStatus('erro', 'Informe o endereço do Worker e a senha da sincronização.'); return; }
+  Sync.gravar({ url, senha, aparelho, conectado:false, versao:0 });
+  Sync.gravarBase(null);
+  syncStatus('rodando', 'Conectando…');
+  try{
+    const v = await syncReq('GET', '/versao');
+    if(!v.versao){
+      // nuvem vazia: este aparelho envia os dados dele
+      Sync.atualizar({ conectado:true, pendente:true, modificadoEm:Date.now() });
+      await sincronizar();
+      if(Sync.ler().pendente) return;
+      mostrarAviso('Sincronização ligada',
+        `<p>Os dados deste aparelho (${contagemDados(estado)}) foram enviados para a nuvem.</p>
+         <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Agora, no outro aparelho, abra Configurações e conecte com o mesmo endereço e a mesma senha.</p>`);
+      return;
+    }
+    const rem = await syncReq('GET', '/dados');
+    const vazio = estado.produtos.length===0 && fin().notas.length===0;
+    if(vazio){
+      Sync.atualizar({ conectado:true });
+      syncAdotarRemoto(rem); syncStatus('ok');
+      toast('Dados da nuvem carregados neste aparelho.');
+      return;
+    }
+    syncRemotoEscolha = rem;
+    syncStatus('', '');
+    const quando = rem.atualizadoEm ? new Date(rem.atualizadoEm) : null;
+    mostrarAviso('A nuvem já tem dados',
+      `<p>Na nuvem: <b>${contagemDados(rem.dados)}</b>${quando?`, última alteração em ${quando.toLocaleDateString('pt-BR')} às ${quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`:''}${rem.aparelho?` (${escapar(rem.aparelho)})`:''}.</p>
+       <p style="margin-top:8px">Neste aparelho: <b>${contagemDados(estado)}</b>.</p>
+       <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Escolha quais dados ficam. Os outros são substituídos — se tiver dúvida, baixe um backup deste aparelho antes.</p>
+       <div class="sy-escolha">
+         <button class="btn btn-amarelo" onclick="syncEscolher('nuvem')">Usar os dados da nuvem</button>
+         <button class="btn btn-claro" onclick="syncEscolher('local')">Manter os deste aparelho</button>
+         <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup deste aparelho</button>
+       </div>`, 'Agora não');
+  }catch(e){
+    Sync.gravar(null);
+    syncStatus('erro', e.message);
+  }
+}
+function syncEscolher(qual){
+  const rem = syncRemotoEscolha; if(!rem) return;
+  fechar('modalAviso');
+  if(qual==='nuvem'){
+    syncRemotoEscolha = null;
+    Sync.atualizar({ conectado:true });
+    syncAdotarRemoto(rem); syncStatus('ok');
+    toast('Dados da nuvem carregados neste aparelho.');
+    return;
+  }
+  pedirConfirmacao(`Os dados da nuvem (${contagemDados(rem.dados)}) serão substituídos pelos deste aparelho (${contagemDados(estado)}), também nos outros aparelhos conectados. Continuar?`, ()=>{
+    syncRemotoEscolha = null;
+    Sync.atualizar({ conectado:true, versao:rem.versao, pendente:true, modificadoEm:Date.now() });
+    Sync.gravarBase(estado);   // base = local → o envio substitui a nuvem
+    sincronizar().then(()=>{ if(!Sync.ler().pendente) toast('Dados deste aparelho enviados para a nuvem.'); });
+  }, 'Substituir os dados da nuvem');
+}
+function syncDesconectar(){
+  const d = Sync.ler();
+  const aviso = d && d.pendente ? ' Atenção: há alterações deste aparelho que ainda não foram enviadas.' : '';
+  pedirConfirmacao(`Desconectar este aparelho da sincronização? Os dados continuam aqui e na nuvem, mas este aparelho para de enviar e receber alterações.${aviso}`, ()=>{
+    clearTimeout(syncTimer);
+    Sync.gravar(null); Sync.gravarBase(null);
+    syncFase = { tipo:'', msg:'' };
+    syncRenderConfig(); toast('Aparelho desconectado da sincronização.');
+  }, 'Desconectar');
+}
+async function syncVerCopias(){
+  const box = document.getElementById('cfgSyncCopias');
+  box.innerHTML = '<div class="dica">Carregando cópias…</div>';
+  try{
+    const { copias } = await syncReq('GET', '/copias');
+    box.innerHTML = !copias || !copias.length
+      ? '<div class="dica">Ainda não há cópias diárias. A primeira é guardada no primeiro envio de um dia novo.</div>'
+      : `<div class="dica" style="margin-bottom:6px">Como os dados estavam no fim de cada dia (últimos 30 dias). Baixe o arquivo e use “Restaurar backup” se precisar voltar.</div>
+         <ul class="sy-copias">${copias.map(c=>`<li><span>${fmtData(c.dia)}<small>${c.aparelho?escapar(c.aparelho)+' · ':''}versão ${c.versao}</small></span>
+           <button class="btn btn-claro btn-mini" onclick="syncBaixarCopia('${c.dia}')">↓ Baixar</button></li>`).join('')}</ul>`;
+  }catch(e){ box.innerHTML = `<div class="dica" style="color:var(--vermelho)">${escapar(e.message)}</div>`; }
+}
+async function syncBaixarCopia(dia){
+  try{
+    const c = await syncReq('GET', '/copias/' + dia);
+    const blob = new Blob([JSON.stringify(c.dados,null,2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `backup-china-engine-nuvem-${dia}.json`; a.click();
+    toast('Cópia baixada.');
+  }catch(e){ toast(e.message); }
+}
+function syncRenderConfig(){
+  const d = Sync.ler(), lig = Sync.conectado();
+  document.getElementById('cfgSyncForm').style.display = lig ? 'none' : '';
+  document.getElementById('cfgSyncLigado').style.display = lig ? '' : 'none';
+  if(!lig){
+    document.getElementById('cfgSyncUrl').value = d && d.url || '';
+    document.getElementById('cfgSyncSenha').value = d && d.senha ? '••••••••' : '';
+    document.getElementById('cfgSyncAparelho').value = d && d.aparelho || '';
+    document.getElementById('cfgSyncCopias').innerHTML = '';
+  }
+  syncRenderStatus();
+}
+function syncRenderStatus(){
+  const el = document.getElementById(Sync.conectado() ? 'cfgSyncStatus' : 'cfgSyncStatusForm');
+  if(!el) return;
+  const d = Sync.ler() || {};
+  const hora = t=> new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const dataHora = t=>{ const x = new Date(t); return (x.toDateString()===new Date().toDateString() ? 'hoje' : x.toLocaleDateString('pt-BR')) + ' às ' + hora(t); };
+  let cls = '', txt = '';
+  if(!Sync.conectado()){
+    cls = syncFase.tipo==='erro' ? 'erro' : syncFase.tipo==='rodando' ? 'carregando' : '';
+    txt = syncFase.msg || 'Não conectado.';
+  } else if(syncFase.tipo==='rodando'){ cls = 'carregando'; txt = 'Sincronizando…'; }
+  else if(syncFase.tipo==='erro'){ cls = 'erro'; txt = syncFase.msg; }
+  else if(syncFase.tipo==='offline'){ cls = 'aviso'; txt = syncFase.msg; }
+  else if(d.pendente){ cls = 'aviso'; txt = 'Alterações deste aparelho aguardando envio…'; }
+  else { cls = 'ok'; txt = d.sincronizadoEm ? `✓ Sincronizado às ${hora(d.sincronizadoEm)}` : '✓ Conectado'; }
+  const det = Sync.conectado()
+    ? `<small>Este aparelho: <b>${escapar(d.aparelho||'')}</b>${d.remotoEm?` · última alteração na nuvem ${dataHora(d.remotoEm)}${d.remotoAparelho?` (${escapar(d.remotoAparelho)})`:''}`:''}</small>` : '';
+  el.className = 'sy-status gtin-st ' + cls;
+  el.innerHTML = escapar(txt) + det;
+}
+
+/* ----- Gatilhos automáticos ----- */
+function syncIniciar(){
+  if(Sync.conectado()) sincronizar();
+  document.addEventListener('visibilitychange', ()=>{ if(Sync.conectado()) sincronizar(); });   // ao voltar ao app recebe; ao sair, envia o que faltar
+  window.addEventListener('online', ()=>{ if(Sync.conectado()) sincronizar(); });
+  setInterval(()=>{ if(Sync.conectado() && document.visibilityState==='visible' && !syncRodando) sincronizar(); }, 30000);
 }
 
 /* ===== Início ===== */
@@ -2646,3 +3019,4 @@ document.getElementById('versao').textContent = 'v'+VERSAO;
 render();
 atualizarInicio();
 mostrarView('inicio');
+syncIniciar();

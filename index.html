@@ -96,6 +96,7 @@
         <option value="">Tipo</option>
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
+        <option value="inicial">Estoque inicial</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
@@ -201,12 +202,35 @@
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Backup dos dados</h3>
-      <small>Os dados ficam salvos só neste navegador. Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
     <div class="cfg-acoes">
       <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
       <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
     </div>
     <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Sincronização na nuvem</h3>
+      <small>Mantém os dados iguais no PC e no celular, pelo seu Cloudflare (Worker + banco D1). Alterações feitas em aparelhos diferentes são juntadas automaticamente. O endereço e a senha ficam salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
+    <div class="cfg-form" id="cfgSyncForm">
+      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgSyncUrl" placeholder="https://china-engine-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Senha da sincronização</label><input type="password" id="cfgSyncSenha" autocomplete="new-password" placeholder="A SENHA_SYNC do Worker"></div>
+        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="cfgSyncAparelho" maxlength="40" placeholder="Ex: PC da loja" onkeydown="if(event.key==='Enter')syncConectar()"></div>
+      </div>
+      <button class="btn btn-escuro" onclick="syncConectar()">Conectar</button>
+      <div class="sy-status gtin-st" id="cfgSyncStatusForm"></div>
+    </div>
+    <div id="cfgSyncLigado" style="display:none">
+      <div class="sy-status gtin-st" id="cfgSyncStatus"></div>
+      <div class="cfg-acoes">
+        <button class="btn btn-escuro" onclick="sincronizarAgora()">Sincronizar agora</button>
+        <button class="btn btn-claro" onclick="syncVerCopias()">Cópias diárias</button>
+        <button class="btn btn-claro" onclick="syncDesconectar()">Desconectar</button>
+      </div>
+      <div id="cfgSyncCopias"></div>
+    </div>
   </div>
 
   <div class="cfg-bloco">
@@ -410,6 +434,21 @@
           <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div>
         </div>
       </div>
+      <!-- Estoque inicial: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
+      <div class="pi-bloco" id="pBlocoInicial">
+        <div class="pi-tit">Estoque que já está na loja <small>opcional</small></div>
+        <div class="linha-campos">
+          <div class="campo">
+            <label>Quantidade</label>
+            <input type="number" id="pQtdInicial" min="0" step="1" placeholder="0" inputmode="numeric">
+          </div>
+          <div class="campo">
+            <label>Custo por unidade (R$)</label>
+            <input type="number" id="pCustoInicial" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+          </div>
+        </div>
+        <div class="dica">Entra como <b>Estoque inicial</b>: conta no estoque, no custo e no lucro, mas não como compra no saldo do dia. Para mercadoria comprada daqui em diante, use Registrar entrada ou Compra em lote.</div>
+      </div>
       <div class="rodape-modal">
         <button class="btn btn-vermelho" id="btnExcluirProduto" style="display:none" onclick="excluirProduto()">Excluir</button>
         <button class="btn btn-claro" id="btnArquivarProduto" style="margin-right:auto;display:none" onclick="alternarArquivoProduto()">Arquivar</button>
@@ -530,7 +569,7 @@
     </div>
     <div class="modal-corpo">
       <div id="avisoTexto" style="margin-bottom:16px"></div>
-      <div class="rodape-modal"><button class="btn btn-amarelo" onclick="fechar('modalAviso')">Entendi</button></div>
+      <div class="rodape-modal"><button class="btn btn-amarelo" id="avisoBotao" onclick="fechar('modalAviso')">Entendi</button></div>
     </div>
   </div>
 </div>

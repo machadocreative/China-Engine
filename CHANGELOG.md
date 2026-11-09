@@ -32,6 +32,56 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [0.10.0] - 2026-11-09
+
+### Adicionado
+
+**Sincronização na nuvem**
+- Novo bloco "Sincronização na nuvem" em Configurações, com endereço do Worker, senha da sincronização e nome do aparelho. Esses dados ficam salvos só no aparelho, fora do GitHub e do backup.
+- Os dados da loja (o mesmo conteúdo do backup) ficam no Cloudflare do próprio usuário, num Worker com banco D1 do plano gratuito. O código está em `cloudflare/sync-worker.js`, e a senha fica guardada como segredo no Worker (`SENHA_SYNC`).
+- Envio automático poucos segundos depois de cada alteração (no máximo 30 s de espera) e ao sair do app.
+- Recebimento automático ao abrir o app, ao voltar para ele, a cada 30 s com o app aberto e quando a internet volta.
+- Alterações feitas em aparelhos diferentes são juntadas automaticamente, item por item, sem que um aparelho sobrescreva o outro:
+  - vendas, entradas, produtos e notas novas dos dois lados entram;
+  - um item apagado num aparelho e editado no outro é mantido;
+  - o mesmo campo editado nos dois vale pela alteração mais recente.
+- A junção nunca acontece com um formulário aberto. Ela espera o formulário fechar.
+- Primeira conexão:
+  - se a nuvem estiver vazia, o aparelho envia os dados dele;
+  - se o aparelho estiver vazio, recebe os dados da nuvem;
+  - se os dois tiverem dados, o app pergunta quais manter e oferece baixar um backup antes.
+- Status em Configurações mostra se está sincronizado, enviando, sem internet ou com erro, além do horário e do aparelho da última alteração. Erros também aparecem como aviso rápido.
+- Cópias diárias na nuvem: o Worker guarda como os dados estavam no fim de cada dia, pelos últimos 30 dias. Em Configurações, "Cópias diárias" lista e baixa cada cópia como arquivo de backup.
+
+### Alterado
+
+- O texto do bloco Backup dos dados agora menciona a nuvem.
+- O modal de aviso aceita outro rótulo no botão de fechar (usado como "Agora não" na escolha da primeira conexão).
+
+### Segurança
+
+- A senha do gerente continua sendo só uma trava de operação e **não** protege a sincronização. Quem protege os dados na nuvem é a `SENHA_SYNC`, guardada como segredo no Worker. O Worker compara a senha em tempo constante, atrasa as tentativas erradas e só aceita chamadas do site do app (CORS).
+
+---
+
+## [0.9.4] - 2026-11-09
+
+### Adicionado
+
+**Estoque inicial (cadastro da loja)**
+- Novo bloco opcional "Estoque que já está na loja" no cadastro de **Novo produto**, com quantidade e custo por unidade. O produto já nasce com estoque, sem precisar registrar uma entrada depois.
+- Esse lançamento vira uma entrada marcada como **Estoque inicial**. Ela conta no estoque, no custo médio, na composição (FIFO) e no lucro, mas **não** é tratada como compra.
+- No Histórico, aparece com selo cinza tracejado "Estoque inicial", mostra o valor em estoque (sem sinal) com a nota "fora do saldo" e não entra no "Saldo no dia".
+- Novo tipo "Estoque inicial" no filtro Tipo do Histórico.
+
+### Alterado
+
+- Painel do Produto: na Composição, os lotes de estoque inicial aparecem como "Estoque inicial" em vez de "Não informado". Esses lotes também não entram na aba Fornecedores, já que não são compras.
+- Edição de movimentação: o estoque inicial pode ter data, quantidade e custo corrigidos, mas não tem campo de fornecedor.
+- Compras feitas daqui em diante, por Registrar entrada ou Compra em lote, continuam como "Aquisição" e pesam no saldo do dia.
+
+---
+
 ## [0.9.3] - 2026-11-09
 
 ### Adicionado
@@ -458,6 +508,8 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.10.0]: #
+[0.9.4]: #
 [0.9.3]: #
 [0.9.2]: #
 [0.9.1]: #
