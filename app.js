@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '0.10.0';
+const VERSAO = '1.0.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -150,9 +150,13 @@ function render(){
       case 'estoque': va=estoqueDe(a); vb=estoqueDe(b); break;
       case 'preco':   va=a.preco||0;   vb=b.preco||0;   break;
       case 'custo':   va=custoMedioDe(a)||0; vb=custoMedioDe(b)||0; break;
+      case 'marca':   va=(a.marca||'').toLowerCase(); vb=(b.marca||'').toLowerCase(); break;
+      case 'categoria': va=(a.categoria||'').toLowerCase(); vb=(b.categoria||'').toLowerCase(); break;
       default:        va=a.nome.toLowerCase(); vb=b.nome.toLowerCase();
     }
-    const r = (typeof va==='string') ? va.localeCompare(vb,'pt-BR') : va-vb;
+    let r = (typeof va==='string') ? va.localeCompare(vb,'pt-BR') : va-vb;
+    if(ordenarPor==='marca' && !!a.marca!==!!b.marca) return a.marca ? -1 : 1;   // sem marca sempre no fim
+    if(r===0 && (ordenarPor==='marca' || ordenarPor==='categoria')) r = a.nome.localeCompare(b.nome,'pt-BR');   // desempate pelo nome
     return direcao==='asc' ? r : -r;
   });
 
@@ -177,11 +181,10 @@ function render(){
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
         ${escapar(p.nome)}
         ${p.arquivado?'<span class="badge-arquivado">Arquivado</span>':''}
-        ${baixo?'<span class="badge-baixo">estoque baixo</span>':''}
         ${p.codigo?`<small class="codigo">${escapar(p.codigo)}</small>`:''}
       </div>
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
-      <div class="num" style="color:${baixo?'var(--vermelho)':'inherit'}">${est}</div>
+      <div class="num" style="color:${baixo?'var(--vermelho)':'inherit'}">${est}${baixo?'<span class="badge-baixo"><span class="rot-l">estoque baixo</span><span class="rot-c">baixo</span></span>':''}</div>
       <div class="num">${fmtBRL(p.preco||null)}</div>
       <div class="num col-custo">${fmtBRL(cm)}</div>
     </div>`;
@@ -309,11 +312,18 @@ function abrirProduto(id){
   const bArq = document.getElementById('btnArquivarProduto');
   bArq.style.display = p ? 'inline-flex' : 'none';
   bArq.textContent = p && p.arquivado ? 'Desarquivar' : 'Arquivar';
-  document.getElementById('pBlocoInicial').style.display = p ? 'none' : 'block';   // só no produto novo
+  document.getElementById('pWrapInicial').style.display = p ? 'none' : '';   // só no produto novo
+  document.getElementById('pTemInicial').checked = false;
+  document.getElementById('pBlocoInicial').style.display = 'none';
   document.getElementById('pQtdInicial').value = '';
   document.getElementById('pCustoInicial').value = '';
   abrir('modalProduto');
   if(!p) setTimeout(()=>document.getElementById('pCodigoBarras').focus(), 80);   // pronto para o leitor USB
+}
+function alternarEstoqueInicial(){
+  const sim = document.getElementById('pTemInicial').checked;
+  document.getElementById('pBlocoInicial').style.display = sim ? 'block' : 'none';
+  if(sim) document.getElementById('pCustoInicial').focus();
 }
 function salvarProduto(){
   const id = document.getElementById('produtoId').value;
@@ -342,10 +352,11 @@ function salvarProduto(){
     }
   } else {
     // Estoque inicial (opcional): mercadoria que já estava na loja — não é compra, fica fora do saldo do dia
-    const qIni = parseInt(val('pQtdInicial'))||0;
+    const temIni = document.getElementById('pTemInicial').checked;
+    const qIni = temIni ? (parseInt(val('pQtdInicial'))||0) : 0;
     const cTxt = val('pCustoInicial').trim(), cIni = parseFloat(cTxt);
-    if(qIni<0){ toast('A quantidade não pode ser negativa.'); return; }
-    if(qIni>0 && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
+    if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
+    if(temIni && qIni<1){ toast('Informe a quantidade do estoque inicial.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
     estado.produtos.push({ id:uid(), ...dados, movimentacoes:movs });
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
@@ -411,12 +422,12 @@ function vendaFiltrar(){
     const alvo = `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase();
     return alvo.includes(q);
   }).slice(0,8);
-  if(match.length===0){ res.innerHTML=`<p style="padding:10px;font-size:13px;color:var(--texto-sec)">Nenhum produto com estoque encontrado.</p>`; return; }
+  if(match.length===0){ res.innerHTML=`<p style="padding:10px;font-size:14px;color:var(--texto-sec)">Nenhum produto com estoque encontrado.</p>`; return; }
   res.innerHTML = match.map(p=>`<div class="venda-resultado" onmousedown="vendaAdicionarItem('${p.id}')"
     onmouseenter="this.style.background='var(--amarelo-claro)'" onmouseleave="this.style.background=''">
     <span>${escapar(p.nome)}${p.marca?` <small style="color:var(--texto-sec)">${escapar(p.marca)}</small>`:''}</span>
     <span style="font-family:var(--corpo);font-weight:600;margin-left:auto">${fmtBRL(p.preco||null)}</span>
-    <span style="font-size:12px;color:var(--texto-sec);margin-left:8px">${estoqueDe(p)} un.</span>
+    <span style="font-size:14px;color:var(--texto-sec);margin-left:8px">${estoqueDe(p)} un.</span>
   </div>`).join('');
 }
 /* Enter na busca (é o que o leitor USB envia ao fim da leitura):
@@ -585,7 +596,7 @@ function blocoSaida(p){
     <div class="mini-campo" id="campoPrecoSaida">
       <label>Preço de venda (un.)</label>
       <input type="number" id="sPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
-      <small style="color:var(--texto-sec);font-size:11px">Alterar o preço base exige senha do gerente.</small>
+      <small style="color:var(--texto-sec);font-size:14px">Alterar o preço base exige senha do gerente.</small>
     </div>
     <div class="mini-campo" id="campoMotivoOutros" style="display:none">
       <label>Descreva o motivo</label>
@@ -640,7 +651,7 @@ function linhaCompraHTML(idx){
          border:1px solid var(--borda-forte);border-radius:8px;z-index:20;max-height:200px;overflow-y:auto;margin-top:2px"></div>
        <input type="hidden" id="lc_prod_${idx}" value="">
        <input type="hidden" id="lc_cb_${idx}" value="">
-       <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:13px;color:var(--texto-sec)"></div>
+       <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:14px;color:var(--texto-sec)"></div>
      </div>
      <button type="button" class="btn btn-claro lc-icone-btn" title="Escanear código de barras" aria-label="Escanear código de barras" onclick="abrirScannerCompra(${idx})">
        <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg></button>
@@ -719,7 +730,7 @@ function filtrarLinhaBusca(idx){
     data-pid="${p.id}" onmousedown="selecionarLinhaProduto(${idx},'${p.id}')"
     onmouseenter="this.style.background='var(--amarelo-claro)'" onmouseleave="this.style.background=''">
     ${escapar(p.nome)}${p.marca?`<span style="color:var(--texto-sec)"> — ${escapar(p.marca)}</span>`:''}
-    ${p.codigo?`<small style="color:var(--texto-sec);font-size:11px;display:block">${escapar(p.codigo)}</small>`:''}
+    ${p.codigo?`<small style="color:var(--texto-sec);font-size:14px;display:block">${escapar(p.codigo)}</small>`:''}
   </div>`).join('');
   const novoItem = `<div style="padding:8px 12px;cursor:pointer;font-size:14px;color:var(--verde);font-weight:600"
     onmousedown="selecionarLinhaProduto(${idx},'__novo__')"
@@ -962,7 +973,7 @@ function ppDados(p){
   const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   return `
     <div class="linha-campos">
-      <div class="campo" style="flex:.8"><label>Marca / fabricante</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
+      <div class="campo" style="flex:.8"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
       <div class="campo" style="flex:1.4"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
     </div>
     <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
@@ -1213,6 +1224,13 @@ function valorMov(m){
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
   return null;
 }
+/* Selo do tipo; no celular, "Estoque inicial" vira "Inicial" para caber na coluna */
+function tagMov(m){
+  const r = rotuloMov(m), c = classeMov(m);
+  const curto = m.inicial ? 'Inicial' : r;
+  return curto===r ? `<span class="hx-tag ${c}" title="${escapar(r)}">${escapar(r)}</span>`
+    : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`;
+}
 /* Célula de valor (Histórico e Painel do Produto) */
 function valorHtml(v){
   if(!v) return '<span class="hx-sem">—</span>';
@@ -1351,7 +1369,7 @@ function renderHistorico(){
   });
 
   linhas = linhas.filter(l=>{
-    if(fTipo && l.tipoF!==fTipo) return false;
+    if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // estoque inicial só aparece filtrando por ele
     if(fCat && l.categoria!==fCat) return false;
     if(fProd && !`${l.nome} ${l.marca||''}`.toLowerCase().includes(fProd)) return false;
     if(fDe && l.data < fDe) return false;
@@ -1400,13 +1418,11 @@ function renderHistorico(){
       <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
       ${d.itens.map(l=>{ const c = classeMov(l.m); return `
       <div class="hx-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
-        <div class="hx-mov">
-          <span class="hx-tag ${c}">${escapar(rotuloMov(l.m))}</span>
-          <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
-        </div>
+        <div class="hx-mov">${tagMov(l.m)}</div>
+        <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
-        <div class="num">${l.qtd}</div>
-        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}</div>
+        <div class="num col-qtd">${l.qtd}</div>
+        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}<span class="hx-qtd-m">${l.qtd} un.</span></div>
       </div>`; }).join('')}
       <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
     </div>`;
@@ -1746,7 +1762,7 @@ function mostrarView(v){
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
-  document.getElementById('fab').style.display = ['financeiro','config','desempenho'].includes(v) ? 'none' : '';   // ⊕ só nas telas de estoque
+  document.getElementById('fab').style.display = ['inicio','financeiro','config','desempenho'].includes(v) ? 'none' : '';   // ⊕ só em Estoque e Histórico (o Início tem os atalhos)
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
   document.querySelector('main').scrollTop = 0;
   renderViewAtual();
@@ -2028,11 +2044,21 @@ function renderInicio(){
   </div>`;
 
   const tudoOk = !baixos.length && !pend.length;
+  const ICONES = {
+    venda:'<svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+    compra:'<svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg>',
+    produto:'<svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>'
+  };
+  // Atalhos grandes no lugar do botão ⊕; pontos de atenção só aparecem quando há algo a ver
   cont.innerHTML = `
+    <div class="ini-acoes">
+      <button class="ini-acao" onclick="abrirVenda()"><i>${ICONES.venda}</i><span>Nova venda</span></button>
+      <button class="ini-acao" onclick="abrirCompra()"><i>${ICONES.compra}</i><span>Nova compra em lote</span></button>
+      <button class="ini-acao" onclick="abrirProduto()"><i>${ICONES.produto}</i><span>Novo produto</span></button>
+    </div>
+    ${tudoOk ? '<div class="ini-ok">✓ Tudo em dia: nenhum estoque baixo e nenhum pagamento pendente.</div>' : `
     <div class="ini-ola">Pontos de atenção</div>
-    <div class="ini-sub">${tudoOk ? 'Tudo em dia por aqui.' : `${baixos.length+pend.length} item(ns) precisam da sua atenção.`}</div>
-    ${tudoOk ? '<div class="ini-ok">✓ Nenhum produto com estoque baixo e nenhum pagamento pendente.</div>' : ''}
-    ${blocoBaixo}${blocoPend}`;
+    ${baixos.length ? blocoBaixo : ''}${pend.length ? blocoPend : ''}`}`;
 }
 
 /* ===== Botão de ação flutuante (⊕) ===== */

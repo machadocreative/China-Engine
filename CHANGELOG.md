@@ -32,6 +32,35 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [1.0.0] - 2026-11-09
+
+Primeira versão estável do China Engine. A numeração passa para a série 1.x.
+
+### Adicionado
+
+- **Início:** atalhos grandes para Nova venda, Nova compra em lote e Novo produto, com os mesmos ícones das ações rápidas. Eles ficam acima dos pontos de atenção.
+- **Estoque:** novas opções de ordenação por **Marca** e **Categoria**, com desempate pelo nome. Produtos sem marca ficam no fim.
+- **Histórico:** nova coluna **Produto**, separada da coluna Movimentação. A coluna do tipo tem largura fixa, então os nomes ficam alinhados à esquerda qualquer que seja o tamanho do selo.
+
+### Alterado
+
+- **Novo produto:** os campos de estoque inicial só aparecem ao marcar a caixa "Estoque inicial?". O custo por unidade vem antes da quantidade, e com a caixa marcada os dois campos são obrigatórios.
+- **Estoque:** o selo "estoque baixo" fica abaixo do número de unidades, e não mais ao lado do nome. No celular, aparece como "baixo".
+- **Histórico:**
+  - As movimentações de Estoque inicial ficam ocultas por padrão. Elas só aparecem ao escolher Tipo → Estoque inicial.
+  - No celular, a coluna do tipo se chama "Tipo", o selo do estoque inicial aparece como "Inicial" e a quantidade aparece abaixo do valor.
+- **Início:**
+  - O botão ⊕ de ações rápidas não aparece mais nessa tela; continua em Estoque e Histórico.
+  - Os blocos "Estoque baixo" e "Pagamentos pendentes" só aparecem quando têm itens. Sem nenhum dos dois, fica só uma linha "Tudo em dia".
+- **Tipografia:** o tamanho mínimo de fonte em todo o app passa a ser **14px**, inclusive nos eixos dos gráficos.
+- **Campos lado a lado:** ficam alinhados mesmo quando um rótulo quebra em duas linhas.
+- **Rótulo "Marca":** o antigo "Marca / fabricante" virou "Marca" no cadastro e na aba Dados.
+- **Barra inferior:** "Configurações" passa a se chamar **"Ajustes"** para caber com a fonte de 14px. O título da tela continua "Configurações".
+- **Configurações:** nova ordem dos blocos: Categorias, Senha do gerente, Backup, Sincronização na nuvem e Consulta por código de barras.
+- **Placeholder do endereço da sincronização:** passa a mostrar o nome do Worker `china-sync`.
+
+---
+
 ## [0.10.0] - 2026-11-09
 
 ### Adicionado
@@ -508,6 +537,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[1.0.0]: #
 [0.10.0]: #
 [0.9.4]: #
 [0.9.3]: #
