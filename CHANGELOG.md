@@ -20,14 +20,334 @@ e o projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/):
 
 ## Planejado (futuro — fora do escopo atual)
 
-Módulo financeiro, a ser desenvolvido **após** o polimento das funcionalidades de estoque,
+Próximas etapas do módulo financeiro (iniciado na 0.4.0 com o Faturamento MEI),
 integrando as movimentações de entrada e saída com a gestão financeira da loja:
 
+- Decidir se as vendas registradas no estoque também contam no faturamento do MEI (hoje só as notas fiscais importadas contam) e como evitar contar duas vezes uma venda que tem nota.
 - Exportação em `.ofx`.
 - Registro do tipo de recebimento na saída (venda em espécie, cartão de crédito, Pix, conta bancária em que foi recebido etc.).
 - Emissão/registro de recibo fiscal.
 - Registro de despesas da loja (aluguel, energia, internet, funcionários, compra de insumos etc.).
 - Apuração de lucro da operação (entender se o negócio dá lucro de fato).
+
+---
+
+## [0.9.4] - 2026-11-09
+
+### Adicionado
+
+**Estoque inicial (cadastro da loja)**
+- Novo bloco opcional "Estoque que já está na loja" no cadastro de **Novo produto**, com quantidade e custo por unidade. O produto já nasce com estoque, sem precisar registrar uma entrada depois.
+- Esse lançamento vira uma entrada marcada como **Estoque inicial**. Ela conta no estoque, no custo médio, na composição (FIFO) e no lucro, mas **não** é tratada como compra.
+- No Histórico, aparece com selo cinza tracejado "Estoque inicial", mostra o valor em estoque (sem sinal) com a nota "fora do saldo" e não entra no "Saldo no dia".
+- Novo tipo "Estoque inicial" no filtro Tipo do Histórico.
+
+### Alterado
+
+- Painel do Produto: na Composição, os lotes de estoque inicial aparecem como "Estoque inicial" em vez de "Não informado". Esses lotes também não entram na aba Fornecedores, já que não são compras.
+- Edição de movimentação: o estoque inicial pode ter data, quantidade e custo corrigidos, mas não tem campo de fornecedor.
+- Compras feitas daqui em diante, por Registrar entrada ou Compra em lote, continuam como "Aquisição" e pesam no saldo do dia.
+
+---
+
+## [0.9.3] - 2026-11-09
+
+### Adicionado
+
+- **Servidor intermediário da API GTIN (Cloudflare Worker):** novo arquivo `cloudflare/gtin-worker.js`, que roda no Cloudflare (plano gratuito). O usuário e a senha da API ficam guardados nele como segredos (`GTIN_USUARIO`, `GTIN_SENHA`). Ele gera e reaproveita o token e repassa só a consulta do código de barras para o app. Aceita apenas chamadas do site do China Engine que enviem a chave do app (`CHAVE_APP`). O arquivo não contém senhas e pode ficar no GitHub.
+
+### Alterado
+
+- **Consulta por código de barras:** o app passa a consultar a API GTIN pelo Worker, porque a API não aceita chamadas direto do navegador (bloqueio de CORS confirmado no teste).
+- Em **Configurações → Consulta por código de barras**, os campos "Usuário" e "Senha" da API deram lugar a **"Endereço do Worker"** e **"Chave do app"**, salvos só no aparelho e fora do backup. "Salvar e testar" confere a chave e o login da API pelo Worker.
+- Usuário e senha da API salvos no aparelho pela 0.9.0 são apagados automaticamente.
+
+---
+
+## [0.9.2] - 2026-11-09
+
+### Removido
+
+- Botão "Categorias" do cabeçalho da tela Estoque e o modal de categorias. As categorias agora são gerenciadas só em **Configurações → Categorias de produtos**, deixando o cabeçalho limpo.
+
+---
+
+## [0.9.1] - 2026-11-09
+
+### Adicionado
+
+- **Configurações → Categorias de produtos:** gerenciamento completo das categorias direto na tela de Configurações. É possível adicionar (Enter ou botão), renomear (Enter salva, Esc cancela) e remover. Cada categoria mostra quantos produtos usa.
+- As mesmas regras de antes valem aqui: nomes sanitizados, sem duplicados; renomear uma categoria com estoque ativo pede confirmação e move os produtos para o novo nome; remover só é possível em categorias sem produtos.
+
+### Alterado
+
+- Remover uma categoria agora pede confirmação.
+
+---
+
+## [0.9.0] - 2026-11-09
+
+### Adicionado
+
+**Consulta por código de barras (API GTIN)**
+- Integração com a API GTIN (gtin.rscsistemas.com.br) para preencher **marca, nome e categoria** ao cadastrar um produto novo.
+- Em **Configurações**, novo bloco "Consulta por código de barras": usuário e senha da conta na API, com "Salvar e testar" (testa a conexão na hora) e "Remover deste aparelho". As credenciais ficam salvas só no aparelho, separadas dos dados do app: não vão para o GitHub nem para o arquivo de backup.
+- **Novo produto:** ao ler o código de barras (câmera ou leitor USB) ou digitá-lo, o app consulta a API e preenche os campos que estiverem vazios. Uma linha de status abaixo do campo mostra o resultado: encontrado, não encontrado, código inválido ou erro.
+- **Nova compra em lote:** ao cadastrar um produto novo numa linha com código lido e não cadastrado no estoque, os dados também são buscados na API.
+- **Categoria:** só é sugerida se existir no China Engine. A sugestão usa palavras do nome (ex.: "controle" → Joysticks, "cabo" → Cabos), depois o NCM (ex.: 8544 → Cabos, 8517 → Celulares, 8523 → Memória e armazenamento) e, por fim, a categoria informada pela API.
+- Nomes que vêm em letras maiúsculas são ajustados (ex.: "CABO USB C 2M" → "Cabo USB C 2m").
+- O token da API (válido por 1 hora) é gerado e renovado automaticamente.
+- O dígito verificador é conferido antes de consultar, para evitar a suspensão da conta que a API aplica após vários códigos inválidos.
+- Mensagens claras para usuário ou senha incorretos, limite do plano, termos de uso pendentes, suspensão temporária e bloqueio de conexão pelo navegador.
+
+### Alterado
+
+- No cadastro de Novo produto, o campo "Código de barras" passou para o topo do formulário e já vem selecionado ao abrir, pronto para o leitor USB.
+
+---
+
+## [0.8.6] - 2026-11-07
+
+### Alterado
+
+- **Acesso rápido (botão ⊕):** as opções Nova venda, Novo produto e Nova compra em lote agora ficam dentro de uma caixa escura, com o ícone à esquerda e o nome à direita, e destaque na opção sob o cursor.
+- **Fornecedor só nas entradas:** o fornecedor passa a ser informado apenas no registro de entrada e na Nova compra em lote ("Fornecedor da compra"). O campo de entrada sugere o fornecedor da compra mais recente desse produto que tenha um.
+
+### Removido
+
+- Campo "Fornecedor" do cadastro de novo produto, do formulário de produto novo dentro da compra em lote e da aba Dados do Painel do Produto ("Fornecedor principal").
+- Selo "principal" na aba Fornecedores. O produto também não adota mais automaticamente o primeiro fornecedor informado numa entrada.
+
+---
+
+## [0.8.5] - 2026-11-07
+
+### Alterado
+
+- Desempenho: o card "Produtos parados" não aparece quando ainda não há produtos cadastrados no estoque (produtos arquivados não contam).
+
+---
+
+## [0.8.4] - 2026-11-07
+
+### Adicionado
+
+- **Nova compra em lote — código de barras:** botão com ícone de código de barras ao lado do campo de busca de cada item. Ele abre a câmera e, ao ler o código de um produto cadastrado, seleciona o produto na linha, preenche o custo da última compra e leva o cursor para a Quantidade.
+- Leitor USB na compra em lote: com o campo de busca focado, a leitura (que termina com Enter) seleciona o produto pelo código de barras ou SKU. Enter também seleciona quando a busca tem um único resultado.
+- Se o código lido não estiver cadastrado, o app avisa e guarda o código: ao escolher "Cadastrar novo produto" nessa linha, o produto novo já é criado com esse código de barras. Produtos arquivados não são selecionados (o app avisa para desarquivar).
+
+---
+
+## [0.8.3] - 2026-11-07
+
+### Alterado
+
+- Valores e números (preços, quantidades, totais, datas, gráficos) passaram a usar a fonte do texto, **IBM Plex Sans**, com algarismos de largura fixa (`tabular-nums`), para continuarem alinhados em colunas.
+
+### Removido
+
+- Fonte **IBM Plex Mono** removida do projeto (do carregamento do Google Fonts, da variável `--mono` do CSS e dos estilos no JavaScript).
+
+---
+
+## [0.8.2] - 2026-11-07
+
+### Alterado
+
+- Entradas sem fornecedor informado não são mais atribuídas ao fornecedor principal do produto. Na aba Fornecedores do Painel do Produto, elas aparecem num grupo próprio, **"Não informado"** (sempre por último, com borda tracejada), e na Composição do estoque aparecem como "Não informado".
+- A aba Fornecedores continua aparecendo só quando o produto tem ao menos um fornecedor informado. O contador da aba conta apenas os fornecedores com nome.
+- Na edição de movimentação, o campo Fornecedor vazio passou a significar "Não informado".
+
+### Removido
+
+- O asterisco (*) e a nota "Entrada antiga, atribuída ao fornecedor principal" da aba Fornecedores.
+
+---
+
+## [0.8.1] - 2026-11-07
+
+### Alterado
+
+- **Composição do estoque atual** (aba Estoque do Painel do Produto): os badges viraram uma lista agrupada por preço de custo. Cada grupo mostra o custo unitário, as unidades e o valor em estoque; abaixo, cada compra que ainda tem unidades, com data, fornecedor e quantas unidades restam (ex.: "5 de 30 un."). O lote mais antigo, que é o próximo a sair nas vendas, leva o selo "sai primeiro".
+- No celular, os cards da aba Estoque do Painel do Produto ficam em 2 colunas, deixando o modal mais compacto.
+
+---
+
+## [0.8.0] - 2026-11-07
+
+### Adicionado
+
+**Módulo Desempenho**
+- Novo item **Desempenho** na barra inferior (Estoque · Histórico · Desempenho · Financeiro · Configurações), com métricas e gráficos das vendas.
+- Navegação por período igual à do Histórico: Hoje, Esta semana, Este mês, Este ano, Todo o período e Escolher período.
+- **Desempenho de lucro**: faturamento, custo das vendas, lucro bruto e margem do período. O custo de cada venda é o do lote vendido (as unidades mais antigas saem primeiro, a mesma lógica da Composição do estoque).
+- **Evolução no tempo**: gráfico de linha com faturamento e lucro por dia (ou por mês em períodos longos), com detalhes ao passar o mouse ou tocar.
+- **Vendas por categoria**: faturamento por categoria, com unidades e margem.
+- **Dias da semana**: faturamento por dia da semana, com o melhor dia em destaque e a média por dia nos detalhes.
+- **Melhores datas**: os 5 dias com maior faturamento no período.
+- **Produtos mais vendidos**: top 10 por unidades ou por faturamento, com o lucro de cada um.
+- **Produtos parados**: produtos com estoque e sem venda há 30 dias ou mais, com o custo parado (não depende do período). Tocar abre o Painel do Produto.
+- Vendas "a receber" ainda pendentes não entram nos números até o recebimento (o app avisa quantas unidades estão nessa situação).
+- Opção **Este ano** também no menu de período do Histórico.
+
+**Excluir movimentação**
+- Na edição de movimentação (Histórico ou aba Movimentações do Painel do Produto, com toque e segure e senha do gerente), uma área "Excluir movimentação" permite apagar o registro.
+- Dupla confirmação: a primeira mostra o efeito no estoque (de quantas para quantas unidades) e recomenda baixar um backup; a segunda avisa que a exclusão é definitiva.
+- Atalho "↓ Backup" ao lado do botão de excluir, e aviso após a exclusão com o novo estoque e o botão "Baixar backup agora".
+- A exclusão de uma aquisição é bloqueada se deixar o estoque negativo (parte das unidades já saiu); nesse caso o app sugere editar a quantidade.
+
+### Corrigido
+
+- Modais de confirmação, senha e aviso agora sempre aparecem por cima de outro modal aberto (antes, uma confirmação pedida de dentro da edição de movimentação podia ficar escondida atrás dela).
+- A rolagem acontecia na página inteira, e a barra de rolagem passava por cima do cabeçalho e da barra inferior (visível principalmente no Financeiro). Agora o cabeçalho e a barra inferior ficam fixos e só a área de conteúdo rola, em todas as telas. No Histórico, continua rolando só a lista.
+
+### Alterado
+
+- O campo "Fornecedor da compra" da Nova compra em lote passou a fazer parte do `index.html` (antes era criado pelo JavaScript).
+- Nome da loja padronizado como "Chinatown Imports" no `index.html` (título da página, `og:title`, texto alternativo do logo e subtítulo do cabeçalho).
+
+---
+
+## [0.7.0] - 2026-11-07
+
+### Adicionado
+
+**Painel do Produto em abas**
+- O painel aberto com um toque no produto foi reorganizado em abas:
+  - **Estoque**: os 6 cards (estoque atual, a receber, custo médio, preço de venda, lucro estimado, variação de custo) e a composição do estoque atual.
+  - **Registrar**: os blocos de registrar entrada e registrar saída.
+  - **Movimentações**: histórico do produto agrupado por dia, no mesmo layout do Histórico geral (com toque e segure para editar). Só aparece se houver movimentações.
+  - **Dados**: edição do produto direto no painel, com Salvar, Arquivar/Desarquivar e Excluir.
+  - **Fornecedores**: cada fornecedor com total comprado, unidades, data da última compra e a lista de entradas (data, quantidade e custo). Só aparece se houver fornecedor informado.
+- "Editar informações do produto", nas ações rápidas (toque e segure), abre o painel direto na aba Dados.
+
+**Fornecedor por entrada**
+- Cada entrada agora pode registrar de qual fornecedor veio: campo "Fornecedor" no registro de entrada (já preenchido com o último fornecedor usado ou o principal do produto) e "Fornecedor da compra" na Nova compra em lote (vale para todos os itens).
+- O campo sugere os fornecedores já usados, para evitar o mesmo nome escrito de jeitos diferentes.
+- O fornecedor da entrada também pode ser corrigido na edição de movimentação.
+- Entradas antigas, sem fornecedor próprio, são atribuídas ao fornecedor principal do produto (marcadas com * na aba Fornecedores).
+
+### Alterado
+
+- O campo "Fornecedor" do cadastro passou a se chamar "Fornecedor principal" na aba Dados. Se o produto ainda não tem fornecedor, o primeiro informado numa entrada vira o principal.
+- O leitor de código de barras por câmera agora preenche o campo de onde foi aberto (cadastro de novo produto ou aba Dados).
+
+---
+
+## [0.6.0] - 2026-11-07
+
+### Adicionado
+
+**Tela Configurações**
+- O item "Configurações" da barra inferior foi habilitado, com:
+  - **Backup dos dados**: "Baixar backup" e "Restaurar backup", com a data do último backup baixado (em vermelho se nunca foi feito ou se tem 7 dias ou mais).
+  - **Senha do gerente**: alteração com senha atual, nova senha e repetição (mínimo de 4 caracteres). A nova senha fica salva com os dados do navegador e entra no backup; sem alteração, vale a senha padrão do código.
+
+**Histórico — navegação por período**
+- Seletor "‹ Novembro 2026 ›" no topo, com menu: Hoje, Esta semana, Este mês, Todo o período e Escolher período. As setas avançam ou voltam um dia, semana, mês ou intervalo escolhido. Abre em "Este mês".
+
+### Alterado
+
+**Histórico — novo layout**
+- Movimentações agrupadas por dia, com uma linha de data por dia (com dia da semana) e "Saldo no dia" ao fim de cada grupo. A coluna Data saiu da tabela.
+- A coluna Valor mostra o total da movimentação com sinal do caixa (+ venda, − aquisição) e o valor unitário embaixo.
+- Filtros numa barra discreta de fundo próprio: Tipo, Categoria, Valor (mín–máx, em pop-up), Ordenar (ordem dentro de cada dia), Mais recentes / Mais antigos e busca por produto ou marca. Filtros ativos ficam destacados.
+- O filtro Tipo agora separa Venda, Aquisição, A receber e Outras saídas.
+- Período, filtros e cabeçalho da lista ficam sempre visíveis; só a lista de movimentações rola. A data de cada dia também fica presa no topo enquanto o dia é rolado.
+
+**Cores das movimentações (ponto de vista do caixa)**
+- "Venda" e "Recebido" em verde; entradas de estoque passam a se chamar **"Aquisição"**, em vermelho; "A receber" pendente em âmbar; Perda, Devolução, Ajuste e Outros em cinza. Vale para o Histórico, o mini-histórico do painel do produto e o modal de edição.
+
+- O botão ⊕ também não aparece na tela Configurações.
+
+### Removido
+
+- Botões "↓ Backup" e "↑ Restaurar" do cabeçalho (agora em Configurações).
+- Campos "De" e "Até" dos filtros do Histórico (substituídos pela navegação por período).
+
+---
+
+## [0.5.1] - 2026-11-07
+
+### Corrigido
+
+- O botão ⊕ não aparece mais na tela Financeiro (as ações dele são do estoque).
+
+---
+
+## [0.5.0] - 2026-11-07
+
+### Adicionado
+
+**Tela Início**
+- Nova tela inicial, a primeira exibida ao abrir o app, com os pontos de atenção do vendedor:
+  - **Estoque baixo**: produtos no mínimo ou abaixo dele (arquivados não entram), com botão "+ Entrada" para registrar o reabastecimento na hora.
+  - **Pagamentos pendentes**: saídas "a receber" ainda não recebidas, das mais antigas para as mais novas, com quantos dias estão pendentes e botão "Receber".
+- Tocar no logo/título do cabeçalho volta para o Início, como num site.
+- Contador discreto no canto superior direito do cabeçalho (sino) com o número de pontos de atenção; tocar nele abre o Início.
+
+**Botão ⊕ flutuante**
+- Botão no canto inferior direito que reúne **Nova venda**, **Novo produto** e **Nova compra em lote**.
+
+**Editar movimentações**
+- No Histórico, tocar e segurar uma movimentação permite editá-la, após a senha do gerente: data, quantidade, valor (custo na entrada; preço de venda ou valor recebido na saída) e motivo da saída. A movimentação é sobrescrita no lugar.
+- A edição é bloqueada se deixar o estoque negativo. A lista do estoque, o painel do produto (com o mini-histórico) e a tela Início refletem a alteração na hora.
+
+**Arquivar produtos**
+- Produtos podem ser arquivados (pelo toque longo na lista, pelo painel do produto ou pela edição do produto) e desarquivados do mesmo jeito.
+- Arquivados somem da lista do estoque, da contagem do filtro de categorias, da Nova venda, da Compra em lote e do Início, mas aparecem quando o usuário pesquisa por eles, com fundo listrado e o selo "Arquivado". O histórico de movimentações é mantido.
+
+**Compra em lote**
+- Botão "+" ao lado do campo de busca de cada item, para cadastrar um novo produto direto (a opção continua também no fim da lista de resultados).
+- O botão de remover item virou um círculo vermelho no canto superior direito do item, longe do "+", e pede confirmação antes de remover.
+
+### Alterado
+
+- "Registrar venda", "+ Novo produto" e "+ Compra em lote" saíram do cabeçalho e passaram para o botão ⊕. Os modais foram renomeados para "Nova venda" e "Nova compra em lote".
+- Excluir produto agora pede confirmação e a senha do gerente, e sugere arquivar como alternativa (excluir apaga o histórico do produto).
+
+---
+
+## [0.4.1] - 2026-11-06
+
+### Corrigido
+
+- A marca dos produtos na lista do estoque não aparecia e, no lugar dela, surgia uma linha cinza vertical atravessando a tela. A classe `.marca` das divisões do medidor do Financeiro (adicionada na 0.4.0) colidia com a `.marca` do nome do produto; a do medidor foi renomeada para `.fin-marca`.
+
+---
+
+## [0.4.0] - 2026-11-06
+
+### Adicionado
+
+**Módulo Financeiro — Faturamento MEI**
+- Integração do app "Controle de Faturamento MEI" ao China Engine, como tela **Financeiro** da barra inferior, com o visual do app principal.
+- Importação de XML de NF-e / NFC-e (vários arquivos de uma vez): número, série, data de emissão, cliente e valor total. A mesma nota não entra duas vezes (confere a chave de acesso).
+- Teto anual por ano fiscal, com seletor de ano: R$ 81.000 até 2026 e R$ 110.000 a partir de 2027. Os valores ficam numa tabela no início do bloco financeiro do `app.js`, para facilitar mudanças futuras.
+- Valor disponível para faturar em destaque, medidor com marcas em 50%, 75% e 90% e alertas por faixa (âmbar, laranja, vermelho).
+- Faixa de tolerância de 20%: o medidor vai até 120% do teto, com o trecho acima do teto listrado. Acima do teto, o app mostra o excesso e quanto falta para o fim da tolerância; acima de 20%, avisa sobre o desenquadramento retroativo.
+- Teto proporcional automático no ano de abertura: basta informar o mês de abertura do MEI em "Configurar teto" (teto ÷ 12 × meses, contando o mês de abertura). Também é possível definir um teto manual por ano.
+- Notas canceladas: importar o XML do evento de cancelamento (110111) tira a nota do total; ela continua na lista, riscada e marcada como "cancelada". O cancelamento vale mesmo se a nota for importada depois.
+- Aviso ao cruzar faixa: quando uma importação faz o faturamento passar de 50%, 75%, 90%, do teto ou da tolerância, um modal informa a nova situação.
+- Remoção de nota com o modal de confirmação do app.
+
+**Navegação**
+- A barra inferior agora alterna entre as telas **Estoque**, **Histórico** e **Financeiro**. **Configurações** continua desabilitado.
+- O título do cabeçalho muda conforme a tela, e os botões do cabeçalho mostram só as ações do módulo aberto. Backup e Restaurar aparecem em todas as telas.
+
+### Alterado
+
+- O histórico geral de movimentações deixou de ser um modal aberto pelo cabeçalho e passou a ser uma tela da barra inferior, com os mesmos filtros e ordenação.
+- "Gestão", na barra inferior, deu lugar a "Financeiro".
+- Backup único: o arquivo de backup (agora `backup-china-engine-AAAA-MM-DD.json`) inclui estoque e financeiro. Restaurar um backup antigo do app Faturamento MEI adiciona as notas ao Financeiro sem mexer no estoque.
+
+### Corrigido
+
+- O aviso (toast) vazio não aparece mais como uma pequena forma no rodapé quando está oculto.
+
+### Removido
+
+- Botão "Histórico" do cabeçalho (substituído pelo item da barra inferior).
 
 ---
 
@@ -156,6 +476,24 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[0.9.4]: #
+[0.9.3]: #
+[0.9.2]: #
+[0.9.1]: #
+[0.9.0]: #
+[0.8.6]: #
+[0.8.5]: #
+[0.8.4]: #
+[0.8.3]: #
+[0.8.2]: #
+[0.8.1]: #
+[0.8.0]: #
+[0.7.0]: #
+[0.6.0]: #
+[0.5.1]: #
+[0.5.0]: #
+[0.4.1]: #
+[0.4.0]: #
 [0.3.1]: #
 [0.3.0]: #
 [0.2.1]: #

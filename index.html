@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>China Town Imports — Controle de Estoque</title>
+<title>Chinatown Imports — Controle de Estoque</title>
 
-<meta property="og:title" content="China Town Imports — Controle de Estoque">
+<meta property="og:title" content="Chinatown Imports — Controle de Estoque">
 <meta property="og:description" content="Estoque, custos e lucro em um só lugar.">
 <meta property="og:image" content="https://machadocreative.github.io/China-Engine/og-image.png">
 <meta property="og:url" content="https://machadocreative.github.io/China-Engine/">
@@ -14,31 +14,43 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
-  <img class="logo" src="Chinatown_Imports_Logo.png" alt="China Town Imports" onerror="this.style.display='none'">
-  <div class="titulo">
-    <b>Controle de Estoque</b>
-    <span>China Town Imports <em id="versao"></em></span>
-  </div>
+  <!-- Logo + título: tocar volta para a tela Início (como num site) -->
+  <a class="marca-app" href="#" onclick="mostrarView('inicio');return false" title="Voltar ao início">
+    <img class="logo" src="Chinatown_Imports_Logo.png" alt="Chinatown Imports" onerror="this.style.display='none'">
+    <div class="titulo">
+      <b id="tituloView">Início</b>
+      <span>Chinatown Imports <em id="versao"></em></span>
+    </div>
+  </a>
+  <!-- Contador de pontos de atenção da tela Início -->
+  <button class="notif" id="notif" onclick="mostrarView('inicio')" title="Pontos de atenção">
+    <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span id="notifContador"></span>
+  </button>
+  <!-- Ações do cabeçalho: data-view indica em qual módulo o botão aparece (sem data-view = sempre) -->
   <div class="acoes">
-    <button class="btn btn-claro btn-mini" onclick="abrirHistorico()">Histórico</button>
-    <button class="btn btn-claro btn-mini" onclick="abrirCategorias()">Categorias</button>
-    <button class="btn btn-claro btn-mini" onclick="exportar()">↓ Backup</button>
-    <button class="btn btn-claro btn-mini" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar</button>
-    <button class="btn btn-claro btn-mini" onclick="abrirCompra()">+ Compra em lote</button>
-    <button class="btn btn-escuro btn-mini" onclick="abrirVenda()">Registrar venda</button>
-    <button class="btn btn-amarelo" onclick="abrirProduto()">+ Novo produto</button>
+    <button class="btn btn-claro btn-mini" data-view="financeiro" onclick="abrirConfigTeto()">Configurar teto</button>
+    <button class="btn btn-amarelo" data-view="financeiro" onclick="document.getElementById('arquivoXml').click()">+ Importar XML</button>
     <input type="file" id="arquivoImport" accept="application/json" style="display:none" onchange="importar(event)">
+    <input type="file" id="arquivoXml" accept=".xml,text/xml" multiple style="display:none" onchange="importarXMLs(event)">
   </div>
 </header>
 
 <main>
+<!-- ===================== TELA: INÍCIO (pontos de atenção) ===================== -->
+<section class="view" id="viewInicio">
+  <div id="inicioConteudo"></div>
+</section>
+
+<!-- ===================== TELA: ESTOQUE ===================== -->
+<section class="view" id="viewEstoque" hidden>
   <div class="filtros">
     <input type="text" id="busca" placeholder="Buscar por nome, marca, código ou cód. de barras..." oninput="render()">
     <select id="filtroCategoria" onchange="render()"><option value="">Todas as categorias</option></select>
@@ -53,8 +65,189 @@
       <button id="btnDir" class="btn btn-claro btn-mini" onclick="alternarDirecao()" title="Inverter ordem">↑</button>
     </div>
   </div>
-  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas.</p>
+  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas. Produtos arquivados só aparecem na busca.</p>
   <div id="conteudo"></div>
+</section>
+
+<!-- ===================== TELA: HISTÓRICO ===================== -->
+<!-- O topo (período + filtros + cabeçalho da lista) fica fixo; só a lista rola -->
+<section class="view" id="viewHistorico" hidden>
+  <div class="hx-topo">
+    <!-- Navegação por período -->
+    <div class="hx-periodo">
+      <button class="hx-seta" onclick="periodoPasso(-1)" title="Período anterior" aria-label="Período anterior">‹</button>
+      <div class="hx-periodo-sel">
+        <button class="hx-periodo-rotulo" id="hxPeriodoRotulo" onclick="alternarMenuPeriodo(event)">Este mês</button>
+        <div class="hx-pop hx-menu-periodo" id="hxMenuPeriodo">
+          <button onclick="definirPeriodo('dia')">Hoje</button>
+          <button onclick="definirPeriodo('semana')">Esta semana</button>
+          <button onclick="definirPeriodo('mes')">Este mês</button>
+          <button onclick="definirPeriodo('ano')">Este ano</button>
+          <button onclick="definirPeriodo('tudo')">Todo o período</button>
+          <button onclick="abrirPeriodoPersonalizado('hx')">Escolher período</button>
+        </div>
+      </div>
+      <button class="hx-seta" onclick="periodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
+    </div>
+
+    <!-- Filtros discretos -->
+    <div class="hx-filtros">
+      <label class="hx-chip"><select id="fhTipo" onchange="renderHistorico()">
+        <option value="">Tipo</option>
+        <option value="venda">Venda</option>
+        <option value="aquisicao">Aquisição</option>
+        <option value="inicial">Estoque inicial</option>
+        <option value="areceber">A receber</option>
+        <option value="outras">Outras saídas</option>
+      </select></label>
+      <label class="hx-chip"><select id="fhCategoria" onchange="renderHistorico()"></select></label>
+      <div class="hx-chip-wrap">
+        <button class="hx-chip hx-chip-btn" id="hxValorBtn" onclick="alternarPop('hxPopValor',event)">Valor</button>
+        <div class="hx-pop hx-pop-valor" id="hxPopValor" onclick="event.stopPropagation()">
+          <label>Valor total da movimentação (R$)</label>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="fhValMin" placeholder="mín" oninput="renderHistorico()">
+            <input type="number" id="fhValMax" placeholder="máx" oninput="renderHistorico()">
+          </div>
+          <button class="btn btn-claro btn-mini" style="margin-top:8px" onclick="limparValor()">Limpar</button>
+        </div>
+      </div>
+      <label class="hx-chip"><select id="histOrdenar" onchange="renderHistorico()" title="Ordem dentro de cada dia">
+        <option value="data">Ordenar</option>
+        <option value="tipo">Tipo</option>
+        <option value="categoria">Categoria</option>
+        <option value="nome">Produto</option>
+        <option value="valor">Valor</option>
+      </select></label>
+      <button class="hx-chip hx-chip-btn" id="histDir" onclick="histAlternarDir()" title="Inverter a ordem dos dias">Mais recentes ↓</button>
+      <div class="hx-busca">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="fhProduto" placeholder="Produto ou marca" oninput="renderHistorico()">
+      </div>
+    </div>
+
+    <div class="hx-cab">
+      <div>Movimentação</div><div class="col-cat">Categoria</div><div class="num">Qtd</div><div class="num">Valor</div>
+    </div>
+  </div>
+
+  <div class="hx-lista" id="histConteudo"></div>
+</section>
+
+<!-- ===================== TELA: DESEMPENHO (métricas de vendas) ===================== -->
+<section class="view" id="viewDesempenho" hidden>
+  <div class="hx-periodo">
+    <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(-1)" title="Período anterior" aria-label="Período anterior">‹</button>
+    <div class="hx-periodo-sel">
+      <button class="hx-periodo-rotulo" id="dsPeriodoRotulo" onclick="alternarPop('dsMenuPeriodo',event)">Este mês</button>
+      <div class="hx-pop hx-menu-periodo" id="dsMenuPeriodo">
+        <button onclick="dsDefinirPeriodo('dia')">Hoje</button>
+        <button onclick="dsDefinirPeriodo('semana')">Esta semana</button>
+        <button onclick="dsDefinirPeriodo('mes')">Este mês</button>
+        <button onclick="dsDefinirPeriodo('ano')">Este ano</button>
+        <button onclick="dsDefinirPeriodo('tudo')">Todo o período</button>
+        <button onclick="abrirPeriodoPersonalizado('ds')">Escolher período</button>
+      </div>
+    </div>
+    <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
+  </div>
+  <div id="dsConteudo"></div>
+</section>
+
+<!-- ===================== TELA: FINANCEIRO (Faturamento MEI) ===================== -->
+<section class="view" id="viewFinanceiro" hidden>
+  <div class="fin-topo">
+    <div>
+      <div class="fin-eyebrow">Faturamento MEI</div>
+      <div class="dica" id="finTetoInfo" style="margin-top:0"></div>
+    </div>
+    <div class="fin-ano">
+      <label for="finAno">Ano fiscal</label>
+      <select id="finAno" onchange="finAnoAtual=parseInt(this.value,10);renderFinanceiro()"></select>
+    </div>
+  </div>
+
+  <div class="fin-heroi">
+    <div class="fin-rotulo" id="finRotulo">Disponível para faturar</div>
+    <div class="fin-valor" id="finDisponivel">R$ 0,00</div>
+    <div class="fin-uso" id="finUso"></div>
+
+    <div class="medidor">
+      <div class="trilho" id="finTrilho">
+        <div class="zona-tolerancia"></div>
+        <div class="preenchido" id="finBarra"></div>
+      </div>
+      <div class="legendas" id="finLegendas"></div>
+    </div>
+
+    <div class="fin-alerta" id="finAlerta">
+      <span class="icone" id="finAlertaIcone">!</span>
+      <span id="finAlertaTexto"></span>
+    </div>
+  </div>
+
+  <div class="resumo fin-stats">
+    <div class="caixa"><span>Faturado no ano</span><b id="finStFaturado">R$ 0,00</b></div>
+    <div class="caixa"><span>Notas válidas</span><b id="finStNotas">0</b></div>
+    <div class="caixa"><span>Média por nota</span><b id="finStMedia">R$ 0,00</b></div>
+    <div class="caixa"><span>Canceladas</span><b id="finStCanc">0</b></div>
+  </div>
+
+  <div class="sub" style="display:flex;align-items:center">Notas fiscais <span class="dica" id="finContagem" style="margin:0 0 0 auto;font-family:var(--corpo);font-weight:400"></span></div>
+  <div id="finNotas"></div>
+  <p class="dica" style="margin-top:12px">Importe os XMLs de NF-e / NFC-e e também os XMLs de evento de cancelamento: a nota cancelada sai do total automaticamente.</p>
+</section>
+
+<!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
+<section class="view" id="viewConfig" hidden>
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Backup dos dados</h3>
+      <small>Os dados ficam salvos só neste navegador. Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
+      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
+    </div>
+    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Categorias de produtos</h3>
+      <small>Crie, renomeie ou remova categorias. Renomear move os produtos para o novo nome; só é possível remover categorias sem produtos. <span id="cfgCatTotal"></span></small></div>
+    <div class="cfg-cat-nova">
+      <input type="text" id="cfgNovaCat" placeholder="Nova categoria (ex: Áudio)" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')adicionarCategoria()">
+      <button class="btn btn-amarelo" onclick="adicionarCategoria()">Adicionar</button>
+    </div>
+    <ul class="lista-cat cfg-lista-cat" id="cfgListaCat"></ul>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Senha do gerente</h3>
+      <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
+    <div class="cfg-form">
+      <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Nova senha</label><input type="password" id="cfgSenhaNova" autocomplete="new-password"></div>
+        <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgSenhaRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenha()"></div>
+      </div>
+      <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
+      <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
+    </div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Consulta por código de barras</h3>
+      <small>Preenche marca, nome e categoria ao cadastrar um produto novo, usando a API GTIN por meio do servidor intermediário (Cloudflare Worker). O usuário e a senha da API ficam guardados no Worker; aqui vão só o endereço dele e a chave do app, salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
+    <div class="cfg-form">
+      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgGtinUrl" placeholder="https://china-engine-gtin.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="campo"><label>Chave do app</label><input type="password" id="cfgGtinChave" autocomplete="new-password" placeholder="A mesma CHAVE_APP cadastrada no Worker"></div>
+      <div class="cfg-acoes">
+        <button class="btn btn-escuro" onclick="gtinSalvarCredenciais()">Salvar e testar</button>
+        <button class="btn btn-claro" id="cfgGtinRemover" onclick="gtinRemoverCredenciais()">Remover deste aparelho</button>
+      </div>
+      <div class="dica" id="cfgGtinStatus" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
 </main>
 
 <!-- ===== Modal: ações rápidas (toque e segure) ===== -->
@@ -69,6 +262,7 @@
         <button class="btn btn-amarelo" onclick="acaoEntrada()">Registrar entrada</button>
         <button class="btn btn-escuro" onclick="acaoSaida()">Registrar saída</button>
         <button class="btn btn-claro" onclick="acaoEditar()">Editar informações do produto</button>
+        <button class="btn btn-claro" id="btnAcaoArquivar" onclick="acaoArquivar()">Arquivar produto</button>
       </div>
     </div>
   </div>
@@ -100,7 +294,7 @@
 <div class="overlay" id="modalVenda">
   <div class="modal" style="max-width:620px">
     <div class="modal-cabecalho">
-      <h2>Registrar venda</h2>
+      <h2>Nova venda</h2>
       <button class="fechar" onclick="fechar('modalVenda')">&times;</button>
     </div>
     <div class="modal-corpo">
@@ -123,7 +317,7 @@
       <div id="vendaItens" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:2px solid var(--borda)">
         <span style="font-weight:600">Total</span>
-        <span id="vendaTotal" style="font-family:var(--mono);font-size:20px;font-weight:700">—</span>
+        <span id="vendaTotal" style="font-family:var(--corpo);font-size:20px;font-weight:700">—</span>
       </div>
       <div class="rodape-modal">
         <button class="btn btn-claro" onclick="fechar('modalVenda')">Cancelar</button>
@@ -137,11 +331,12 @@
 <div class="overlay" id="modalCompra">
   <div class="modal" style="max-width:680px">
     <div class="modal-cabecalho">
-      <h2>Registrar compra (vários produtos)</h2>
+      <h2>Nova compra em lote</h2>
       <button class="fechar" onclick="fechar('modalCompra')">&times;</button>
     </div>
     <div class="modal-corpo">
       <div class="campo"><label>Data da compra</label><input type="date" id="compraData"></div>
+      <div class="campo"><label>Fornecedor da compra (opcional)</label><input type="text" id="compraFornecedor" list="listaFornecedores" placeholder="Vale para todos os itens desta compra"></div>
       <div id="compraLinhas"></div>
       <button class="btn btn-claro btn-mini" onclick="adicionarLinhaCompra()">+ Adicionar item</button>
       <div class="rodape-modal" style="margin-top:16px">
@@ -172,6 +367,16 @@
     </div>
     <div class="modal-corpo">
       <input type="hidden" id="produtoId">
+      <!-- Código de barras primeiro: ao ler o código, a consulta GTIN preenche os campos abaixo -->
+      <div class="campo">
+        <label>Código de barras (opcional)</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();gtinPreencherCadastro();}" onchange="gtinPreencherCadastro()">
+          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
+        </div>
+        <div class="dica" id="gtinStatus">Use a câmera ou um leitor USB com este campo focado. Os dados do produto são buscados automaticamente.</div>
+      </div>
       <div class="linha-campos">
         <div class="campo" style="flex:.8">
           <label>Marca / fabricante</label>
@@ -183,15 +388,9 @@
         </div>
       </div>
       <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
-      <div class="linha-campos">
-        <div class="campo">
-          <label>Categoria</label>
-          <select id="pCategoria"></select>
-        </div>
-        <div class="campo">
-          <label>Fornecedor (opcional)</label>
-          <input type="text" id="pFornecedor" placeholder="Ex: Atacado China">
-        </div>
+      <div class="campo">
+        <label>Categoria</label>
+        <select id="pCategoria"></select>
       </div>
       <div class="campo">
         <label>Código (SKU)</label>
@@ -199,14 +398,6 @@
           <input type="text" id="pCodigo" placeholder="Gerado automaticamente se vazio" style="flex:1">
           <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('pCodigo').value=gerarSku(document.getElementById('pCategoria').value)">Gerar</button>
         </div>
-      </div>
-      <div class="campo">
-        <label>Código de barras (opcional)</label>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
-          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
-        </div>
-        <div class="dica">Use a câmera (precisa de permissão) ou um leitor USB com este campo focado.</div>
       </div>
       <div class="linha-campos">
         <div class="campo">
@@ -220,8 +411,24 @@
           <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div>
         </div>
       </div>
+      <!-- Estoque inicial: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
+      <div class="pi-bloco" id="pBlocoInicial">
+        <div class="pi-tit">Estoque que já está na loja <small>opcional</small></div>
+        <div class="linha-campos">
+          <div class="campo">
+            <label>Quantidade</label>
+            <input type="number" id="pQtdInicial" min="0" step="1" placeholder="0" inputmode="numeric">
+          </div>
+          <div class="campo">
+            <label>Custo por unidade (R$)</label>
+            <input type="number" id="pCustoInicial" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+          </div>
+        </div>
+        <div class="dica">Entra como <b>Estoque inicial</b>: conta no estoque, no custo e no lucro, mas não como compra no saldo do dia. Para mercadoria comprada daqui em diante, use Registrar entrada ou Compra em lote.</div>
+      </div>
       <div class="rodape-modal">
-        <button class="btn btn-vermelho" id="btnExcluirProduto" style="margin-right:auto;display:none" onclick="excluirProduto()">Excluir</button>
+        <button class="btn btn-vermelho" id="btnExcluirProduto" style="display:none" onclick="excluirProduto()">Excluir</button>
+        <button class="btn btn-claro" id="btnArquivarProduto" style="margin-right:auto;display:none" onclick="alternarArquivoProduto()">Arquivar</button>
         <button class="btn btn-claro" onclick="fechar('modalProduto')">Cancelar</button>
         <button class="btn btn-amarelo" onclick="salvarProduto()">Salvar</button>
       </div>
@@ -266,68 +473,6 @@
   </div>
 </div>
 
-<!-- ===== Modal: histórico geral ===== -->
-<div class="overlay" id="modalHistorico">
-  <div class="modal" style="max-width:820px">
-    <div class="modal-cabecalho">
-      <h2>Histórico de movimentações</h2>
-      <button class="fechar" onclick="fechar('modalHistorico')">&times;</button>
-    </div>
-    <div class="modal-corpo">
-      <div class="hist-filtros">
-        <div class="hf"><label>Tipo</label>
-          <select id="fhTipo" onchange="renderHistorico()">
-            <option value="">Todos</option><option value="entrada">Entrada</option><option value="saida">Saída</option>
-          </select>
-        </div>
-        <div class="hf"><label>Categoria</label><select id="fhCategoria" onchange="renderHistorico()"></select></div>
-        <div class="hf"><label>Produto</label><input type="text" id="fhProduto" placeholder="nome / marca" oninput="renderHistorico()"></div>
-        <div class="hf"><label>De</label><input type="date" id="fhDataDe" onchange="renderHistorico()"></div>
-        <div class="hf"><label>Até</label><input type="date" id="fhDataAte" onchange="renderHistorico()"></div>
-        <div class="hf"><label>Valor R$ (mín–máx)</label>
-          <div style="display:flex;gap:6px">
-            <input type="number" id="fhValMin" placeholder="mín" oninput="renderHistorico()">
-            <input type="number" id="fhValMax" placeholder="máx" oninput="renderHistorico()">
-          </div>
-        </div>
-        <div class="hf"><label>Ordenar</label>
-          <div style="display:flex;gap:6px">
-            <select id="histOrdenar" onchange="renderHistorico()">
-              <option value="data">Data</option>
-              <option value="tipo">Entrada / Saída</option>
-              <option value="categoria">Categoria</option>
-              <option value="nome">Nome do produto</option>
-              <option value="valor">Valor</option>
-            </select>
-            <button id="histDir" class="btn btn-claro btn-mini" onclick="histAlternarDir()" title="Inverter ordem">↓</button>
-          </div>
-        </div>
-      </div>
-      <div id="histConteudo"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== Modal: categorias ===== -->
-<div class="overlay" id="modalCat">
-  <div class="modal">
-    <div class="modal-cabecalho">
-      <h2>Categorias</h2>
-      <button class="fechar" onclick="fechar('modalCat')">&times;</button>
-    </div>
-    <div class="modal-corpo">
-      <div class="linha-campos" style="align-items:flex-end">
-        <div class="campo" style="margin-bottom:0">
-          <label>Nova categoria</label>
-          <input type="text" id="novaCat" placeholder="Ex: Áudio" oninput="this.value=sanitizarCategoria(this.value)">
-        </div>
-        <button class="btn btn-amarelo" style="margin-bottom:0" onclick="adicionarCategoria()">Adicionar</button>
-      </div>
-      <ul class="lista-cat" id="listaCat" style="margin-top:16px"></ul>
-    </div>
-  </div>
-</div>
-
 <!-- ===== Modal: senha do gerente ===== -->
 <div class="overlay" id="modalSenha">
   <div class="modal" style="max-width:420px">
@@ -365,19 +510,114 @@
   </div>
 </div>
 
-<div id="toast"></div>
+<!-- ===== Modal: configurar teto do MEI ===== -->
+<div class="overlay" id="modalTeto">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-cabecalho">
+      <h2>Configurar teto do MEI</h2>
+      <button class="fechar" onclick="fechar('modalTeto')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="campo">
+        <label>Mês de abertura do MEI</label>
+        <input type="month" id="tetoAbertura" oninput="previaTeto()">
+        <div class="dica">No ano de abertura, o teto é proporcional aos meses (contando o mês de abertura).</div>
+      </div>
+      <div class="campo">
+        <label>Teto manual para <span id="tetoAnoLabel"></span> (opcional)</label>
+        <input type="number" id="tetoManual" min="0" step="0.01" placeholder="Deixe vazio para calcular automaticamente" oninput="previaTeto()">
+        <div class="dica">Use só se o seu limite for diferente do calculado.</div>
+      </div>
+      <div class="caixa destaque fin-previa"><span>Teto que será usado</span><b id="tetoPrevia">—</b><div class="margem" id="tetoPreviaInfo"></div></div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalTeto')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarConfigTeto()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-<!-- ===== Navegação inferior (protótipo) ===== -->
+<!-- ===== Modal: aviso (mensagem informativa) ===== -->
+<div class="overlay" id="modalAviso">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-cabecalho">
+      <h2 id="avisoTitulo">Aviso</h2>
+      <button class="fechar" onclick="fechar('modalAviso')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div id="avisoTexto" style="margin-bottom:16px"></div>
+      <div class="rodape-modal"><button class="btn btn-amarelo" onclick="fechar('modalAviso')">Entendi</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: editar movimentação (histórico) ===== -->
+<div class="overlay" id="modalEditMov">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-cabecalho">
+      <h2>Editar movimentação</h2>
+      <button class="fechar" onclick="fechar('modalEditMov')">&times;</button>
+    </div>
+    <div class="modal-corpo" id="corpoEditMov"></div>
+  </div>
+</div>
+
+<!-- ===== Modal: escolher período (histórico) ===== -->
+<div class="overlay" id="modalPeriodo">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-cabecalho">
+      <h2>Escolher período</h2>
+      <button class="fechar" onclick="fechar('modalPeriodo')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="linha-campos">
+        <div class="campo"><label>De</label><input type="date" id="perDe"></div>
+        <div class="campo"><label>Até</label><input type="date" id="perAte"></div>
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalPeriodo')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="aplicarPeriodoPersonalizado()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div class="ds-tip" id="dsTip" role="tooltip"></div>
+
+<!-- ===== Botão de ação flutuante (⊕) ===== -->
+<div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
+<div class="fab-menu" id="fabMenu">
+  <button class="fab-opcao" onclick="fecharFab();abrirVenda()"><span>Nova venda</span><i>
+    <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></i></button>
+  <button class="fab-opcao" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
+    <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
+  <button class="fab-opcao" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
+    <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg></i></button>
+</div>
+<button class="fab" id="fab" onclick="alternarFab()" title="Nova venda, produto ou compra" aria-label="Ações">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- ===== Navegação inferior ===== -->
 <nav class="barra-inferior">
-  <button class="nav-item ativo" title="Módulo de estoque">
+  <button class="nav-item" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
     Estoque
   </button>
-  <button class="nav-item" disabled title="Em desenvolvimento">
-    <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
-    Gestão
+  <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Histórico
   </button>
-  <button class="nav-item" disabled title="Em desenvolvimento">
+  <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Desempenho das vendas">
+    <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+    Desempenho
+  </button>
+  <button class="nav-item" data-nav="financeiro" onclick="mostrarView('financeiro')" title="Módulo financeiro">
+    <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+    Financeiro
+  </button>
+  <button class="nav-item" data-nav="config" onclick="mostrarView('config')" title="Configurações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
     Configurações
   </button>
