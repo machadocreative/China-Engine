@@ -32,6 +32,148 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.0.0] - 2026-11-10
+
+Versão com o PDV como tela inicial, forma de pagamento, notificações entre aparelhos e modo de teste.
+
+### Adicionado
+
+**PDV — Ponto de venda (nova tela inicial)**
+- O app abre direto no PDV, pensado para o leitor de código de barras no PC. A tela usa a largura toda, com o nome do produto e o preço de venda em letras grandes.
+- "Iniciar venda" abre a venda. Cada produto lido entra na lista ao lado, que mostra quantidade, subtotal e total.
+- "Consultar preço" mostra o produto sem colocar na venda e vale só para a próxima leitura. Sem venda aberta, toda leitura é uma consulta.
+- "Aplicar desconto" funciona na venda toda ou em um item, em R$ ou em %, sempre com a senha do gerente. O desconto é repartido entre os itens, então o lucro no Desempenho continua certo.
+- "Finalizar venda" pede a forma de pagamento e lança as saídas de todos os produtos de uma vez.
+- O campo de leitura aceita o leitor USB, a câmera e a busca por nome, marca ou código. No PC, qualquer tecla digitada fora de um campo vai para ele.
+- Atalhos de teclado: F2 inicia a venda, F4 consulta preço, F8 aplica desconto e F9 finaliza. Na tela de finalizar, as teclas 1 a 4 escolhem a forma de pagamento e Enter confirma.
+- O visor avisa quando o código não foi encontrado, quando o produto está sem estoque ou sem preço cadastrado.
+- A venda em andamento não se perde se a página for recarregada.
+- O visor já tem o espaço da foto do produto. Por enquanto, a foto vem de um link de imagem informado na aba Dados do produto.
+
+**Forma de pagamento**
+- Cada venda registra uma forma de pagamento: Espécie, Pix, Cartão de crédito ou Outros. É só registro, o app não processa pagamentos.
+- A forma é escolhida ao finalizar no PDV. Também pode ser informada em Registrar saída, ao receber uma venda "a receber" e na edição da movimentação.
+- No Histórico e no Painel do Produto, a forma aparece abaixo do selo da venda.
+- O Desempenho ganhou o bloco "Formas de pagamento", com o faturamento e o número de vendas de cada forma.
+
+**Pontos de atenção no sininho**
+- Estoque baixo e pagamentos pendentes viraram uma tela própria, aberta pelo sininho do cabeçalho. Tocar de novo no sininho volta para a tela anterior.
+
+**Notificações de venda entre aparelhos**
+- Quando uma venda é concluída, os outros aparelhos conectados à sincronização recebem uma notificação, mesmo com o app fechado.
+- Cada aparelho ativa em Configurações → Notificações de venda. Há um botão para enviar um teste.
+- Se a venda for feita sem internet, o aviso fica guardado por até 6 horas e sai quando a conexão voltar.
+- O Worker de sincronização ganhou as rotas de notificação. As chaves são criadas sozinhas e ficam no banco D1, sem senha nova para cadastrar. O texto do aviso viaja criptografado até o aparelho.
+- Arquivos novos: `sw.js` e `manifest.webmanifest` na raiz do site, e os ícones na pasta `icones/`. Com eles, o app também pode ser instalado na tela de início do celular.
+
+**Favicon e ícones do app com o mascote**
+- Ícone da aba do navegador com a cabeça do mascote sorrindo, sobre um círculo amarelo da marca: `favicon.ico` (16, 32 e 48 px) e `favicon-96.png` (telas de alta resolução). Nos tamanhos de 16 e 32 px o rosto aparece um pouco maior, para continuar reconhecível.
+- Ícones do app instalado no celular também com o mascote, sobre fundo amarelo: `icone-192.png`, `icone-512.png`, `icone-180.png` (iPhone) e o novo `icone-maskable-512.png` (Android, com a cabeça dentro da área que o sistema recorta em círculo ou outras formas).
+- Selo das notificações no Android (`icone-selo-96.png`): silhueta branca da cabeça do mascote.
+
+**Sandbox (modo de teste)**
+- Nova chave em Configurações. Com o sandbox ligado, nada é salvo, sincronizado ou notificado, e uma faixa amarela avisa o tempo todo.
+- Ao desligar, ou ao recarregar a página, os dados voltam a ser exatamente os de antes.
+- Backup, restauração e sincronização ficam bloqueados enquanto o sandbox está ligado.
+
+### Alterado
+
+- **Barra inferior:** ganhou o item **PDV** como primeiro da lista. Quando os seis nomes não cabem na largura da tela, só o item ativo mostra o nome.
+- **Botão ⊕:** "Nova venda" agora abre o PDV com uma venda já iniciada. As ações rápidas do toque longo no Estoque continuam iguais, sem passar pelo PDV.
+- **Logo e título do cabeçalho:** voltam para o PDV.
+- **Configurações:** a ordem dos blocos passa a ser Categorias, Senha do gerente, Backup, Sincronização na nuvem, Notificações de venda e Sandbox.
+
+### Corrigido
+
+- A data de hoje usava o horário universal. Depois das 21h, vendas e entradas eram registradas com a data do dia seguinte. Agora vale a data do aparelho.
+
+### Removido
+
+- Consulta de produtos pela API GTIN: bloco de Configurações, preenchimento automático no cadastro e na compra em lote, e o arquivo `cloudflare/gtin-worker.js`. Ela não encontrava os produtos da loja. O endereço e a chave guardados no aparelho são apagados.
+- Janela antiga "Nova venda", substituída pelo PDV.
+- Tela Início com os atalhos grandes, substituída pelo PDV e pela tela do sininho.
+
+---
+
+## [1.0.0] - 2026-11-09
+
+Primeira versão estável do China Engine. A numeração passa para a série 1.x.
+
+### Adicionado
+
+- **Início:** atalhos grandes para Nova venda, Nova compra em lote e Novo produto, com os mesmos ícones das ações rápidas. Eles ficam acima dos pontos de atenção.
+- **Estoque:** novas opções de ordenação por **Marca** e **Categoria**, com desempate pelo nome. Produtos sem marca ficam no fim.
+- **Histórico:** nova coluna **Produto**, separada da coluna Movimentação. A coluna do tipo tem largura fixa, então os nomes ficam alinhados à esquerda qualquer que seja o tamanho do selo.
+
+### Alterado
+
+- **Novo produto:** os campos de estoque inicial só aparecem ao marcar a caixa "Estoque inicial?". O custo por unidade vem antes da quantidade, e com a caixa marcada os dois campos são obrigatórios.
+- **Estoque:** o selo "estoque baixo" fica abaixo do número de unidades, e não mais ao lado do nome. No celular, aparece como "baixo".
+- **Histórico:**
+  - As movimentações de Estoque inicial ficam ocultas por padrão. Elas só aparecem ao escolher Tipo → Estoque inicial.
+  - No celular, a coluna do tipo se chama "Tipo", o selo do estoque inicial aparece como "Inicial" e a quantidade aparece abaixo do valor.
+- **Início:**
+  - O botão ⊕ de ações rápidas não aparece mais nessa tela; continua em Estoque e Histórico.
+  - Os blocos "Estoque baixo" e "Pagamentos pendentes" só aparecem quando têm itens. Sem nenhum dos dois, fica só uma linha "Tudo em dia".
+- **Tipografia:** o tamanho mínimo de fonte em todo o app passa a ser **14px**, inclusive nos eixos dos gráficos.
+- **Campos lado a lado:** ficam alinhados mesmo quando um rótulo quebra em duas linhas.
+- **Rótulo "Marca":** o antigo "Marca / fabricante" virou "Marca" no cadastro e na aba Dados.
+- **Barra inferior:** "Configurações" passa a se chamar **"Ajustes"** para caber com a fonte de 14px. O título da tela continua "Configurações".
+- **Configurações:** nova ordem dos blocos: Categorias, Senha do gerente, Backup, Sincronização na nuvem e Consulta por código de barras.
+- **Placeholder do endereço da sincronização:** passa a mostrar o nome do Worker `china-sync`.
+
+---
+
+## [0.10.0] - 2026-11-09
+
+### Adicionado
+
+**Sincronização na nuvem**
+- Novo bloco "Sincronização na nuvem" em Configurações, com endereço do Worker, senha da sincronização e nome do aparelho. Esses dados ficam salvos só no aparelho, fora do GitHub e do backup.
+- Os dados da loja (o mesmo conteúdo do backup) ficam no Cloudflare do próprio usuário, num Worker com banco D1 do plano gratuito. O código está em `cloudflare/sync-worker.js`, e a senha fica guardada como segredo no Worker (`SENHA_SYNC`).
+- Envio automático poucos segundos depois de cada alteração (no máximo 30 s de espera) e ao sair do app.
+- Recebimento automático ao abrir o app, ao voltar para ele, a cada 30 s com o app aberto e quando a internet volta.
+- Alterações feitas em aparelhos diferentes são juntadas automaticamente, item por item, sem que um aparelho sobrescreva o outro:
+  - vendas, entradas, produtos e notas novas dos dois lados entram;
+  - um item apagado num aparelho e editado no outro é mantido;
+  - o mesmo campo editado nos dois vale pela alteração mais recente.
+- A junção nunca acontece com um formulário aberto. Ela espera o formulário fechar.
+- Primeira conexão:
+  - se a nuvem estiver vazia, o aparelho envia os dados dele;
+  - se o aparelho estiver vazio, recebe os dados da nuvem;
+  - se os dois tiverem dados, o app pergunta quais manter e oferece baixar um backup antes.
+- Status em Configurações mostra se está sincronizado, enviando, sem internet ou com erro, além do horário e do aparelho da última alteração. Erros também aparecem como aviso rápido.
+- Cópias diárias na nuvem: o Worker guarda como os dados estavam no fim de cada dia, pelos últimos 30 dias. Em Configurações, "Cópias diárias" lista e baixa cada cópia como arquivo de backup.
+
+### Alterado
+
+- O texto do bloco Backup dos dados agora menciona a nuvem.
+- O modal de aviso aceita outro rótulo no botão de fechar (usado como "Agora não" na escolha da primeira conexão).
+
+### Segurança
+
+- A senha do gerente continua sendo só uma trava de operação e **não** protege a sincronização. Quem protege os dados na nuvem é a `SENHA_SYNC`, guardada como segredo no Worker. O Worker compara a senha em tempo constante, atrasa as tentativas erradas e só aceita chamadas do site do app (CORS).
+
+---
+
+## [0.9.4] - 2026-11-09
+
+### Adicionado
+
+**Estoque inicial (cadastro da loja)**
+- Novo bloco opcional "Estoque que já está na loja" no cadastro de **Novo produto**, com quantidade e custo por unidade. O produto já nasce com estoque, sem precisar registrar uma entrada depois.
+- Esse lançamento vira uma entrada marcada como **Estoque inicial**. Ela conta no estoque, no custo médio, na composição (FIFO) e no lucro, mas **não** é tratada como compra.
+- No Histórico, aparece com selo cinza tracejado "Estoque inicial", mostra o valor em estoque (sem sinal) com a nota "fora do saldo" e não entra no "Saldo no dia".
+- Novo tipo "Estoque inicial" no filtro Tipo do Histórico.
+
+### Alterado
+
+- Painel do Produto: na Composição, os lotes de estoque inicial aparecem como "Estoque inicial" em vez de "Não informado". Esses lotes também não entram na aba Fornecedores, já que não são compras.
+- Edição de movimentação: o estoque inicial pode ter data, quantidade e custo corrigidos, mas não tem campo de fornecedor.
+- Compras feitas daqui em diante, por Registrar entrada ou Compra em lote, continuam como "Aquisição" e pesam no saldo do dia.
+
+---
+
 ## [0.9.3] - 2026-11-09
 
 ### Adicionado
@@ -458,6 +600,10 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[2.0.0]: #
+[1.0.0]: #
+[0.10.0]: #
+[0.9.4]: #
 [0.9.3]: #
 [0.9.2]: #
 [0.9.1]: #

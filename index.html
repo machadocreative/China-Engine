@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chinatown Imports — Controle de Estoque</title>
+<link rel="icon" href="icones/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="96x96" href="icones/favicon-96.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1A1A17">
+<link rel="apple-touch-icon" href="icones/icone-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="China Engine">
 
 <meta property="og:title" content="Chinatown Imports — Controle de Estoque">
 <meta property="og:description" content="Estoque, custos e lucro em um só lugar.">
@@ -21,16 +28,16 @@
 
 <header>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
-  <!-- Logo + título: tocar volta para a tela Início (como num site) -->
-  <a class="marca-app" href="#" onclick="mostrarView('inicio');return false" title="Voltar ao início">
+  <!-- Logo + título: tocar volta para o PDV (tela inicial) -->
+  <a class="marca-app" href="#" onclick="mostrarView('pdv');return false" title="Voltar ao PDV">
     <img class="logo" src="Chinatown_Imports_Logo.png" alt="Chinatown Imports" onerror="this.style.display='none'">
     <div class="titulo">
-      <b id="tituloView">Início</b>
+      <b id="tituloView">PDV</b>
       <span>Chinatown Imports <em id="versao"></em></span>
     </div>
   </a>
-  <!-- Contador de pontos de atenção da tela Início -->
-  <button class="notif" id="notif" onclick="mostrarView('inicio')" title="Pontos de atenção">
+  <!-- Sininho: abre a tela de pontos de atenção (estoque baixo e pagamentos pendentes) -->
+  <button class="notif" id="notif" onclick="alternarAlertas()" title="Pontos de atenção">
     <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
     <span id="notifContador"></span>
   </button>
@@ -43,10 +50,43 @@
   </div>
 </header>
 
+<!-- Faixa do modo Sandbox (só aparece com o sandbox ligado) -->
+<div class="sbx-faixa" id="sbxFaixa" hidden>
+  <span><b>Modo sandbox</b> · nada do que for feito aqui é salvo</span>
+  <button class="btn btn-mini" onclick="sandboxDesligar()">Desligar</button>
+</div>
+
 <main>
-<!-- ===================== TELA: INÍCIO (pontos de atenção) ===================== -->
-<section class="view" id="viewInicio">
-  <div id="inicioConteudo"></div>
+<!-- ===================== TELA: PDV (ponto de venda — tela inicial) ===================== -->
+<section class="view" id="viewPdv">
+  <div class="pdv">
+    <div class="pdv-esq">
+      <!-- Visor: produto lido em destaque (nome, preço e, no futuro, foto) -->
+      <div class="pdv-visor" id="pdvVisor"></div>
+      <div class="pdv-leitor">
+        <div class="pdv-busca">
+          <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
+          <input type="text" id="pdvBusca" placeholder="Leia o código de barras ou digite o nome do produto" autocomplete="off" autocapitalize="off" spellcheck="false"
+            oninput="pdvFiltrar()" onkeydown="pdvTeclaBusca(event)">
+          <div class="pdv-resultados" id="pdvResultados"></div>
+        </div>
+        <button class="btn btn-claro pdv-cam" onclick="pdvCamera()" title="Ler o código com a câmera" aria-label="Ler o código com a câmera">
+          <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        </button>
+      </div>
+      <div class="pdv-acoes" id="pdvAcoes"></div>
+    </div>
+    <div class="pdv-dir">
+      <div class="pdv-lista-cab" id="pdvListaCab"></div>
+      <div class="pdv-lista" id="pdvLista"></div>
+      <div class="pdv-totais" id="pdvTotais"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TELA: PONTOS DE ATENÇÃO (sininho) ===================== -->
+<section class="view" id="viewAlertas" hidden>
+  <div id="alertasConteudo"></div>
 </section>
 
 <!-- ===================== TELA: ESTOQUE ===================== -->
@@ -58,6 +98,8 @@
       <label for="ordenarPor">Ordenar:</label>
       <select id="ordenarPor" onchange="render()">
         <option value="nome">Nome</option>
+        <option value="marca">Marca</option>
+        <option value="categoria">Categoria</option>
         <option value="estoque">Quantidade</option>
         <option value="preco">Preço</option>
         <option value="custo">Custo médio</option>
@@ -96,6 +138,7 @@
         <option value="">Tipo</option>
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
+        <option value="inicial">Estoque inicial</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
@@ -126,7 +169,7 @@
     </div>
 
     <div class="hx-cab">
-      <div>Movimentação</div><div class="col-cat">Categoria</div><div class="num">Qtd</div><div class="num">Valor</div>
+      <div><span class="rot-l">Movimentação</span><span class="rot-c">Tipo</span></div><div>Produto</div><div class="col-cat">Categoria</div><div class="num col-qtd">Qtd</div><div class="num">Valor</div>
     </div>
   </div>
 
@@ -200,16 +243,6 @@
 <!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Backup dos dados</h3>
-      <small>Os dados ficam salvos só neste navegador. Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
-    <div class="cfg-acoes">
-      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
-      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
-    </div>
-    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
-  </div>
-
-  <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Categorias de produtos</h3>
       <small>Crie, renomeie ou remova categorias. Renomear move os produtos para o novo nome; só é possível remover categorias sem produtos. <span id="cfgCatTotal"></span></small></div>
     <div class="cfg-cat-nova">
@@ -234,17 +267,54 @@
   </div>
 
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Consulta por código de barras</h3>
-      <small>Preenche marca, nome e categoria ao cadastrar um produto novo, usando a API GTIN por meio do servidor intermediário (Cloudflare Worker). O usuário e a senha da API ficam guardados no Worker; aqui vão só o endereço dele e a chave do app, salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
-    <div class="cfg-form">
-      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgGtinUrl" placeholder="https://china-engine-gtin.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-      <div class="campo"><label>Chave do app</label><input type="password" id="cfgGtinChave" autocomplete="new-password" placeholder="A mesma CHAVE_APP cadastrada no Worker"></div>
-      <div class="cfg-acoes">
-        <button class="btn btn-escuro" onclick="gtinSalvarCredenciais()">Salvar e testar</button>
-        <button class="btn btn-claro" id="cfgGtinRemover" onclick="gtinRemoverCredenciais()">Remover deste aparelho</button>
-      </div>
-      <div class="dica" id="cfgGtinStatus" style="margin-top:10px"></div>
+    <div class="cfg-cab"><h3>Backup dos dados</h3>
+      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
+      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
     </div>
+    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Sincronização na nuvem</h3>
+      <small>Mantém os dados iguais no PC e no celular, pelo seu Cloudflare (Worker + banco D1). Alterações feitas em aparelhos diferentes são juntadas automaticamente. O endereço e a senha ficam salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
+    <div class="cfg-form" id="cfgSyncForm">
+      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgSyncUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Senha da sincronização</label><input type="password" id="cfgSyncSenha" autocomplete="new-password" placeholder="A SENHA_SYNC do Worker"></div>
+        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="cfgSyncAparelho" maxlength="40" placeholder="Ex: PC da loja" onkeydown="if(event.key==='Enter')syncConectar()"></div>
+      </div>
+      <button class="btn btn-escuro" onclick="syncConectar()">Conectar</button>
+      <div class="sy-status" id="cfgSyncStatusForm"></div>
+    </div>
+    <div id="cfgSyncLigado" style="display:none">
+      <div class="sy-status" id="cfgSyncStatus"></div>
+      <div class="cfg-acoes">
+        <button class="btn btn-escuro" onclick="sincronizarAgora()">Sincronizar agora</button>
+        <button class="btn btn-claro" onclick="syncVerCopias()">Cópias diárias</button>
+        <button class="btn btn-claro" onclick="syncDesconectar()">Desconectar</button>
+      </div>
+      <div id="cfgSyncCopias"></div>
+    </div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Notificações de venda</h3>
+      <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
+    <div class="sy-status" id="cfgPushStatus"></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-escuro" id="cfgPushAtivar" onclick="pushAtivar()">Ativar neste aparelho</button>
+      <button class="btn btn-claro" id="cfgPushTestar" onclick="pushTestar()">Enviar teste</button>
+      <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
+    </div>
+    <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Sandbox (modo de teste)</h3>
+      <small>Para testar vendas, entradas e saídas sem medo. Com o sandbox ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
+    <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Sandbox desligado</span></label>
   </div>
 </section>
 </main>
@@ -289,38 +359,48 @@
   </div>
 </div>
 
-<!-- ===== Modal: registrar venda ===== -->
-<div class="overlay" id="modalVenda">
-  <div class="modal" style="max-width:620px">
+<!-- ===== Modal: desconto (PDV) ===== -->
+<div class="overlay" id="modalDesconto">
+  <div class="modal" style="max-width:400px">
     <div class="modal-cabecalho">
-      <h2>Nova venda</h2>
-      <button class="fechar" onclick="fechar('modalVenda')">&times;</button>
+      <h2 id="dcTitulo">Aplicar desconto</h2>
+      <button class="fechar" onclick="fechar('modalDesconto')">&times;</button>
     </div>
     <div class="modal-corpo">
-      <div class="campo"><label>Data da venda</label><input type="date" id="vendaData"></div>
+      <p id="dcSobre" style="margin-bottom:12px;color:var(--texto-sec)"></p>
+      <div class="pdv-alterna" role="group" aria-label="Tipo de desconto">
+        <button type="button" id="dcTipoValor" onclick="descontoTipo('valor')">Em R$</button>
+        <button type="button" id="dcTipoPct" onclick="descontoTipo('pct')">Em %</button>
+      </div>
       <div class="campo">
-        <label>Buscar produto</label>
-        <div style="display:flex;gap:8px">
-          <div style="flex:1;position:relative">
-            <input type="text" id="vendaBusca" placeholder="Nome, marca, código ou cód. de barras..."
-              style="width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:10px"
-              oninput="vendaFiltrar()" onkeydown="if(event.key==='Enter'){event.preventDefault();vendaEnter();}" autocomplete="off">
-            <div id="vendaResultados" style="position:absolute;top:100%;left:0;right:0;background:#fff;
-              border:1px solid var(--borda-forte);border-radius:10px;z-index:20;
-              max-height:220px;overflow-y:auto;margin-top:3px"></div>
-          </div>
-          <button class="btn btn-claro btn-mini" onclick="abrirScannerVenda()" title="Escanear código de barras">Escanear</button>
-        </div>
-        <div class="dica">Use a câmera ou o leitor USB com o campo de busca focado. Enter adiciona o produto do código lido (ou o único resultado da busca).</div>
+        <label id="dcRotulo">Desconto (R$)</label>
+        <input type="number" id="dcValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="descontoPrevia()" onkeydown="if(event.key==='Enter')descontoAplicar()">
       </div>
-      <div id="vendaItens" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:2px solid var(--borda)">
-        <span style="font-weight:600">Total</span>
-        <span id="vendaTotal" style="font-family:var(--corpo);font-size:20px;font-weight:700">—</span>
-      </div>
+      <div class="pdv-previa" id="dcPrevia"></div>
       <div class="rodape-modal">
-        <button class="btn btn-claro" onclick="fechar('modalVenda')">Cancelar</button>
-        <button class="btn btn-amarelo" onclick="confirmarVenda()">Confirmar venda</button>
+        <button class="btn btn-claro" id="dcRemover" style="margin-right:auto" onclick="descontoRemover()">Remover</button>
+        <button class="btn btn-claro" onclick="fechar('modalDesconto')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="descontoAplicar()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: finalizar venda (PDV) ===== -->
+<div class="overlay" id="modalFinalizar">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-cabecalho">
+      <h2>Finalizar venda</h2>
+      <button class="fechar" onclick="fechar('modalFinalizar')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="pdv-fin-resumo" id="finResumo"></div>
+      <label class="pdv-fin-rot">Forma de pagamento</label>
+      <div class="pdv-pags" id="finPags"></div>
+      <div class="campo" style="margin-top:14px"><label>Data da venda</label><input type="date" id="finData"></div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalFinalizar')">Voltar</button>
+        <button class="btn btn-amarelo" id="finConfirmar" onclick="pdvConfirmar()">Confirmar venda</button>
       </div>
     </div>
   </div>
@@ -366,19 +446,18 @@
     </div>
     <div class="modal-corpo">
       <input type="hidden" id="produtoId">
-      <!-- Código de barras primeiro: ao ler o código, a consulta GTIN preenche os campos abaixo -->
       <div class="campo">
         <label>Código de barras (opcional)</label>
         <div style="display:flex;gap:8px">
           <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();gtinPreencherCadastro();}" onchange="gtinPreencherCadastro()">
+            onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pMarca').focus();}">
           <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
         </div>
-        <div class="dica" id="gtinStatus">Use a câmera ou um leitor USB com este campo focado. Os dados do produto são buscados automaticamente.</div>
+        <div class="dica">Use a câmera ou um leitor USB com este campo focado.</div>
       </div>
       <div class="linha-campos">
         <div class="campo" style="flex:.8">
-          <label>Marca / fabricante</label>
+          <label>Marca</label>
           <input type="text" id="pMarca" placeholder="Ex: Baseus">
         </div>
         <div class="campo" style="flex:1.4">
@@ -408,6 +487,24 @@
           <label>Estoque mínimo</label>
           <input type="number" id="pMinimo" min="0" value="0">
           <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div>
+        </div>
+      </div>
+      <!-- Estoque inicial: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
+      <div id="pWrapInicial">
+        <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Estoque inicial?</label>
+        <div class="pi-bloco" id="pBlocoInicial" style="display:none">
+          <div class="pi-tit">Estoque que já está na loja</div>
+          <div class="linha-campos">
+            <div class="campo">
+              <label>Custo por unidade (R$)</label>
+              <input type="number" id="pCustoInicial" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+            </div>
+            <div class="campo">
+              <label>Quantidade</label>
+              <input type="number" id="pQtdInicial" min="1" step="1" placeholder="0" inputmode="numeric">
+            </div>
+          </div>
+          <div class="dica">Conta no estoque, no custo e no lucro, mas não como compra no saldo do dia. Para mercadoria comprada daqui em diante, use Registrar entrada ou Compra em lote.</div>
         </div>
       </div>
       <div class="rodape-modal">
@@ -530,7 +627,7 @@
     </div>
     <div class="modal-corpo">
       <div id="avisoTexto" style="margin-bottom:16px"></div>
-      <div class="rodape-modal"><button class="btn btn-amarelo" onclick="fechar('modalAviso')">Entendi</button></div>
+      <div class="rodape-modal"><button class="btn btn-amarelo" id="avisoBotao" onclick="fechar('modalAviso')">Entendi</button></div>
     </div>
   </div>
 </div>
@@ -572,7 +669,7 @@
 <!-- ===== Botão de ação flutuante (⊕) ===== -->
 <div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
 <div class="fab-menu" id="fabMenu">
-  <button class="fab-opcao" onclick="fecharFab();abrirVenda()"><span>Nova venda</span><i>
+  <button class="fab-opcao" onclick="fecharFab();pdvNovaVenda()"><span>Nova venda</span><i>
     <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></i></button>
   <button class="fab-opcao" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
@@ -585,25 +682,29 @@
 
 <!-- ===== Navegação inferior ===== -->
 <nav class="barra-inferior">
+  <button class="nav-item" data-nav="pdv" onclick="mostrarView('pdv')" title="Ponto de venda">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 8v4M10 8v4M13 8v4M17 8v4"/></svg>
+    <span>PDV</span>
+  </button>
   <button class="nav-item" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
-    Estoque
+    <span>Estoque</span>
   </button>
   <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Histórico
+    <span>Histórico</span>
   </button>
   <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Desempenho das vendas">
     <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
-    Desempenho
+    <span>Desempenho</span>
   </button>
   <button class="nav-item" data-nav="financeiro" onclick="mostrarView('financeiro')" title="Módulo financeiro">
     <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
-    Financeiro
+    <span>Financeiro</span>
   </button>
   <button class="nav-item" data-nav="config" onclick="mostrarView('config')" title="Configurações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
-    Configurações
+    <span>Ajustes</span>
   </button>
 </nav>
 
