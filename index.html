@@ -36,6 +36,10 @@
       <span>Chinatown Imports <em id="versao"></em></span>
     </div>
   </a>
+  <!-- Ajustes (Configurações): à esquerda do sininho -->
+  <button class="notif btn-ajustes" id="btnAjustes" onclick="alternarAjustes()" title="Ajustes" aria-label="Ajustes">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
+  </button>
   <!-- Sininho: abre a tela de pontos de atenção (estoque baixo e pagamentos pendentes) -->
   <button class="notif" id="notif" onclick="alternarAlertas()" title="Pontos de atenção">
     <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -51,6 +55,8 @@
 </header>
 
 <!-- Faixa do modo Sandbox (só aparece com o sandbox ligado) -->
+<canvas class="festa" id="festa" aria-hidden="true"></canvas>
+
 <div class="sbx-faixa" id="sbxFaixa" hidden>
   <span><b>Modo sandbox</b> · nada do que for feito aqui é salvo</span>
   <button class="btn btn-mini" onclick="sandboxDesligar()">Desligar</button>
@@ -59,10 +65,12 @@
 <main>
 <!-- ===================== TELA: PDV (ponto de venda — tela inicial) ===================== -->
 <section class="view" id="viewPdv">
+  <!-- Grade de 2 linhas: visor | itens da venda  /  leitor + botões | totais.
+       Assim o cabeçalho preto acompanha a faixa do visor e a linha acima do subtotal fica na altura do campo de leitura. -->
   <div class="pdv">
-    <div class="pdv-esq">
-      <!-- Visor: produto lido em destaque (nome, preço e, no futuro, foto) -->
-      <div class="pdv-visor" id="pdvVisor"></div>
+    <!-- Visor: produto lido em destaque (nome, preço e, no futuro, foto) -->
+    <div class="pdv-visor" id="pdvVisor"></div>
+    <div class="pdv-controles">
       <div class="pdv-leitor">
         <div class="pdv-busca">
           <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
@@ -70,17 +78,18 @@
             oninput="pdvFiltrar()" onkeydown="pdvTeclaBusca(event)">
           <div class="pdv-resultados" id="pdvResultados"></div>
         </div>
-        <button class="btn btn-claro pdv-cam" onclick="pdvCamera()" title="Ler o código com a câmera" aria-label="Ler o código com a câmera">
+        <button class="btn btn-claro pdv-cam so-celular" onclick="pdvCamera()" title="Ler o código com a câmera" aria-label="Ler o código com a câmera">
           <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
         </button>
       </div>
       <div class="pdv-acoes" id="pdvAcoes"></div>
     </div>
-    <div class="pdv-dir">
+    <!-- Itens da venda: só aparecem com a venda iniciada -->
+    <div class="pdv-venda">
       <div class="pdv-lista-cab" id="pdvListaCab"></div>
       <div class="pdv-lista" id="pdvLista"></div>
-      <div class="pdv-totais" id="pdvTotais"></div>
     </div>
+    <div class="pdv-totais" id="pdvTotais"></div>
   </div>
 </section>
 
@@ -451,7 +460,7 @@
         <div style="display:flex;gap:8px">
           <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
             onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pMarca').focus();}">
-          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
+          <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner()">Escanear</button>
         </div>
         <div class="dica">Use a câmera ou um leitor USB com este campo focado.</div>
       </div>
@@ -701,10 +710,6 @@
   <button class="nav-item" data-nav="financeiro" onclick="mostrarView('financeiro')" title="Módulo financeiro">
     <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
     <span>Financeiro</span>
-  </button>
-  <button class="nav-item" data-nav="config" onclick="mostrarView('config')" title="Configurações">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
-    <span>Ajustes</span>
   </button>
 </nav>
 

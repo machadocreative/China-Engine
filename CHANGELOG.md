@@ -32,6 +32,26 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.1.0] - 2026-11-10
+
+### Adicionado
+
+- **Comemoração da venda:** ao finalizar uma venda no PDV, uma chuva de confete nas cores da marca sai dos cantos da tela, e o visor mostra o mascote com a mensagem "Parabéns pela venda!", o total e a forma de pagamento. Quem ativou "reduzir movimento" no sistema vê só a mensagem, sem animação.
+- **Imagem nova:** `icones/mascote-cabeca.png`, a cabeça do mascote usada na comemoração.
+
+### Alterado
+
+- **Ajustes no cabeçalho:** o botão Ajustes saiu da barra inferior e virou uma engrenagem no cabeçalho, à esquerda do sininho. Tocar de novo volta para a tela anterior. A barra inferior fica com PDV, Estoque, Histórico, Desempenho e Financeiro.
+- **PDV antes da venda:**
+  - o painel da direita (itens e total) só aparece depois de "Iniciar venda";
+  - com o caixa livre, o visor e os botões ocupam a largura toda.
+- **Alinhamento no PDV:**
+  - o cabeçalho preto "Venda em andamento" tem a mesma altura da faixa do visor;
+  - a linha preta acima do subtotal fica na altura do campo de leitura do código de barras.
+- **Câmera só no celular:** os botões de ler o código de barras com a câmera não aparecem mais no computador. Isso vale para o PDV, o cadastro de produto, a aba Dados e a compra em lote. No PC, o leitor USB digita direto no campo.
+
+---
+
 ## [2.0.0] - 2026-11-10
 
 Versão com o PDV como tela inicial, forma de pagamento, notificações entre aparelhos e modo de teste.
@@ -600,6 +620,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[2.1.0]: #
 [2.0.0]: #
 [1.0.0]: #
 [0.10.0]: #

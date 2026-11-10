@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.0.0';
+const VERSAO = '2.1.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -669,6 +669,7 @@ function pdvConfirmar(){
   pdvGuardar();
   salvar(); render();
   fechar('modalFinalizar'); renderPdv(); pdvFocar();
+  festejar();
   notificarVenda(feita);
 }
 
@@ -706,7 +707,12 @@ function pdvVisorHtml(){
   if(v.tipo==='concluida'){
     return `<div class="pdv-visor-in concluida">
       <div class="pdv-selo">Venda concluída</div>
-      <div class="pdv-msg"><b>${fmtBRL(v.total)}</b><span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span></div>
+      <div class="pdv-msg pdv-festa">
+        <img class="pdv-mascote" src="icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <em>Parabéns pela venda!</em>
+        <b>${fmtBRL(v.total)}</b>
+        <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
+      </div>
     </div>`;
   }
   if(pdv.ativa){
@@ -759,6 +765,47 @@ function renderPdv(){
     ${pdv.desconto ? `<div class="pdv-tl desc"><span>Desconto na venda (${rotuloDesconto(pdv.desconto)})
         <button type="button" onclick="abrirDesconto('venda')">alterar</button></span><b>−${fmtBRL(r.descVenda)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
+}
+
+/* ----- Comemoração da venda: chuva de confete nas cores da marca (~2,5 s) -----
+   Quem pediu ao sistema para reduzir animações vê só a mensagem, sem confete. */
+let festaAnim = null;
+function festejar(){
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.getElementById('festa'); if(!cv || !cv.getContext) return;
+  const ctx = cv.getContext('2d'), dpr = Math.min(window.devicePixelRatio||1, 2);
+  const W = window.innerWidth, H = window.innerHeight;
+  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  const cores = ['#F7C600','#E0241B','#1A1A17','#2E7D32','#FFFFFF','#FFD84D'];
+  // dois canhões nos cantos de baixo, atirando para o centro
+  const pecas = Array.from({ length: Math.min(220, Math.round(W/6)) }, (_,i)=>{
+    const esq = i%2===0, ang = (esq ? -60 : -120) + (Math.random()*30-15);
+    const vel = (H*0.019) + Math.random()*(H*0.012);
+    return { x: esq ? -10 : W+10, y: H*0.92, vx: Math.cos(ang*Math.PI/180)*vel, vy: Math.sin(ang*Math.PI/180)*vel,
+      w: 7+Math.random()*7, h: 4+Math.random()*5, rot: Math.random()*6.28, vr: (Math.random()-.5)*.35,
+      cor: cores[i%cores.length], forma: Math.random()<.25 ? 'c' : 'r', atraso: Math.random()*10 };
+  });
+  cancelAnimationFrame(festaAnim);
+  cv.classList.add('ativa');
+  const inicio = performance.now(), dur = 2600;
+  const quadro = t=>{
+    const dt = t - inicio;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalAlpha = dt > dur-500 ? Math.max(0,(dur-dt)/500) : 1;   // some suavemente no fim
+    pecas.forEach(p=>{
+      if(p.atraso>0){ p.atraso--; return; }
+      p.vy += H*0.00055; p.vx *= .99; p.vy *= .992;   // gravidade e resistência do ar
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle = p.cor;
+      if(p.cor==='#FFFFFF'){ ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 1; }
+      if(p.forma==='c'){ ctx.beginPath(); ctx.arc(0,0,p.h*.8,0,6.28); ctx.fill(); }
+      else { ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h*Math.abs(Math.cos(p.rot*2))+1); }
+      ctx.restore();
+    });
+    if(dt < dur) festaAnim = requestAnimationFrame(quadro);
+    else { ctx.clearRect(0,0,W,H); cv.classList.remove('ativa'); }
+  };
+  festaAnim = requestAnimationFrame(quadro);
 }
 
 /* Atalhos do teclado no PDV (PC) e leitor USB: qualquer tecla digitada fora de um campo vai para o campo de leitura */
@@ -932,7 +979,7 @@ function linhaCompraHTML(idx){
        <input type="hidden" id="lc_cb_${idx}" value="">
        <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:14px;color:var(--texto-sec)"></div>
      </div>
-     <button type="button" class="btn btn-claro lc-icone-btn" title="Escanear código de barras" aria-label="Escanear código de barras" onclick="abrirScannerCompra(${idx})">
+     <button type="button" class="btn btn-claro lc-icone-btn so-celular" title="Escanear código de barras" aria-label="Escanear código de barras" onclick="abrirScannerCompra(${idx})">
        <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg></button>
      <button type="button" class="btn btn-claro lc-novo-btn" title="Cadastrar novo produto" onclick="selecionarLinhaProduto(${idx},'__novo__')">+</button>
    </div>
@@ -1261,7 +1308,7 @@ function ppDados(p){
     </div>
     <div class="campo"><label>Código de barras (opcional)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
-        <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
+        <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
     </div>
     <div class="campo"><label>Foto do produto (link da imagem, opcional)</label>
       <input type="url" id="dpFoto" value="${escapar(p.foto||'')}" placeholder="https://… — aparece no visor do PDV" autocapitalize="off" spellcheck="false"></div>
@@ -2052,7 +2099,7 @@ const VIEWS = {
 let viewAtual = 'pdv', viewAnterior = 'pdv';
 function mostrarView(v){
   if(!VIEWS[v]) return;
-  if(viewAtual!==v && viewAtual!=='alertas') viewAnterior = viewAtual;
+  if(viewAtual!==v && viewAtual!=='alertas' && viewAtual!=='config') viewAnterior = viewAtual;
   viewAtual = v;
   Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
   document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('ativo', b.dataset.nav===v));
@@ -2060,6 +2107,7 @@ function mostrarView(v){
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
+  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');
   document.getElementById('fab').style.display = ['estoque','historico'].includes(v) ? '' : 'none';   // ⊕ só em Estoque e Histórico
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
   document.body.classList.toggle('modo-pdv', v==='pdv');               // PDV usa a tela toda
@@ -2078,6 +2126,8 @@ window.addEventListener('resize', ajustarNav);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(ajustarNav);
 /* Sininho: abre os pontos de atenção; tocar de novo volta para a tela anterior */
 function alternarAlertas(){ mostrarView(viewAtual==='alertas' ? viewAnterior : 'alertas'); }
+/* Engrenagem (Ajustes) no cabeçalho: mesma lógica do sininho */
+function alternarAjustes(){ mostrarView(viewAtual==='config' ? viewAnterior : 'config'); }
 function renderViewAtual(){
   if(viewAtual==='pdv')        renderPdv();
   if(viewAtual==='alertas')    renderAlertas();

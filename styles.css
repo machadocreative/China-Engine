@@ -53,7 +53,7 @@ header .titulo b{font-family:var(--display);font-weight:800;font-size:20px;lette
 header .titulo span{font-size:14px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}
 header .titulo em{font-style:normal;color:var(--amarelo);font-weight:600;margin-left:4px}
 header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-header{padding-right:70px}   /* espaço do contador de notificações */
+header{padding-right:120px}   /* espaço dos botões Ajustes e sininho */
 .marca-app{display:flex;align-items:center;gap:14px;color:inherit;text-decoration:none;cursor:pointer}
 .marca-app:hover .titulo b{color:var(--amarelo)}
 
@@ -73,6 +73,7 @@ header{padding-right:70px}   /* espaço do contador de notificações */
 .notif.tem span{display:flex}
 .notif.tem{color:#fff}
 .notif.ativo{background:var(--amarelo);border-color:var(--amarelo);color:var(--preto)}
+.notif.btn-ajustes{right:66px}   /* engrenagem à esquerda do sininho */
 
 /* ===== Botões ===== */
 .btn{
@@ -771,10 +772,22 @@ header .acoes [data-view].fora{display:none}
 
 /* ----- PDV (pdv-) ----- */
 body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
-.pdv{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(380px,.8fr);gap:16px;height:100%;min-height:0}
+/* Grade: [visor | itens da venda] em cima, [leitor + botões | totais] embaixo.
+   A linha de baixo tem a altura dos controles, então a linha preta dos totais fica na altura do campo de leitura. */
+.pdv{
+  display:grid;grid-template-columns:minmax(0,1.2fr) minmax(380px,.8fr);grid-template-rows:minmax(0,1fr) auto;
+  grid-template-areas:"visor venda" "controles totais";column-gap:16px;row-gap:12px;height:100%;min-height:0;
+}
+.pdv:not(.ativa){grid-template-columns:minmax(0,1fr);grid-template-areas:"visor" "controles"}
+.pdv:not(.ativa) .pdv-venda,.pdv:not(.ativa) .pdv-totais{display:none}   /* painel da venda só com a venda iniciada */
 #viewPdv:not([hidden]){height:100%}
-.pdv-esq{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
-.pdv-dir{container:venda / inline-size;display:flex;flex-direction:column;min-height:0;background:var(--card);border:1px solid var(--borda);border-radius:var(--raio);overflow:hidden}
+.pdv-visor{grid-area:visor}
+.pdv-controles{grid-area:controles;display:flex;flex-direction:column;gap:12px;min-width:0}
+/* itens + totais formam um só cartão: os itens descem até a linha preta (margem negativa cobre o espaço entre as linhas da grade) */
+.pdv-venda{
+  grid-area:venda;container:venda / inline-size;display:flex;flex-direction:column;min-height:0;margin-bottom:-12px;
+  background:var(--card);border:1px solid var(--borda);border-bottom:none;border-radius:var(--raio) var(--raio) 0 0;overflow:hidden;
+}
 
 /* Visor */
 .pdv-visor{flex:1;min-height:0;display:flex;container-type:inline-size}   /* os tamanhos do visor acompanham a largura dele (cqw) */
@@ -783,7 +796,7 @@ body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
   border:2px solid var(--borda-forte);overflow:hidden;
 }
 .pdv-selo{
-  padding:8px 18px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+  height:44px;flex-shrink:0;display:flex;align-items:center;padding:0 18px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
   background:#ECEAE3;color:var(--texto-sec);
 }
 .pdv-visor-in.adicionado{border-color:var(--verde)}
@@ -812,7 +825,7 @@ body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
 .pdv-msg b{font-family:var(--display);font-weight:700;font-size:clamp(24px,6.5cqw,60px);line-height:1.1;overflow-wrap:anywhere}
 .pdv-msg span{font-size:clamp(15px,2.2cqw,20px);color:var(--texto-sec);max-width:560px}
 .pdv-visor-in.erro .pdv-msg b{color:var(--vermelho)}
-.pdv-visor-in.concluida .pdv-msg b{color:var(--verde);font-size:clamp(34px,10cqw,104px);font-weight:800;white-space:nowrap}
+.pdv-visor-in.concluida .pdv-msg b{color:var(--verde);font-size:clamp(32px,min(10cqw,11vh),104px);font-weight:800;white-space:nowrap}
 .pdv-visor-in.concluida .pdv-msg span{color:var(--texto)}
 
 /* Campo de leitura */
@@ -863,7 +876,7 @@ kbd{
 @media (pointer:coarse){ kbd{display:none} }   /* atalhos de teclado só fazem sentido no PC */
 
 /* Lista da venda */
-.pdv-lista-cab{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:12px 16px;background:var(--preto);color:#fff;flex-shrink:0}
+.pdv-lista-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;height:45px;padding:0 16px;background:var(--preto);color:#fff;flex-shrink:0}   /* 45 = faixa do visor (44) + 1px de diferença entre as bordas dos dois cartões */
 .pdv-lista-cab b{font-size:15px;text-transform:uppercase;letter-spacing:.5px}
 .pdv-lista-cab span{font-size:14px;color:#C9C7BE;white-space:nowrap}
 .pdv-lista{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
@@ -887,13 +900,17 @@ kbd{
 .pdv-ico.ligado{background:var(--verde);border-color:var(--verde);color:#fff}
 
 /* Totais */
-.pdv-totais{flex-shrink:0;border-top:2px solid var(--preto);padding:12px 16px 14px;background:#FBFAF6}
+.pdv-totais{
+  grid-area:totais;position:relative;z-index:1;display:flex;flex-direction:column;justify-content:flex-end;
+  border:1px solid var(--borda);border-top:2px solid var(--preto);border-radius:0 0 var(--raio) var(--raio);
+  padding:10px 16px 12px;background:#FBFAF6;
+}
 .pdv-tl{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:16px;padding:2px 0}
 .pdv-tl span{color:var(--texto-sec)}
 .pdv-tl b{font-weight:600;white-space:nowrap}
 .pdv-tl.desc b{color:var(--verde)}
 .pdv-tl.desc button{border:none;background:none;color:var(--texto);text-decoration:underline;font-size:14px;padding:0 0 0 6px}
-.pdv-tl.total{margin-top:6px;padding-top:8px;border-top:1px solid var(--borda)}
+.pdv-tl.total{margin-top:auto;padding-top:6px;border-top:1px solid var(--borda)}
 .pdv-tl.total span{font-size:18px;font-weight:600;color:var(--texto)}
 .pdv-tl.total b{font-family:var(--display);font-weight:800;font-size:clamp(34px,3.4vw,52px);line-height:1}
 
@@ -926,7 +943,7 @@ kbd{
 @media(max-width:900px){
   body.modo-pdv main{padding:14px 14px 24px}
   #viewPdv:not([hidden]){height:auto}
-  .pdv{grid-template-columns:minmax(0,1fr);height:auto}
+  .pdv,.pdv:not(.ativa){grid-template-columns:minmax(0,1fr);grid-template-areas:"visor" "controles" "venda" "totais";grid-template-rows:auto;height:auto}
   .pdv-visor{flex:none;min-height:200px}
   .pdv-prod{align-items:flex-start}
   .pdv-lista{flex:none;max-height:none;overflow:visible}
@@ -950,3 +967,27 @@ kbd{
 .hx-mov .hx-pag{flex-basis:100%}
 /* No PDV o aviso rápido aparece no alto, para não cobrir os botões de ação */
 body.modo-pdv #toast{bottom:auto;top:84px}
+
+/* ===== 2.1.0 ===== */
+/* Botões da câmera (ler código de barras): só no celular/tablet. No PC o leitor USB digita direto no campo. */
+@media (hover:hover) and (pointer:fine){ .so-celular{display:none !important} }
+
+/* Comemoração da venda */
+.festa{position:fixed;inset:0;width:100vw;height:100vh;z-index:200;pointer-events:none;display:none}
+.festa.ativa{display:block}
+.pdv-festa{gap:4px;padding:12px 24px}
+.pdv-festa em{
+  font-style:normal;font-family:var(--display);font-weight:800;color:var(--texto);
+  font-size:clamp(20px,min(5cqw,5.5vh),44px);line-height:1.1;animation:festa-pula .6s cubic-bezier(.2,1.6,.4,1) both .1s;
+}
+.pdv-mascote{
+  width:clamp(64px,min(20cqw,17vh),190px);height:auto;margin-bottom:2px;transform-origin:50% 90%;
+  animation:festa-entra .55s cubic-bezier(.2,1.5,.4,1) both, festa-balanca 1.1s ease-in-out .55s 2;
+}
+.pdv-festa b{animation:festa-pula .6s cubic-bezier(.2,1.6,.4,1) both .25s}
+.pdv-festa span{animation:festa-surge .5s ease-out both .4s}
+@keyframes festa-entra{from{transform:scale(.2) translateY(30px);opacity:0}to{transform:none;opacity:1}}
+@keyframes festa-balanca{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}}
+@keyframes festa-pula{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes festa-surge{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion: reduce){ .pdv-festa *{animation:none !important} }
