@@ -32,6 +32,62 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.2.0] - 2026-11-10
+
+### Adicionado
+
+- **Histórico agrupado:** os produtos de uma mesma venda do PDV, ou de uma mesma compra em lote, aparecem juntos num só bloco.
+  - O bloco tem um selo de tipo, a forma de pagamento, o horário (ou o fornecedor, na compra) e o total da operação. Embaixo vêm os produtos, em linhas mais leves.
+  - O toque longo num produto continua abrindo a edição.
+  - As compras em lote passam a guardar a identificação do lote, mas só as feitas a partir desta versão aparecem agrupadas. Registros antigos continuam um por linha.
+- **Subtotais do dia no Histórico:** quando o dia tem entradas e saídas de dinheiro, aparecem "Entradas" e "Saídas" ao lado do "Saldo no dia".
+- **Desempenho depois da venda:** a tela de venda concluída mostra um link para o Desempenho.
+- **Menu ☰ no PDV (celular e tablet):** reúne Iniciar venda, Consultar preço, Aplicar desconto, Finalizar venda e Cancelar venda, no mesmo estilo do botão ⊕.
+- **Menu lateral no PC:** em telas com mais de 900px, a navegação vira um menu lateral à esquerda, com ícone e nome lado a lado e o logo da loja no topo. A barra inferior fica só no celular e no tablet em pé.
+- **Atalho para o Financeiro em Ajustes:** novo bloco "Financeiro (em pausa)".
+
+### Alterado
+
+- **PDV no celular e no tablet:** os botões saíram da tela e foram para o menu ☰. O campo de leitura do código de barras desceu para depois da lista de itens e do total.
+- **Comemoração da venda:** some sozinha depois de 15 segundos, e o caixa volta a ficar livre.
+- **Estoque:**
+  - os filtros e o cabeçalho da tabela ficam fixos, e só a lista de produtos rola;
+  - os filtros seguem o mesmo visual do Histórico: Categoria, Ordenar e Crescente/Decrescente em chips, com a busca à direita.
+- **Valores no Histórico e no Painel do Produto:**
+  - o total fica maior e em destaque;
+  - quando a movimentação é de 1 unidade, o valor unitário não se repete embaixo.
+- **Botão ⊕:** aparece só no Estoque, com Novo produto e Nova compra em lote.
+- **Navegação:** fica com PDV, Estoque, Histórico e Desempenho.
+
+### Removido
+
+- Coluna e ordenação por **custo médio** na lista do Estoque. É uma informação sensível; ela continua no Painel do Produto.
+- "Nova venda" do botão ⊕. A venda é feita pelo PDV.
+- Botão ⊕ da tela Histórico.
+- **Financeiro** da navegação principal. O módulo continua acessível pelo atalho em Ajustes.
+
+---
+
+## [2.1.0] - 2026-11-10
+
+### Adicionado
+
+- **Comemoração da venda:** ao finalizar uma venda no PDV, uma chuva de confete nas cores da marca sai dos cantos da tela, e o visor mostra o mascote com a mensagem "Parabéns pela venda!", o total e a forma de pagamento. Quem ativou "reduzir movimento" no sistema vê só a mensagem, sem animação.
+- **Imagem nova:** `icones/mascote-cabeca.png`, a cabeça do mascote usada na comemoração.
+
+### Alterado
+
+- **Ajustes no cabeçalho:** o botão Ajustes saiu da barra inferior e virou uma engrenagem no cabeçalho, à esquerda do sininho. Tocar de novo volta para a tela anterior. A barra inferior fica com PDV, Estoque, Histórico, Desempenho e Financeiro.
+- **PDV antes da venda:**
+  - o painel da direita (itens e total) só aparece depois de "Iniciar venda";
+  - com o caixa livre, o visor e os botões ocupam a largura toda.
+- **Alinhamento no PDV:**
+  - o cabeçalho preto "Venda em andamento" tem a mesma altura da faixa do visor;
+  - a linha preta acima do subtotal fica na altura do campo de leitura do código de barras.
+- **Câmera só no celular:** os botões de ler o código de barras com a câmera não aparecem mais no computador. Isso vale para o PDV, o cadastro de produto, a aba Dados e a compra em lote. No PC, o leitor USB digita direto no campo.
+
+---
+
 ## [2.0.0] - 2026-11-10
 
 Versão com o PDV como tela inicial, forma de pagamento, notificações entre aparelhos e modo de teste.
@@ -600,6 +656,8 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[2.2.0]: #
+[2.1.0]: #
 [2.0.0]: #
 [1.0.0]: #
 [0.10.0]: #

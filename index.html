@@ -36,6 +36,10 @@
       <span>Chinatown Imports <em id="versao"></em></span>
     </div>
   </a>
+  <!-- Ajustes (Configurações): à esquerda do sininho -->
+  <button class="notif btn-ajustes" id="btnAjustes" onclick="alternarAjustes()" title="Ajustes" aria-label="Ajustes">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
+  </button>
   <!-- Sininho: abre a tela de pontos de atenção (estoque baixo e pagamentos pendentes) -->
   <button class="notif" id="notif" onclick="alternarAlertas()" title="Pontos de atenção">
     <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -51,6 +55,8 @@
 </header>
 
 <!-- Faixa do modo Sandbox (só aparece com o sandbox ligado) -->
+<canvas class="festa" id="festa" aria-hidden="true"></canvas>
+
 <div class="sbx-faixa" id="sbxFaixa" hidden>
   <span><b>Modo sandbox</b> · nada do que for feito aqui é salvo</span>
   <button class="btn btn-mini" onclick="sandboxDesligar()">Desligar</button>
@@ -59,10 +65,12 @@
 <main>
 <!-- ===================== TELA: PDV (ponto de venda — tela inicial) ===================== -->
 <section class="view" id="viewPdv">
+  <!-- Grade de 2 linhas: visor | itens da venda  /  leitor + botões | totais.
+       Assim o cabeçalho preto acompanha a faixa do visor e a linha acima do subtotal fica na altura do campo de leitura. -->
   <div class="pdv">
-    <div class="pdv-esq">
-      <!-- Visor: produto lido em destaque (nome, preço e, no futuro, foto) -->
-      <div class="pdv-visor" id="pdvVisor"></div>
+    <!-- Visor: produto lido em destaque (nome, preço e, no futuro, foto) -->
+    <div class="pdv-visor" id="pdvVisor"></div>
+    <div class="pdv-controles">
       <div class="pdv-leitor">
         <div class="pdv-busca">
           <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
@@ -70,17 +78,18 @@
             oninput="pdvFiltrar()" onkeydown="pdvTeclaBusca(event)">
           <div class="pdv-resultados" id="pdvResultados"></div>
         </div>
-        <button class="btn btn-claro pdv-cam" onclick="pdvCamera()" title="Ler o código com a câmera" aria-label="Ler o código com a câmera">
+        <button class="btn btn-claro pdv-cam so-celular" onclick="pdvCamera()" title="Ler o código com a câmera" aria-label="Ler o código com a câmera">
           <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
         </button>
       </div>
       <div class="pdv-acoes" id="pdvAcoes"></div>
     </div>
-    <div class="pdv-dir">
+    <!-- Itens da venda: só aparecem com a venda iniciada -->
+    <div class="pdv-venda">
       <div class="pdv-lista-cab" id="pdvListaCab"></div>
       <div class="pdv-lista" id="pdvLista"></div>
-      <div class="pdv-totais" id="pdvTotais"></div>
     </div>
+    <div class="pdv-totais" id="pdvTotais"></div>
   </div>
 </section>
 
@@ -91,24 +100,32 @@
 
 <!-- ===================== TELA: ESTOQUE ===================== -->
 <section class="view" id="viewEstoque" hidden>
-  <div class="filtros">
-    <input type="text" id="busca" placeholder="Buscar por nome, marca, código ou cód. de barras..." oninput="render()">
-    <select id="filtroCategoria" onchange="render()"><option value="">Todas as categorias</option></select>
-    <div class="ordenar">
-      <label for="ordenarPor">Ordenar:</label>
-      <select id="ordenarPor" onchange="render()">
-        <option value="nome">Nome</option>
-        <option value="marca">Marca</option>
-        <option value="categoria">Categoria</option>
-        <option value="estoque">Quantidade</option>
-        <option value="preco">Preço</option>
-        <option value="custo">Custo médio</option>
-      </select>
-      <button id="btnDir" class="btn btn-claro btn-mini" onclick="alternarDirecao()" title="Inverter ordem">↑</button>
+  <!-- Topo fixo (filtros + cabeçalho da tabela); só a lista de produtos rola -->
+  <div class="es-topo">
+    <div class="hx-filtros">
+      <label class="hx-chip"><select id="filtroCategoria" onchange="render()" title="Categoria"><option value="">Categoria</option></select></label>
+      <label class="hx-chip"><select id="ordenarPor" onchange="render()" title="Ordenar por">
+        <option value="nome">Ordenar: Nome</option>
+        <option value="marca">Ordenar: Marca</option>
+        <option value="categoria">Ordenar: Categoria</option>
+        <option value="estoque">Ordenar: Quantidade</option>
+        <option value="preco">Ordenar: Preço</option>
+      </select></label>
+      <button class="hx-chip hx-chip-btn" id="btnDir" onclick="alternarDirecao()" title="Inverter a ordem">Crescente ↑</button>
+      <div class="hx-busca">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="busca" placeholder="Nome, marca ou código" oninput="render()">
+      </div>
+    </div>
+    <p class="dica es-dica">Toque e segure um produto para abrir as ações rápidas. Produtos arquivados só aparecem na busca.</p>
+    <div class="linha-cabecalho" id="esCab">
+      <div>Produto</div>
+      <div class="col-cat">Categoria</div>
+      <div class="num">Estoque</div>
+      <div class="num">Preço</div>
     </div>
   </div>
-  <p class="dica" style="margin:-8px 0 14px">Toque e segure um produto para abrir as ações rápidas. Produtos arquivados só aparecem na busca.</p>
-  <div id="conteudo"></div>
+  <div class="es-lista" id="conteudo"></div>
 </section>
 
 <!-- ===================== TELA: HISTÓRICO ===================== -->
@@ -316,6 +333,12 @@
       <small>Para testar vendas, entradas e saídas sem medo. Com o sandbox ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
     <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Sandbox desligado</span></label>
   </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Financeiro (em pausa)</h3>
+      <small>O módulo de faturamento MEI saiu da navegação principal enquanto não está em uso. Os dados continuam salvos e entram no backup.</small></div>
+    <div class="cfg-acoes"><button class="btn btn-claro" onclick="mostrarView('financeiro')">Abrir o Financeiro →</button></div>
+  </div>
 </section>
 </main>
 
@@ -451,7 +474,7 @@
         <div style="display:flex;gap:8px">
           <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
             onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pMarca').focus();}">
-          <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner()">Escanear</button>
+          <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner()">Escanear</button>
         </div>
         <div class="dica">Use a câmera ou um leitor USB com este campo focado.</div>
       </div>
@@ -669,19 +692,29 @@
 <!-- ===== Botão de ação flutuante (⊕) ===== -->
 <div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
 <div class="fab-menu" id="fabMenu">
-  <button class="fab-opcao" onclick="fecharFab();pdvNovaVenda()"><span>Nova venda</span><i>
-    <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></i></button>
   <button class="fab-opcao" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
   <button class="fab-opcao" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
     <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg></i></button>
 </div>
-<button class="fab" id="fab" onclick="alternarFab()" title="Nova venda, produto ou compra" aria-label="Ações">
+<button class="fab" id="fab" onclick="alternarFab()" title="Novo produto ou compra em lote" aria-label="Ações">
   <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
 </button>
 
+<!-- ===== Menu de ações do PDV (☰) — só no celular e no tablet; no PC os botões ficam na tela ===== -->
+<div class="fab-menu" id="pdvMenu"></div>
+<button class="fab fab-hamb" id="pdvFab" onclick="alternarPdvMenu()" title="Ações da venda" aria-label="Ações da venda">
+  <svg class="ic-abrir" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  <svg class="ic-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+</button>
+
 <!-- ===== Navegação inferior ===== -->
+<!-- Navegação: barra inferior no celular; menu lateral à esquerda no PC -->
 <nav class="barra-inferior">
+  <a class="nav-logo" href="#" onclick="mostrarView('pdv');return false" title="Voltar ao PDV">
+    <img src="Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
+    <span><b>China Engine</b><small>Chinatown Imports</small></span>
+  </a>
   <button class="nav-item" data-nav="pdv" onclick="mostrarView('pdv')" title="Ponto de venda">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 8v4M10 8v4M13 8v4M17 8v4"/></svg>
     <span>PDV</span>
@@ -697,14 +730,6 @@
   <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Desempenho das vendas">
     <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
     <span>Desempenho</span>
-  </button>
-  <button class="nav-item" data-nav="financeiro" onclick="mostrarView('financeiro')" title="Módulo financeiro">
-    <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
-    <span>Financeiro</span>
-  </button>
-  <button class="nav-item" data-nav="config" onclick="mostrarView('config')" title="Configurações">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
-    <span>Ajustes</span>
   </button>
 </nav>
 

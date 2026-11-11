@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.0.0';
+const VERSAO = '2.2.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -130,7 +130,7 @@ function escapar(t){ return String(t).replace(/[&<>"]/g,s=>({'&':'&amp;','<':'&l
    ========================================================= */
 function alternarDirecao(){
   direcao = direcao==='asc' ? 'desc' : 'asc';
-  document.getElementById('btnDir').textContent = direcao==='asc' ? '↑' : '↓';
+  document.getElementById('btnDir').textContent = direcao==='asc' ? 'Crescente ↑' : 'Decrescente ↓';
   render();
 }
 
@@ -152,7 +152,6 @@ function render(){
     switch(ordenarPor){
       case 'estoque': va=estoqueDe(a); vb=estoqueDe(b); break;
       case 'preco':   va=a.preco||0;   vb=b.preco||0;   break;
-      case 'custo':   va=custoMedioDe(a)||0; vb=custoMedioDe(b)||0; break;
       case 'marca':   va=(a.marca||'').toLowerCase(); vb=(b.marca||'').toLowerCase(); break;
       case 'categoria': va=(a.categoria||'').toLowerCase(); vb=(b.categoria||'').toLowerCase(); break;
       default:        va=a.nome.toLowerCase(); vb=b.nome.toLowerCase();
@@ -164,6 +163,11 @@ function render(){
   });
 
   const cont = document.getElementById('conteudo');
+  // filtros que fogem do padrão ficam destacados (mesmo visual do Histórico)
+  document.getElementById('filtroCategoria').parentElement.classList.toggle('ativo', !!cat);
+  document.getElementById('ordenarPor').parentElement.classList.toggle('ativo', ordenarPor!=='nome');
+  document.getElementById('btnDir').classList.toggle('ativo', direcao!=='asc');
+  document.getElementById('esCab').style.display = estado.produtos.length ? '' : 'none';
 
   if(estado.produtos.length===0){
     cont.innerHTML = `<div class="vazio">
@@ -178,7 +182,6 @@ function render(){
     const est = estoqueDe(p);
     const baixo = !p.arquivado && est <= (p.minimo||0);
     const ar = aReceberDe(p);
-    const cm = custoMedioDe(p);
     const linha = `<div class="linha${p.arquivado?' arquivada':''}" data-id="${p.id}">
       <div class="nome">
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
@@ -189,7 +192,6 @@ function render(){
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
       <div class="num" style="color:${baixo?'var(--vermelho)':'inherit'}">${est}${baixo?'<span class="badge-baixo"><span class="rot-l">estoque baixo</span><span class="rot-c">baixo</span></span>':''}</div>
       <div class="num">${fmtBRL(p.preco||null)}</div>
-      <div class="num col-custo">${fmtBRL(cm)}</div>
     </div>`;
     const sub = ar>0 ? `<div class="subrow">
         <span>${ar} unidade(s) a receber</span>
@@ -200,14 +202,7 @@ function render(){
 
   if(lista.length===0) linhas = `<div class="sem-resultado">Nenhum produto encontrado.</div>`;
 
-  cont.innerHTML = `<div class="tabela">
-    <div class="linha-cabecalho">
-      <div>Produto</div>
-      <div class="col-cat">Categoria</div>
-      <div class="num">Estoque</div>
-      <div class="num">Preço</div>
-      <div class="num col-custo">Custo médio</div>
-    </div>${linhas}</div>`;
+  cont.innerHTML = linhas;   // o cabeçalho da tabela fica no topo fixo (#esCab)
 
   bindLinhas();
 }
@@ -218,7 +213,7 @@ function preencherFiltroCategorias(){
   const contagem = {};
   estado.produtos.forEach(p=>{ if(!p.arquivado) contagem[p.categoria] = (contagem[p.categoria]||0)+1; });
   const comProdutos = estado.categorias.filter(c=>contagem[c]>0);
-  filtro.innerHTML = '<option value="">Todas as categorias</option>' +
+  filtro.innerHTML = '<option value="">Categoria</option>' +
     comProdutos.map(c=>`<option value="${escapar(c)}" ${c===atual?'selected':''}>${escapar(c)} (${contagem[c]})</option>`).join('');
   if(atual && !comProdutos.includes(atual)) filtro.value = '';
 }
@@ -443,7 +438,8 @@ function pdvGuardar(){
   }catch(e){}
 }
 let pdv = pdvCarregar();
-let pdvVisor = { tipo:'livre' };   // livre | produto {pid, modo} | erro {titulo, texto} | concluida {...}
+let pdvVisor = { tipo:'livre' };
+let pdvFimFesta = null;   // livre | produto {pid, modo} | erro {titulo, texto} | concluida {...}
 const cent = v => Math.round(v*100)/100;
 
 /* Contas da venda em andamento */
@@ -666,9 +662,14 @@ function pdvConfirmar(){
   const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, pagamento:finPag, nomes:r.linhas.map(l=>l.p.nome) };
   pdv = pdvVazio();
   pdvVisor = { tipo:'concluida', ...feita };
+  // a comemoração some sozinha depois de 15 s (se ninguém mexeu no caixa antes)
+  const comemoracao = pdvVisor;
+  clearTimeout(pdvFimFesta);
+  pdvFimFesta = setTimeout(()=>{ if(pdvVisor===comemoracao){ pdvVisor = { tipo:'livre' }; renderPdv(); } }, 15000);
   pdvGuardar();
   salvar(); render();
   fechar('modalFinalizar'); renderPdv(); pdvFocar();
+  festejar();
   notificarVenda(feita);
 }
 
@@ -706,7 +707,13 @@ function pdvVisorHtml(){
   if(v.tipo==='concluida'){
     return `<div class="pdv-visor-in concluida">
       <div class="pdv-selo">Venda concluída</div>
-      <div class="pdv-msg"><b>${fmtBRL(v.total)}</b><span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span></div>
+      <div class="pdv-msg pdv-festa">
+        <img class="pdv-mascote" src="icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <em>Parabéns pela venda!</em>
+        <b>${fmtBRL(v.total)}</b>
+        <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
+        <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas no Desempenho →</button>
+      </div>
     </div>`;
   }
   if(pdv.ativa){
@@ -735,6 +742,21 @@ function renderPdv(){
     <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>
     <button class="pdv-btn" onclick="pdvConsultar()"><span>Consultar preço</span><kbd>F4</kbd></button>`;
 
+  // menu ☰ (celular/tablet): mesmas ações dos botões
+  const ic = d=>`<i><svg viewBox="0 0 24 24">${d}</svg></i>`;
+  const IC = {
+    iniciar:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+    consultar:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    desconto:'<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+    finalizar:'<path d="M20 6 9 17l-5-5"/>',
+    cancelar:'<path d="M6 6l12 12M18 6 6 18"/>'
+  };
+  const opc = (fn, txt, icone)=>`<button class="fab-opcao" onclick="pdvMenuAcao(${fn})"><span>${txt}</span>${ic(icone)}</button>`;
+  document.getElementById('pdvMenu').innerHTML = pdv.ativa
+    ? opc('pdvCancelar','Cancelar venda',IC.cancelar) + opc("()=>abrirDesconto('venda')",'Aplicar desconto',IC.desconto)
+      + opc('pdvConsultar', pdv.consulta ? 'Consultando… (toque para sair)' : 'Consultar preço', IC.consultar) + opc('pdvFinalizar','Finalizar venda',IC.finalizar)
+    : opc('pdvConsultar','Consultar preço',IC.consultar) + opc('pdvIniciar','Iniciar venda',IC.iniciar);
+
   document.getElementById('pdvListaCab').innerHTML = pdv.ativa
     ? `<b>Venda em andamento</b><span>${r.linhas.length} produto(s) · ${r.unidades} un.</span>`
     : `<b>Itens da venda</b><span>Caixa livre</span>`;
@@ -759,6 +781,47 @@ function renderPdv(){
     ${pdv.desconto ? `<div class="pdv-tl desc"><span>Desconto na venda (${rotuloDesconto(pdv.desconto)})
         <button type="button" onclick="abrirDesconto('venda')">alterar</button></span><b>−${fmtBRL(r.descVenda)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
+}
+
+/* ----- Comemoração da venda: chuva de confete nas cores da marca (~2,5 s) -----
+   Quem pediu ao sistema para reduzir animações vê só a mensagem, sem confete. */
+let festaAnim = null;
+function festejar(){
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.getElementById('festa'); if(!cv || !cv.getContext) return;
+  const ctx = cv.getContext('2d'), dpr = Math.min(window.devicePixelRatio||1, 2);
+  const W = window.innerWidth, H = window.innerHeight;
+  cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  const cores = ['#F7C600','#E0241B','#1A1A17','#2E7D32','#FFFFFF','#FFD84D'];
+  // dois canhões nos cantos de baixo, atirando para o centro
+  const pecas = Array.from({ length: Math.min(220, Math.round(W/6)) }, (_,i)=>{
+    const esq = i%2===0, ang = (esq ? -60 : -120) + (Math.random()*30-15);
+    const vel = (H*0.019) + Math.random()*(H*0.012);
+    return { x: esq ? -10 : W+10, y: H*0.92, vx: Math.cos(ang*Math.PI/180)*vel, vy: Math.sin(ang*Math.PI/180)*vel,
+      w: 7+Math.random()*7, h: 4+Math.random()*5, rot: Math.random()*6.28, vr: (Math.random()-.5)*.35,
+      cor: cores[i%cores.length], forma: Math.random()<.25 ? 'c' : 'r', atraso: Math.random()*10 };
+  });
+  cancelAnimationFrame(festaAnim);
+  cv.classList.add('ativa');
+  const inicio = performance.now(), dur = 2600;
+  const quadro = t=>{
+    const dt = t - inicio;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalAlpha = dt > dur-500 ? Math.max(0,(dur-dt)/500) : 1;   // some suavemente no fim
+    pecas.forEach(p=>{
+      if(p.atraso>0){ p.atraso--; return; }
+      p.vy += H*0.00055; p.vx *= .99; p.vy *= .992;   // gravidade e resistência do ar
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle = p.cor;
+      if(p.cor==='#FFFFFF'){ ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 1; }
+      if(p.forma==='c'){ ctx.beginPath(); ctx.arc(0,0,p.h*.8,0,6.28); ctx.fill(); }
+      else { ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h*Math.abs(Math.cos(p.rot*2))+1); }
+      ctx.restore();
+    });
+    if(dt < dur) festaAnim = requestAnimationFrame(quadro);
+    else { ctx.clearRect(0,0,W,H); cv.classList.remove('ativa'); }
+  };
+  festaAnim = requestAnimationFrame(quadro);
 }
 
 /* Atalhos do teclado no PDV (PC) e leitor USB: qualquer tecla digitada fora de um campo vai para o campo de leitura */
@@ -932,7 +995,7 @@ function linhaCompraHTML(idx){
        <input type="hidden" id="lc_cb_${idx}" value="">
        <div id="lc_selecionado_${idx}" style="display:none;margin-top:4px;font-size:14px;color:var(--texto-sec)"></div>
      </div>
-     <button type="button" class="btn btn-claro lc-icone-btn" title="Escanear código de barras" aria-label="Escanear código de barras" onclick="abrirScannerCompra(${idx})">
+     <button type="button" class="btn btn-claro lc-icone-btn so-celular" title="Escanear código de barras" aria-label="Escanear código de barras" onclick="abrirScannerCompra(${idx})">
        <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg></button>
      <button type="button" class="btn btn-claro lc-novo-btn" title="Cadastrar novo produto" onclick="selecionarLinhaProduto(${idx},'__novo__')">+</button>
    </div>
@@ -1046,6 +1109,7 @@ function selecionarLinhaProduto(idx, id){
 }
 function registrarCompraLote(){
   const data = document.getElementById('compraData').value || hoje();
+  const loteId = uid();   // todas as entradas desta compra ficam agrupadas no Histórico
   const fornCompra = val('compraFornecedor').trim();
   const linhas = [...document.querySelectorAll('#compraLinhas .linha-compra')];
   const itens = [];
@@ -1078,7 +1142,7 @@ function registrarCompraLote(){
       p = prod(it.id);
     }
     const forn = fornCompra;
-    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, ...(forn?{fornecedor:forn}:{}) });
+    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, loteId, ...(forn?{fornecedor:forn}:{}) });
   });
   salvar(); fechar('modalCompra'); render();
   toast(`Compra registrada: ${itens.length} item(ns).`);
@@ -1241,7 +1305,7 @@ function ppMovimentacoes(p){
         return `<div class="hx-linha pp-linha" data-pid="${p.id}" data-mid="${m.id}" title="Toque e segure para editar">
           <div class="hx-mov">${tagMov(m)}${extra?`<small class="pp-forn">${escapar(extra)}</small>`:''}</div>
           <div class="num">${m.qtd} un.</div>
-          <div class="num hx-valor ${v?c:''}">${valorHtml(v)}</div>
+          <div class="num hx-valor ${v?c:''}">${valorHtml(v, m.qtd)}</div>
         </div>`; }).join('')}
     </div>`).join('') + `</div>`;
 }
@@ -1261,7 +1325,7 @@ function ppDados(p){
     </div>
     <div class="campo"><label>Código de barras (opcional)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
-        <button type="button" class="btn btn-claro btn-mini" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
+        <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
     </div>
     <div class="campo"><label>Foto do produto (link da imagem, opcional)</label>
       <input type="url" id="dpFoto" value="${escapar(p.foto||'')}" placeholder="https://… — aparece no visor do PDV" autocapitalize="off" spellcheck="false"></div>
@@ -1518,11 +1582,12 @@ function tagMov(m){
     : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`) + pag;
 }
 /* Célula de valor (Histórico e Painel do Produto) */
-function valorHtml(v){
+function valorHtml(v, qtd){
   if(!v) return '<span class="hx-sem">—</span>';
-  if(v.foraCaixa) return `${fmtBRL(v.total)}<small>${fmtBRL(v.unit)}/un</small><span class="hx-fora">fora do saldo</span>`;
+  const unit = qtd===1 || v.unit==null ? '' : `<small>${fmtBRL(v.unit)}/un</small>`;   // 1 unidade: o unitário seria igual ao total
+  if(v.foraCaixa) return `<b>${fmtBRL(v.total)}</b>${unit}<span class="hx-fora">fora do saldo</span>`;
   const s = v.total>0 ? '+' : v.total<0 ? '−' : '';
-  return `${s}${fmtBRL(Math.abs(v.total))}<small>${fmtBRL(v.unit)}/un</small>`;
+  return `<b>${s}${fmtBRL(Math.abs(v.total))}</b>${unit}`;
 }
 function tipoFiltroMov(m){
   if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
@@ -1697,20 +1762,53 @@ function renderHistorico(){
   const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
   const fmtSem = v=> fmtBRL(Math.abs(v));
 
-  cont.innerHTML = dias.map(d=>{
-    const saldo = d.itens.reduce((s,l)=>s+(l.v && !l.v.foraCaixa ? l.v.total : 0),0);
-    const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
-    return `<div class="hx-dia">
-      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
-      ${d.itens.map(l=>{ const c = classeMov(l.m); return `
-      <div class="hx-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
-        <div class="hx-mov">${tagMov(l.m)}</div>
+  // Dentro do dia, os itens da mesma venda (vendaId) ou da mesma compra em lote (loteId) viram um bloco só
+  const blocosDo = itens=>{
+    const blocos = [], porChave = {};
+    itens.forEach(l=>{
+      const k = l.m.vendaId ? 'v:'+l.m.vendaId : l.m.loteId ? 'l:'+l.m.loteId : null;
+      if(k && porChave[k]){ porChave[k].itens.push(l); return; }
+      const b = { itens:[l] }; if(k) porChave[k] = b; blocos.push(b);
+    });
+    return blocos;
+  };
+  const linhaHtml = (l, noGrupo)=>{ const c = classeMov(l.m); return `
+      <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
+        <div class="hx-mov">${noGrupo ? '' : tagMov(l.m)}</div>
         <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num col-qtd">${l.qtd}</div>
-        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}<span class="hx-qtd-m">${l.qtd} un.</span></div>
-      </div>`; }).join('')}
-      <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
+        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v, l.qtd)}<span class="hx-qtd-m">${l.qtd} un.</span></div>
+      </div>`; };
+  const grupoHtml = b=>{
+    const m0 = b.itens[0].m, c = classeMov(m0);
+    const qtd = b.itens.reduce((s,l)=>s+l.qtd,0);
+    const total = b.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
+    const temValor = b.itens.some(l=>l.v);
+    const sub = [m0.hora ? `às ${m0.hora}` : '', m0.tipo==='entrada' && m0.fornecedor ? escapar(m0.fornecedor) : ''].filter(Boolean).join(' · ');
+    return `<div class="hx-grupo">
+      <div class="hx-linha hx-grupo-cab">
+        <div class="hx-mov">${tagMov(m0)}</div>
+        <div class="hx-prod">${b.itens.length} produtos${sub?`<small>${sub}</small>`:''}</div>
+        <div class="col-cat"></div>
+        <div class="num col-qtd">${qtd}</div>
+        <div class="num hx-valor ${temValor?c:''}">${temValor ? `<b>${total>0?'+':total<0?'−':''}${fmtSem(total)}</b>` : '<span class="hx-sem">—</span>'}<span class="hx-qtd-m">${qtd} un.</span></div>
+      </div>
+      ${b.itens.map(l=>linhaHtml(l, true)).join('')}
+    </div>`;
+  };
+
+  cont.innerHTML = dias.map(d=>{
+    const conta = d.itens.filter(l=>l.v && !l.v.foraCaixa).map(l=>l.v.total);
+    const entra = conta.filter(v=>v>0).reduce((s,v)=>s+v,0), sai = conta.filter(v=>v<0).reduce((s,v)=>s+v,0), saldo = entra + sai;
+    const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
+    return `<div class="hx-dia">
+      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
+      ${blocosDo(d.itens).map(b=> b.itens.length>1 ? grupoHtml(b) : linhaHtml(b.itens[0], false)).join('')}
+      <div class="hx-saldo">
+        ${entra && sai ? `<span>Entradas <b class="pos">+${fmtSem(entra)}</b></span><span>Saídas <b class="neg">−${fmtSem(sai)}</b></span>` : ''}
+        <span>Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></span>
+      </div>
     </div>`;
   }).join('');
   cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
@@ -2052,7 +2150,7 @@ const VIEWS = {
 let viewAtual = 'pdv', viewAnterior = 'pdv';
 function mostrarView(v){
   if(!VIEWS[v]) return;
-  if(viewAtual!==v && viewAtual!=='alertas') viewAnterior = viewAtual;
+  if(viewAtual!==v && viewAtual!=='alertas' && viewAtual!=='config') viewAnterior = viewAtual;
   viewAtual = v;
   Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
   document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('ativo', b.dataset.nav===v));
@@ -2060,8 +2158,10 @@ function mostrarView(v){
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
-  document.getElementById('fab').style.display = ['estoque','historico'].includes(v) ? '' : 'none';   // ⊕ só em Estoque e Histórico
+  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');
+  document.getElementById('fab').style.display = v==='estoque' ? '' : 'none';   // ⊕ só no Estoque (o ☰ do PDV aparece pelo CSS, só no celular/tablet)
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
+  document.body.classList.toggle('modo-estoque', v==='estoque');       // idem no Estoque: filtros e cabeçalho fixos
   document.body.classList.toggle('modo-pdv', v==='pdv');               // PDV usa a tela toda
   document.querySelector('main').scrollTop = 0;
   renderViewAtual();
@@ -2071,13 +2171,16 @@ function mostrarView(v){
 function ajustarNav(){
   const nav = document.querySelector('.barra-inferior'); if(!nav) return;
   nav.classList.remove('compacta');
-  const precisa = [...nav.querySelectorAll('.nav-item span')].reduce((t,sp)=>t + sp.scrollWidth + 8, 0);   // 8px de respiro por item
+  if(window.matchMedia('(min-width:901px)').matches) return;   // no PC a navegação é o menu lateral
+  const precisa = [...nav.querySelectorAll('.nav-item > span')].reduce((t,sp)=>t + sp.scrollWidth + 8, 0);   // 8px de respiro por item
   nav.classList.toggle('compacta', precisa > nav.clientWidth);
 }
 window.addEventListener('resize', ajustarNav);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(ajustarNav);
 /* Sininho: abre os pontos de atenção; tocar de novo volta para a tela anterior */
 function alternarAlertas(){ mostrarView(viewAtual==='alertas' ? viewAnterior : 'alertas'); }
+/* Engrenagem (Ajustes) no cabeçalho: mesma lógica do sininho */
+function alternarAjustes(){ mostrarView(viewAtual==='config' ? viewAnterior : 'config'); }
 function renderViewAtual(){
   if(viewAtual==='pdv')        renderPdv();
   if(viewAtual==='alertas')    renderAlertas();
@@ -2189,7 +2292,13 @@ function renderAlertas(){
 /* ===== Botão de ação flutuante (⊕) ===== */
 function alternarFab(){ document.getElementById('fabMenu').classList.contains('aberto') ? fecharFab() : abrirFab(); }
 function abrirFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto')); }
-function fecharFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.remove('aberto')); }
+function fecharFab(){ ['fab','fabMenu','fabFundo','pdvFab','pdvMenu'].forEach(id=>{ const el = document.getElementById(id); if(el) el.classList.remove('aberto'); }); }
+/* Menu ☰ do PDV (celular e tablet): as mesmas ações dos botões da tela do PC */
+function alternarPdvMenu(){
+  if(document.getElementById('pdvMenu').classList.contains('aberto')){ fecharFab(); return; }
+  ['pdvFab','pdvMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto'));
+}
+function pdvMenuAcao(fn){ fecharFab(); fn(); }
 
 /* =========================================================
    DESEMPENHO — métricas e gráficos das vendas
