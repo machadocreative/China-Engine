@@ -33,11 +33,11 @@
     <img class="logo" src="Chinatown_Imports_Logo.png" alt="Chinatown Imports" onerror="this.style.display='none'">
     <div class="titulo">
       <b id="tituloView">PDV</b>
-      <span>Chinatown Imports <em id="versao"></em></span>
+      <span>Chinatown Imports</span>
     </div>
   </a>
   <!-- Ajustes (Configurações): à esquerda do sininho -->
-  <button class="notif btn-ajustes" id="btnAjustes" onclick="alternarAjustes()" title="Ajustes" aria-label="Ajustes">
+  <button class="notif btn-ajustes so-movel" id="btnAjustes" onclick="alternarAjustes()" title="Ajustes" aria-label="Ajustes">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
   </button>
   <!-- Sininho: abre a tela de pontos de atenção (estoque baixo e pagamentos pendentes) -->
@@ -54,11 +54,11 @@
   </div>
 </header>
 
-<!-- Faixa do modo Sandbox (só aparece com o sandbox ligado) -->
+<!-- Faixa do Modo Faz-de-Conta (sandbox; só aparece quando ligado) -->
 <canvas class="festa" id="festa" aria-hidden="true"></canvas>
 
 <div class="sbx-faixa" id="sbxFaixa" hidden>
-  <span><b>Modo sandbox</b> · nada do que for feito aqui é salvo</span>
+  <span><b>Modo Faz-de-Conta</b> · nada do que for feito aqui é salvo</span>
   <button class="btn btn-mini" onclick="sandboxDesligar()">Desligar</button>
 </div>
 
@@ -156,6 +156,7 @@
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
         <option value="inicial">Estoque inicial</option>
+        <option value="avulsa">Avulsa</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
@@ -193,7 +194,7 @@
   <div class="hx-lista" id="histConteudo"></div>
 </section>
 
-<!-- ===================== TELA: DESEMPENHO (métricas de vendas) ===================== -->
+<!-- ===================== TELA: MÉTRICAS (antigo Desempenho; ids continuam "desempenho") ===================== -->
 <section class="view" id="viewDesempenho" hidden>
   <div class="hx-periodo">
     <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(-1)" title="Período anterior" aria-label="Período anterior">‹</button>
@@ -261,36 +262,20 @@
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Categorias de produtos</h3>
-      <small>Crie, renomeie ou remova categorias. Renomear move os produtos para o novo nome; só é possível remover categorias sem produtos. <span id="cfgCatTotal"></span></small></div>
-    <div class="cfg-cat-nova">
-      <input type="text" id="cfgNovaCat" placeholder="Nova categoria (ex: Áudio)" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')adicionarCategoria()">
-      <button class="btn btn-amarelo" onclick="adicionarCategoria()">Adicionar</button>
-    </div>
-    <ul class="lista-cat cfg-lista-cat" id="cfgListaCat"></ul>
+      <small>Crie, renomeie ou remova as categorias dos produtos. <span id="cfgCatTotal"></span></small></div>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCategorias()">Gerenciar categorias</button></div>
   </div>
 
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Senha do gerente</h3>
-      <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
-    <div class="cfg-form">
-      <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
-      <div class="linha-campos">
-        <div class="campo"><label>Nova senha</label><input type="password" id="cfgSenhaNova" autocomplete="new-password"></div>
-        <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgSenhaRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenha()"></div>
-      </div>
-      <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
-      <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
-    </div>
-  </div>
-
-  <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Backup dos dados</h3>
-      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+    <div class="cfg-cab"><h3>Notificações de venda</h3>
+      <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
+    <div class="sy-status" id="cfgPushStatus"></div>
     <div class="cfg-acoes">
-      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
-      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
+      <button class="btn btn-escuro" id="cfgPushAtivar" onclick="pushAtivar()">Ativar neste aparelho</button>
+      <button class="btn btn-claro" id="cfgPushTestar" onclick="pushTestar()">Enviar teste</button>
+      <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
     </div>
-    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
+    <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
   </div>
 
   <div class="cfg-bloco">
@@ -317,21 +302,33 @@
   </div>
 
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Notificações de venda</h3>
-      <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
-    <div class="sy-status" id="cfgPushStatus"></div>
+    <div class="cfg-cab"><h3>Backup dos dados</h3>
+      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
     <div class="cfg-acoes">
-      <button class="btn btn-escuro" id="cfgPushAtivar" onclick="pushAtivar()">Ativar neste aparelho</button>
-      <button class="btn btn-claro" id="cfgPushTestar" onclick="pushTestar()">Enviar teste</button>
-      <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
+      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
+      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
     </div>
-    <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
+    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
   </div>
 
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Sandbox (modo de teste)</h3>
-      <small>Para testar vendas, entradas e saídas sem medo. Com o sandbox ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
-    <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Sandbox desligado</span></label>
+    <div class="cfg-cab"><h3>Senha do gerente</h3>
+      <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
+    <div class="cfg-form">
+      <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Nova senha</label><input type="password" id="cfgSenhaNova" autocomplete="new-password"></div>
+        <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgSenhaRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenha()"></div>
+      </div>
+      <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
+      <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
+    </div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Modo Faz-de-Conta</h3>
+      <small>Para testar vendas, entradas e saídas sem medo (modo sandbox). Com ele ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
+    <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Desligado</span></label>
   </div>
 
   <div class="cfg-bloco">
@@ -339,6 +336,8 @@
       <small>O módulo de faturamento MEI saiu da navegação principal enquanto não está em uso. Os dados continuam salvos e entram no backup.</small></div>
     <div class="cfg-acoes"><button class="btn btn-claro" onclick="mostrarView('financeiro')">Abrir o Financeiro →</button></div>
   </div>
+
+  <p class="cfg-versao">China Engine · versão <b id="versao"></b></p>
 </section>
 </main>
 
@@ -379,6 +378,56 @@
       <button class="fechar" onclick="fechar('modalRegSaida')">&times;</button>
     </div>
     <div class="modal-corpo" id="corpoRegSaida"></div>
+  </div>
+</div>
+
+<!-- ===== Modal: categorias de produtos (Configurações) ===== -->
+<div class="overlay" id="modalCategorias">
+  <div class="modal modal-rola" style="max-width:520px">
+    <div class="modal-cabecalho">
+      <h2>Categorias de produtos</h2>
+      <button class="fechar" onclick="fecharCategorias()">&times;</button>
+    </div>
+    <div class="cat-topo">
+      <div class="cfg-cat-nova">
+        <input type="text" id="cfgNovaCat" placeholder="Nova categoria (ex: Áudio)" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')adicionarCategoria()">
+        <button class="btn btn-amarelo" onclick="adicionarCategoria()">Adicionar</button>
+      </div>
+      <div class="dica">Renomear move os produtos para o novo nome. Só é possível remover categorias sem produtos.</div>
+    </div>
+    <div class="modal-corpo">
+      <ul class="lista-cat" id="cfgListaCat"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: movimentação avulsa (Histórico) — receita sem produto em estoque ===== -->
+<div class="overlay" id="modalAvulsa">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-cabecalho">
+      <h2 id="avTitulo">Movimentação avulsa</h2>
+      <button class="fechar" onclick="fechar('modalAvulsa')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p class="dica" style="margin:0 0 14px">Para receitas que não passam pelo estoque, como xerox, impressão, fichas de jogo, reparos ou um produto sem cadastro. Entra no Histórico e nas Métricas, sem mexer no estoque.</p>
+      <div class="linha-campos">
+        <div class="campo"><label>Data</label><input type="date" id="avData"></div>
+        <div class="campo"><label>Valor (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
+      </div>
+      <div class="campo"><label>Breve descrição</label><input type="text" id="avDesc" maxlength="80" placeholder="Ex: 20 cópias em xerox, reparo de controle…"></div>
+      <label class="pdv-fin-rot">Tipo</label>
+      <div class="pdv-alterna" role="group" aria-label="Tipo">
+        <button type="button" id="avTipoServico" onclick="avulsaTipo('servico')">Serviço</button>
+        <button type="button" id="avTipoProduto" onclick="avulsaTipo('produto')">Produto</button>
+      </div>
+      <label class="pdv-fin-rot">Forma de pagamento</label>
+      <div class="pdv-pags" id="avPags"></div>
+      <div class="rodape-modal" style="margin-top:16px">
+        <button class="btn btn-vermelho" id="avExcluir" style="margin-right:auto;display:none" onclick="excluirAvulsa()">Excluir</button>
+        <button class="btn btn-claro" onclick="fechar('modalAvulsa')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarAvulsa()">Salvar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -692,12 +741,14 @@
 <!-- ===== Botão de ação flutuante (⊕) ===== -->
 <div class="fab-fundo" id="fabFundo" onclick="fecharFab()"></div>
 <div class="fab-menu" id="fabMenu">
-  <button class="fab-opcao" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
+  <button class="fab-opcao" data-fab="historico" onclick="fecharFab();abrirAvulsa()"><span>Inserir movimentação avulsa</span><i>
+    <svg viewBox="0 0 24 24"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg></i></button>
+  <button class="fab-opcao" data-fab="estoque" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
-  <button class="fab-opcao" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
+  <button class="fab-opcao" data-fab="estoque" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
     <svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg></i></button>
 </div>
-<button class="fab" id="fab" onclick="alternarFab()" title="Novo produto ou compra em lote" aria-label="Ações">
+<button class="fab" id="fab" onclick="alternarFab()" title="Ações rápidas" aria-label="Ações rápidas">
   <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
 </button>
 
@@ -727,10 +778,19 @@
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     <span>Histórico</span>
   </button>
-  <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Desempenho das vendas">
+  <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Métricas das vendas">
     <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
-    <span>Desempenho</span>
+    <span>Métricas</span>
   </button>
+  <button class="nav-item so-pc" data-nav="config" onclick="mostrarView('config')" title="Configurações">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
+    <span>Configurações</span>
+  </button>
+  <!-- Modo Faz-de-Conta: chave no pé do menu lateral (só PC) -->
+  <label class="nav-sbx so-pc" title="Testar sem salvar nada">
+    <span><b>Modo Faz-de-Conta</b><small id="navSbxRotulo">Desligado</small></span>
+    <span class="sbx-chave"><input type="checkbox" id="navSandbox" onchange="sandboxAlternar(this.checked)"><i></i></span>
+  </label>
 </nav>
 
 <script src="app.js"></script>

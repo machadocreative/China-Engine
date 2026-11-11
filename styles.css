@@ -344,7 +344,7 @@ body.modo-historico main{overflow:hidden;display:flex;flex-direction:column;padd
 .hx-lista{
   flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
   background:var(--card);border:1px solid var(--borda);border-top:none;border-radius:0 0 12px 12px;
-  padding-bottom:12px;
+  padding-bottom:84px;   /* espaço para o botão ⊕ */
 }
 .hx-dia{padding:2px 0 6px}
 .hx-data{
@@ -836,7 +836,7 @@ body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
   position:relative;flex:1;display:flex;align-items:center;gap:12px;background:#fff;
   border:2px solid var(--preto);border-radius:14px;padding:0 16px;
 }
-.pdv-busca:focus-within{box-shadow:0 0 0 4px var(--amarelo)}
+
 .pdv-busca>svg{width:26px;height:26px;stroke:var(--texto);fill:none;stroke-width:1.8;stroke-linecap:round;flex-shrink:0}
 .pdv-busca input{flex:1;min-width:0;border:none;outline:none;background:transparent;font-size:20px;padding:15px 0}
 .pdv-cam{padding:0 16px;border-radius:14px}
@@ -858,7 +858,7 @@ body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
 .pdv-res b{white-space:nowrap}
 
 /* Botões de ação */
-.pdv-acoes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;flex-shrink:0}
+.pdv-acoes{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;flex-shrink:0}   /* caixa livre: só "Iniciar venda" */
 .pdv.ativa .pdv-acoes{grid-template-columns:repeat(4,minmax(0,1fr))}
 .pdv-btn{
   display:flex;align-items:center;justify-content:center;gap:10px;min-height:64px;padding:10px 12px;
@@ -1062,3 +1062,61 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 /* Coluna dos controles estreita (PC com janela menor, ou com o menu lateral): menos aperto nos botões */
 @container controles (max-width:640px){ .pdv-btn kbd{display:none} }
 @container controles (max-width:480px){ .pdv.ativa .pdv-acoes{grid-template-columns:repeat(2,minmax(0,1fr))} .pdv-btn{min-height:52px} }
+
+/* ===== 2.3.0 ===== */
+/* ----- Campo de leitura do PDV: contorno pulsando de leve, para chamar a atenção ----- */
+.pdv-busca{animation:pdv-pulsa 2.4s ease-out infinite}
+.pdv-busca:focus-within{animation-name:pdv-pulsa-foco}
+@keyframes pdv-pulsa{
+  0%{box-shadow:0 0 0 0 rgba(247,198,0,.75)}
+  70%{box-shadow:0 0 0 10px rgba(247,198,0,0)}
+  100%{box-shadow:0 0 0 0 rgba(247,198,0,0)}
+}
+@keyframes pdv-pulsa-foco{   /* com o campo ativo, mantém o anel amarelo e o pulso sai dele */
+  0%{box-shadow:0 0 0 4px var(--amarelo),0 0 0 4px rgba(247,198,0,.6)}
+  70%{box-shadow:0 0 0 4px var(--amarelo),0 0 0 13px rgba(247,198,0,0)}
+  100%{box-shadow:0 0 0 4px var(--amarelo),0 0 0 4px rgba(247,198,0,0)}
+}
+@media (prefers-reduced-motion: reduce){
+  .pdv-busca{animation:none}
+  .pdv-busca:focus-within{box-shadow:0 0 0 4px var(--amarelo)}
+}
+
+/* ----- Só no PC / só no celular e tablet ----- */
+@media(max-width:900px){ .so-pc{display:none !important} }
+@media(min-width:901px){ .so-movel{display:none !important} }
+
+/* ----- Configurações ----- */
+.cfg-versao{max-width:640px;text-align:center;color:var(--texto-sec);font-size:14px;margin:4px 0 8px}
+.cfg-versao b{color:var(--texto)}
+
+/* Modal com rolagem interna: cabeçalho e campo de nova categoria fixos, só a lista rola */
+.modal-rola{display:flex;flex-direction:column;max-height:calc(100dvh - 60px)}
+.modal-rola .modal-corpo{flex:1;min-height:0;overflow-y:auto;padding-top:8px}
+.cat-topo{flex-shrink:0;padding:16px 20px 12px;border-bottom:1px solid var(--borda);background:#FBFAF6}
+.cat-topo .cfg-cat-nova{margin-bottom:6px}
+.cat-topo .dica{margin:0}
+
+/* ----- Menu lateral do PC: 350px, Configurações e Modo Faz-de-Conta ----- */
+@media(min-width:901px){
+  body{padding-left:350px}
+  .barra-inferior{width:350px}
+  .nav-logo{padding:0 22px}
+  .nav-item{margin:0 14px;padding:13px 16px}
+  .nav-sbx{
+    margin:auto 14px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.14);cursor:pointer;color:#fff;
+  }
+  .nav-sbx b{display:block;font-size:15px}
+  .nav-sbx small{display:block;font-size:14px;color:#C9C7BE}
+  .nav-sbx .sbx-chave{width:auto}
+  .nav-sbx .sbx-chave i{background:#4A4A44}
+  .nav-sbx.ligado{background:repeating-linear-gradient(135deg,rgba(247,198,0,.22) 0 12px,rgba(247,198,0,.1) 12px 24px);border-color:var(--amarelo)}
+  .nav-sbx.ligado small{color:var(--amarelo)}
+  header{padding-right:70px}   /* no PC só o sininho fica no cabeçalho */
+}
+/* Telas de PC mais estreitas (até 1279px): menu um pouco menor para o PDV caber em duas colunas */
+@media(min-width:901px) and (max-width:1279px){
+  body{padding-left:270px}
+  .barra-inferior{width:270px}
+}

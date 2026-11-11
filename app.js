@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.2.0';
+const VERSAO = '2.3.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -418,7 +418,7 @@ function nomePagamento(id, curto){ const p = PAGAMENTOS.find(x=>x.id===id); retu
 function opcoesPagamento(sel){
   return `<option value="">Não informada</option>` + PAGAMENTOS.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${p.nome}</option>`).join('');
 }
-function ehVendaMov(m){ return m.tipo==='saida' && (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)); }
+function ehVendaMov(m){ return m.tipo==='avulsa' || (m.tipo==='saida' && (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido))); }
 
 const PDV_CHAVE = 'chinatown_pdv_v1';
 let vendaScanAtivo = false;   // a câmera foi aberta pelo PDV
@@ -649,7 +649,7 @@ function pdvConfirmar(){
   }
   const data = val('finData') || hoje(), hora = new Date().toTimeString().slice(0,5), vendaId = uid();
   // Desconto da venda repartido entre as linhas na proporção de cada uma (a última leva o resto dos centavos).
-  // Assim o preço unitário gravado já é o preço real cobrado, e o lucro do Desempenho continua certo.
+  // Assim o preço unitário gravado já é o preço real cobrado, e o lucro das Métricas continua certo.
   let resto = Math.round(r.total*100);
   r.linhas.forEach((l,i)=>{
     let liq = i===r.linhas.length-1 ? resto : Math.min(resto, Math.round((r.subtotal>0 ? l.liquido/r.subtotal : 0)*r.total*100));
@@ -671,6 +671,72 @@ function pdvConfirmar(){
   fechar('modalFinalizar'); renderPdv(); pdvFocar();
   festejar();
   notificarVenda(feita);
+}
+
+/* =========================================================
+   MOVIMENTAÇÃO AVULSA (botão ⊕ do Histórico)
+   Receita que não passa pelo estoque: serviços (xerox, impressão, fichas de jogo, reparos)
+   ou venda de um produto sem cadastro. Fica em estado.avulsas = [{id, data, hora, descricao,
+   tipo:'servico'|'produto', valor, pagamento}] e entra no Histórico e nas Métricas (sem custo).
+   ========================================================= */
+let avEditando = null, avTipoSel = 'servico', avPagSel = null;
+function rotuloTipoAvulsa(t){ return t==='produto' ? 'Produto avulso' : 'Serviço'; }
+function abrirAvulsa(id){
+  const a = id ? (estado.avulsas||[]).find(x=>x.id===id) : null;
+  avEditando = a ? a.id : null;
+  document.getElementById('avTitulo').textContent = a ? 'Editar movimentação avulsa' : 'Movimentação avulsa';
+  document.getElementById('avData').value = a ? a.data : hoje();
+  document.getElementById('avDesc').value = a ? a.descricao : '';
+  document.getElementById('avValor').value = a ? a.valor : '';
+  document.getElementById('avExcluir').style.display = a ? '' : 'none';
+  avulsaTipo(a ? a.tipo : 'servico');
+  avPagSel = a ? (a.pagamento||null) : null;
+  avulsaRenderPags();
+  abrir('modalAvulsa');
+  setTimeout(()=>document.getElementById('avDesc').focus(), 80);
+}
+function avulsaTipo(t){
+  avTipoSel = t;
+  document.getElementById('avTipoServico').classList.toggle('ativo', t==='servico');
+  document.getElementById('avTipoProduto').classList.toggle('ativo', t==='produto');
+}
+function avulsaRenderPags(){
+  document.getElementById('avPags').innerHTML = PAGAMENTOS.map(p=>`
+    <button type="button" class="pdv-pag${avPagSel===p.id?' ativo':''}" onclick="avPagSel='${p.id}';avulsaRenderPags()">
+      <svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
+}
+function salvarAvulsa(){
+  const data = val('avData'), descricao = val('avDesc').trim(), valor = parseFloat(val('avValor'));
+  if(!data){ toast('Informe a data.'); return; }
+  if(!descricao){ toast('Escreva uma breve descrição.'); document.getElementById('avDesc').focus(); return; }
+  if(isNaN(valor) || valor<=0){ toast('Informe o valor.'); document.getElementById('avValor').focus(); return; }
+  if(!avPagSel){ toast('Escolha a forma de pagamento.'); return; }
+  estado.avulsas = estado.avulsas || [];
+  const dados = { data, descricao, tipo:avTipoSel, valor:Math.round(valor*100)/100, pagamento:avPagSel };
+  if(avEditando){
+    const a = estado.avulsas.find(x=>x.id===avEditando);
+    if(a) Object.assign(a, dados);
+    salvar(); fechar('modalAvulsa'); renderViewAtual();
+    toast('Movimentação avulsa atualizada.');
+    return;
+  }
+  estado.avulsas.push({ id:uid(), ...dados, hora:new Date().toTimeString().slice(0,5) });
+  salvar(); fechar('modalAvulsa'); renderViewAtual();
+  toast('Movimentação avulsa registrada.');
+  notificarVenda({ total:dados.valor, unidades:1, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
+}
+/* Editar ou excluir: como nas outras movimentações, pede a senha do gerente */
+function pedirEdicaoAvulsa(id){
+  const a = (estado.avulsas||[]).find(x=>x.id===id); if(!a) return;
+  pedirSenha(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente.`);
+}
+function excluirAvulsa(){
+  const a = (estado.avulsas||[]).find(x=>x.id===avEditando); if(!a) return;
+  pedirConfirmacao(`Excluir a movimentação avulsa “${a.descricao}” de ${fmtBRL(a.valor)} (${fmtData(a.data)})? Ela sai do Histórico e das Métricas. Não dá para desfazer.`, ()=>{
+    estado.avulsas = estado.avulsas.filter(x=>x.id!==a.id);
+    salvar(); fechar('modalAvulsa'); renderViewAtual();
+    toast('Movimentação avulsa excluída.');
+  }, 'Excluir movimentação avulsa');
 }
 
 /* ----- Desenho da tela ----- */
@@ -712,7 +778,7 @@ function pdvVisorHtml(){
         <em>Parabéns pela venda!</em>
         <b>${fmtBRL(v.total)}</b>
         <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
-        <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas no Desempenho →</button>
+        <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas nas Métricas →</button>
       </div>
     </div>`;
   }
@@ -739,8 +805,7 @@ function renderPdv(){
     <button class="pdv-btn" onclick="abrirDesconto('venda')"><span>Aplicar desconto</span><kbd>F8</kbd></button>
     <button class="pdv-btn primario" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>
     <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>` : `
-    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>
-    <button class="pdv-btn" onclick="pdvConsultar()"><span>Consultar preço</span><kbd>F4</kbd></button>`;
+    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>`;   // caixa livre: toda leitura já é consulta de preço
 
   // menu ☰ (celular/tablet): mesmas ações dos botões
   const ic = d=>`<i><svg viewBox="0 0 24 24">${d}</svg></i>`;
@@ -755,7 +820,7 @@ function renderPdv(){
   document.getElementById('pdvMenu').innerHTML = pdv.ativa
     ? opc('pdvCancelar','Cancelar venda',IC.cancelar) + opc("()=>abrirDesconto('venda')",'Aplicar desconto',IC.desconto)
       + opc('pdvConsultar', pdv.consulta ? 'Consultando… (toque para sair)' : 'Consultar preço', IC.consultar) + opc('pdvFinalizar','Finalizar venda',IC.finalizar)
-    : opc('pdvConsultar','Consultar preço',IC.consultar) + opc('pdvIniciar','Iniciar venda',IC.iniciar);
+    : opc('pdvIniciar','Iniciar venda',IC.iniciar);
 
   document.getElementById('pdvListaCab').innerHTML = pdv.ativa
     ? `<b>Venda em andamento</b><span>${r.linhas.length} produto(s) · ${r.unidades} un.</span>`
@@ -837,7 +902,7 @@ document.addEventListener('keydown', e=>{
   }
   if(document.querySelector('.overlay.aberto')) return;
   if(e.key==='F2'){ e.preventDefault(); if(!pdv.ativa) pdvIniciar(); }
-  else if(e.key==='F4'){ e.preventDefault(); pdvConsultar(); }
+  else if(e.key==='F4'){ e.preventDefault(); if(pdv.ativa) pdvConsultar(); else document.getElementById('pdvBusca').focus(); }
   else if(e.key==='F8'){ e.preventDefault(); abrirDesconto('venda'); }
   else if(e.key==='F9'){ e.preventDefault(); pdvFinalizar(); }
   else if(!emCampo && e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey){
@@ -1554,12 +1619,14 @@ let histPor = 'data', histDir = 'desc';
    Venda / recebido = dinheiro entra (verde) · Aquisição = dinheiro sai (vermelho)
    A receber pendente = âmbar · Perda, devolução, ajuste, outros = neutro */
 function classeMov(m){
+  if(m.tipo==='avulsa') return 'pos';   // receita avulsa: dinheiro entra
   if(m.tipo==='entrada') return m.inicial ? 'ini' : 'neg';
   if(m.motivo==='Venda') return 'pos';
   if(m.motivo==='A receber') return m.recebido ? 'pos' : 'pend';
   return 'neu';
 }
 function rotuloMov(m){
+  if(m.tipo==='avulsa') return 'Avulsa';
   if(m.tipo==='entrada') return m.inicial ? 'Estoque inicial' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
@@ -1568,6 +1635,7 @@ function rotuloMov(m){
 /* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
    Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
 function valorMov(m){
+  if(m.tipo==='avulsa') return { unit:m.valor, total:m.valor };
   if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
   if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
@@ -1590,6 +1658,7 @@ function valorHtml(v, qtd){
   return `<b>${s}${fmtBRL(Math.abs(v.total))}</b>${unit}`;
 }
 function tipoFiltroMov(m){
+  if(m.tipo==='avulsa') return 'avulsa';
   if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
   if(m.motivo==='Venda') return 'venda';
   if(m.motivo==='A receber') return 'areceber';
@@ -1599,7 +1668,7 @@ function tipoFiltroMov(m){
 /* ----- Período (navegação estilo "‹ Novembro 2026 ›") ----- */
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 /* Um "período" é { tipo, ref } ou { tipo:'custom', de, ate }.
-   tipo: dia | semana | mes | ano | tudo | custom. Usado pelo Histórico e pelo Desempenho. */
+   tipo: dia | semana | mes | ano | tudo | custom. Usado pelo Histórico e pelas Métricas. */
 let hxPeriodo = { tipo:'mes', ref:hoje() };
 function isoDe(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dataDe(iso){ const [a,m,d]=iso.split('-').map(Number); return new Date(a,m-1,d); }
@@ -1650,7 +1719,7 @@ function rotuloPeriodo(){ return rotuloDe(hxPeriodo); }
 function periodoPasso(dir){ passoDe(hxPeriodo, dir); renderHistorico(); }
 function definirPeriodo(tipo){ hxPeriodo = { tipo, ref:hoje() }; fecharPops(); renderHistorico(); }
 
-/* Escolher período (modal compartilhado): alvo 'hx' = Histórico, 'ds' = Desempenho */
+/* Escolher período (modal compartilhado): alvo 'hx' = Histórico, 'ds' = Métricas */
 let periodoAlvo = 'hx';
 function abrirPeriodoPersonalizado(alvo){
   periodoAlvo = alvo || 'hx';
@@ -1718,6 +1787,11 @@ function renderHistorico(){
                     data:m.data, qtd:m.qtd, v, tipoF:tipoFiltroMov(m), arquivado:!!p.arquivado });
     });
   });
+  (estado.avulsas||[]).forEach(a=>{
+    const m = { ...a, tipo:'avulsa' };
+    linhas.push({ pid:'', mid:a.id, m, avulsa:true, nome:a.descricao, marca:'', categoria: rotuloTipoAvulsa(a.tipo),
+                  data:a.data, qtd:1, v:valorMov(m), tipoF:'avulsa', arquivado:false });
+  });
 
   linhas = linhas.filter(l=>{
     if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // estoque inicial só aparece filtrando por ele
@@ -1773,7 +1847,7 @@ function renderHistorico(){
     return blocos;
   };
   const linhaHtml = (l, noGrupo)=>{ const c = classeMov(l.m); return `
-      <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
+      <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}"${l.avulsa?' data-avulsa="1"':''} title="Toque e segure para editar">
         <div class="hx-mov">${noGrupo ? '' : tagMov(l.m)}</div>
         <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
@@ -1812,7 +1886,7 @@ function renderHistorico(){
     </div>`;
   }).join('');
   cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
-    toqueLongo(el, ()=>pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+    toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
 }
 
 /* Toque e segure genérico (mouse e toque) */
@@ -1908,7 +1982,7 @@ function excluirMovimentacao(){
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
-    (ent ? ' O custo médio e a composição do estoque também mudam.' : ' Os números de vendas e lucro do Desempenho também mudam.') +
+    (ent ? ' O custo médio e a composição do estoque também mudam.' : ' Os números de vendas e lucro das Métricas também mudam.') +
     ' Recomendamos baixar um backup antes (botão “↓ Backup” na tela de edição ou em Configurações).',
     ()=>{
       // 2ª confirmação: ação irreversível
@@ -1984,6 +2058,13 @@ function salvarEdicaoMov(){
    ========================================================= */
 let catEditando = null;
 /* Categorias são gerenciadas só em Configurações (bloco "Categorias de produtos") */
+function abrirCategorias(){
+  catEditando = null; renderCategorias();
+  document.getElementById('cfgNovaCat').value = '';
+  abrir('modalCategorias');
+  setTimeout(()=>document.getElementById('cfgNovaCat').focus(), 80);
+}
+function fecharCategorias(){ catEditando = null; fechar('modalCategorias'); renderConfig(); }
 function renderCategorias(){
   const ativa = document.getElementById('cfgListaCat');
   if(!ativa) return;
@@ -2144,7 +2225,7 @@ const VIEWS = {
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
-  desempenho: { secao:'viewDesempenho', titulo:'Desempenho' },
+  desempenho: { secao:'viewDesempenho', titulo:'Métricas' },   // módulo renomeado de Desempenho para Métricas (2.3.0)
   config:     { secao:'viewConfig',     titulo:'Configurações' }
 };
 let viewAtual = 'pdv', viewAnterior = 'pdv';
@@ -2158,8 +2239,9 @@ function mostrarView(v){
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
-  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');
-  document.getElementById('fab').style.display = v==='estoque' ? '' : 'none';   // ⊕ só no Estoque (o ☰ do PDV aparece pelo CSS, só no celular/tablet)
+  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');   // no PC a engrenagem some e Configurações fica no menu lateral
+  document.getElementById('fab').style.display = (v==='estoque' || v==='historico') ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
+  document.querySelectorAll('#fabMenu [data-fab]').forEach(b=>b.style.display = b.dataset.fab===v ? '' : 'none');   // cada tela tem as suas ações
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
   document.body.classList.toggle('modo-estoque', v==='estoque');       // idem no Estoque: filtros e cabeçalho fixos
   document.body.classList.toggle('modo-pdv', v==='pdv');               // PDV usa a tela toda
@@ -2301,7 +2383,7 @@ function alternarPdvMenu(){
 function pdvMenuAcao(fn){ fecharFab(); fn(); }
 
 /* =========================================================
-   DESEMPENHO — métricas e gráficos das vendas
+   MÉTRICAS (antigo Desempenho) — métricas e gráficos das vendas
    Venda = saída "Venda" ou "A receber" já recebida (A receber pendente não entra).
    Lucro = receita − custo do lote vendido (FIFO: as unidades mais antigas saem primeiro,
    a mesma lógica da Composição do estoque).
@@ -2349,6 +2431,14 @@ function vendasDe(de, ate){
     const receita = m.qtd*(m.precoVenda||0), custo = custos.get(m.id)||0;
     lista.push({ p, m, data:m.data, qtd:m.qtd, receita, custo, lucro:receita-custo, pagamento:m.pagamento||'' });
   }));
+  // Movimentações avulsas (serviços e produtos sem cadastro): receita sem custo informado.
+  // Ficam num "produto" virtual por tipo, com a categoria "Serviços" ou "Produtos avulsos".
+  (estado.avulsas||[]).forEach(a=>{
+    if(de && a.data<de) return;
+    if(ate && a.data>ate) return;
+    const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
+    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:1, receita:a.valor, custo:0, lucro:a.valor, pagamento:a.pagamento||'' });
+  });
   return lista;
 }
 function soma(lista, k){ return lista.reduce((s,x)=>s+x[k],0); }
@@ -2378,6 +2468,9 @@ function renderDesempenho(){
   estado.produtos.forEach(p=>saidas(p).forEach(m=>{
     if(m.motivo==='A receber' && !m.recebido && (!de || m.data>=de) && (!ate || m.data<=ate)) pendentes.push(m);
   }));
+  const avs = vendas.filter(v=>v.avulsa);
+  const notaAvulsa = avs.length
+    ? `<p class="dica ds-nota">Inclui ${fmtBRL(soma(avs,'receita'))} em ${avs.length} movimentação(ões) avulsa(s) (serviços e produtos sem cadastro). Elas não têm custo informado, então entram inteiras no lucro.</p>` : '';
   const notaPend = pendentes.length
     ? `<p class="dica ds-nota">${soma(pendentes,'qtd')} un. em vendas “a receber” ainda pendentes neste período não entram nos números até o recebimento.</p>` : '';
 
@@ -2396,7 +2489,7 @@ function renderDesempenho(){
       <div class="ds-tile"><span>Lucro bruto</span><b class="${lucro<0?'neg':''}">${fmtBRL(lucro)}</b><small>faturamento − custo</small></div>
       <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b><small>lucro ÷ faturamento</small></div>
     </div>
-    ${notaPend}
+    ${notaPend}${notaAvulsa}
     ${dsBlocoEvolucao(vendas, de, ate)}
     <div class="ds-grade">
       ${dsBlocoCategorias(vendas)}
@@ -2575,6 +2668,8 @@ function dsBlocoMelhoresDatas(vendas){
 
 /* ----- Produtos mais vendidos ----- */
 function dsBlocoProdutos(vendas){
+  vendas = vendas.filter(v=>!v.avulsa);   // ranking só de produtos do estoque
+  if(!vendas.length) return '';
   const g = {};
   vendas.forEach(v=>{ const id = v.p.id; g[id] = g[id] || { p:v.p, qtd:0, fat:0, lucro:0 }; g[id].qtd+=v.qtd; g[id].fat+=v.receita; g[id].lucro+=v.lucro; });
   const k = dsRanking==='unidades' ? 'qtd' : 'fat';
@@ -2666,6 +2761,7 @@ function garantirFinanceiro(e){
   f.tetos = f.tetos || {};
   f.cancelamentos = f.cancelamentos || [];
   f.abertura = f.abertura || '';
+  e.avulsas = Array.isArray(e.avulsas) ? e.avulsas : [];   // movimentações avulsas (receitas sem produto em estoque) — 2.3.0
   return e;
 }
 garantirFinanceiro(estado);
@@ -3284,7 +3380,7 @@ function syncRenderStatus(){
   if(!Sync.conectado()){
     cls = syncFase.tipo==='erro' ? 'erro' : syncFase.tipo==='rodando' ? 'carregando' : '';
     txt = syncFase.msg || 'Não conectado.';
-  } else if(sandbox.ativo){ cls = 'aviso'; txt = 'Em pausa enquanto o sandbox está ligado.'; }
+  } else if(sandbox.ativo){ cls = 'aviso'; txt = 'Em pausa enquanto o Modo Faz-de-Conta está ligado.'; }
   else if(syncFase.tipo==='rodando'){ cls = 'carregando'; txt = 'Sincronizando…'; }
   else if(syncFase.tipo==='erro'){ cls = 'erro'; txt = syncFase.msg; }
   else if(syncFase.tipo==='offline'){ cls = 'aviso'; txt = syncFase.msg; }
@@ -3305,28 +3401,28 @@ function syncIniciar(){
 }
 
 /* =========================================================
-   SANDBOX (modo de teste) — Configurações
+   SANDBOX = "MODO FAZ-DE-CONTA" (nome escolhido pelo gerente) — Configurações e menu lateral do PC
    Com o sandbox ligado, o app trabalha só na memória: nada é gravado neste aparelho,
    nada é enviado ou recebido da nuvem e nenhuma notificação sai. Ao desligar (ou ao
    recarregar a página), os dados voltam a ser exatamente os de antes.
    ========================================================= */
 function emSandbox(acao){
   if(!sandbox.ativo) return false;
-  toast(`Desligue o sandbox para ${acao}.`);
+  toast(`Desligue o Modo Faz-de-Conta para ${acao}.`);
   return true;
 }
 function sandboxAlternar(ligar){ if(ligar) sandboxLigar(); else sandboxDesligar(); }
 function sandboxLigar(){
   if(sandbox.ativo) return;
   if(pdv.ativa && pdv.itens.length){
-    toast('Finalize ou cancele a venda em andamento antes de ligar o sandbox.');
+    toast('Finalize ou cancele a venda em andamento antes de ligar o Modo Faz-de-Conta.');
     sandboxTela(); return;
   }
   sandbox = { ativo:true, copia:JSON.stringify(estado) };
   clearTimeout(syncTimer);
   pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar();
   sandboxTela(); renderViewAtual();
-  toast('Sandbox ligado: nada do que for feito agora é salvo.');
+  toast('Modo Faz-de-Conta ligado: nada do que for feito agora é salvo.');
 }
 function sandboxDesligar(){
   if(!sandbox.ativo) return;
@@ -3336,13 +3432,18 @@ function sandboxDesligar(){
   document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
   render(); atualizarAlertas(); sandboxTela(); renderViewAtual();
   if(Sync.conectado()) sincronizar();   // recebe o que mudou na nuvem enquanto o sandbox esteve ligado
-  toast('Sandbox desligado: os dados voltaram ao que eram.');
+  toast('Modo Faz-de-Conta desligado: os dados voltaram ao que eram.');
 }
 function sandboxTela(){
   document.getElementById('sbxFaixa').hidden = !sandbox.ativo;
   document.body.classList.toggle('modo-sandbox', sandbox.ativo);
-  const c = document.getElementById('cfgSandbox');
-  if(c){ c.checked = sandbox.ativo; document.getElementById('cfgSandboxRotulo').textContent = sandbox.ativo ? 'Sandbox ligado: nada está sendo salvo' : 'Sandbox desligado'; }
+  // as duas chaves (Configurações e menu lateral do PC) mostram sempre o mesmo estado
+  [['cfgSandbox','cfgSandboxRotulo','Ligado: nada está sendo salvo'],['navSandbox','navSbxRotulo','Ligado: nada é salvo']].forEach(([chave, rot, txt])=>{
+    const c = document.getElementById(chave); if(!c) return;
+    c.checked = sandbox.ativo;
+    document.getElementById(rot).textContent = sandbox.ativo ? txt : 'Desligado';
+  });
+  const nav = document.querySelector('.nav-sbx'); if(nav) nav.classList.toggle('ligado', sandbox.ativo);
 }
 
 /* =========================================================
@@ -3463,9 +3564,9 @@ function notificarVenda(v){
   if(sandbox.ativo || !Sync.conectado()) return;
   const d = Sync.ler();
   const nomes = (v.nomes||[]).slice(0,3).join(', ') + ((v.nomes||[]).length>3 ? '…' : '');
-  const linha1 = [`${v.unidades} un.`, nomePagamento(v.pagamento), d.aparelho].filter(Boolean).join(' · ');
+  const linha1 = [v.titulo ? '' : `${v.unidades} un.`, nomePagamento(v.pagamento), d.aparelho].filter(Boolean).join(' · ');   // avulsa: sem "1 un."
   const fila = (d.fila||[]).filter(n=>Date.now()-n.em < PUSH_VALIDADE);
-  fila.push({ em:Date.now(), titulo:`Venda concluída · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
+  fila.push({ em:Date.now(), titulo:`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
   Sync.atualizar({ fila });
   sincronizar();
 }
@@ -3482,7 +3583,7 @@ async function pushEnviarFila(){
 }
 
 /* ===== Início ===== */
-document.getElementById('versao').textContent = 'v'+VERSAO;
+document.getElementById('versao').textContent = VERSAO;   // a versão aparece só em Configurações
 render();
 atualizarAlertas();
 mostrarView('pdv');

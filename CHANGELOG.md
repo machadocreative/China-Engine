@@ -32,6 +32,33 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.3.0] - 2026-11-10
+
+### Adicionado
+
+- **Configurações no menu lateral (PC):** virou um item do menu lateral. No celular, continua na engrenagem do cabeçalho.
+- **Chave do Modo Faz-de-Conta no PC:** fica no pé do menu lateral e mostra se o modo está ligado. Ela funciona junto com a chave de Configurações.
+- **Campo de leitura do PDV:** o contorno pulsa de leve, para ficar mais fácil de achar. Quem ativou "reduzir movimento" no sistema vê o contorno fixo.
+- **Movimentação avulsa (Histórico):** o Histórico ganhou o botão ⊕ de ações rápidas, por enquanto com uma ação, "Inserir movimentação avulsa". Ela registra receitas que não passam pelo estoque, como xerox, impressão, fichas de jogo, reparos ou a venda de um produto sem cadastro.
+  - **Campos:** data, breve descrição, tipo (Serviço ou Produto), valor e forma de pagamento.
+  - **No Histórico:** aparece com o selo verde "Avulsa", a forma de pagamento, a descrição e o tipo na coluna Categoria. Entra no saldo do dia, e o filtro Tipo ganhou a opção "Avulsa".
+  - **Edição:** toque longo, com a senha do gerente. Dá para corrigir ou excluir.
+  - **Nas Métricas:** entra no faturamento, nas formas de pagamento, nos dias da semana e nas melhores datas. Em "Vendas por categoria" aparece como "Serviços" ou "Produtos avulsos". Não entra no ranking de produtos mais vendidos. Como não tem custo informado, conta inteira no lucro, e uma nota avisa quanto do período veio de avulsas.
+  - **Outros aparelhos:** recebem a notificação de "Movimentação avulsa", como numa venda.
+  - **Dados:** ficam em `avulsas`, junto do estoque. Vão no backup e na sincronização e nunca mexem no estoque.
+
+### Alterado
+
+- **Desempenho → Métricas:** o módulo mudou de nome no menu, no título da tela e nos textos do app.
+- **Sandbox → Modo Faz-de-Conta:** a pedido do gerente, o modo de teste mudou de nome na faixa amarela, em Configurações, no menu lateral e nos avisos.
+- **PDV com o caixa livre:** a tela mostra só o visor, o campo de leitura e "Iniciar venda (F2)". A leitura de um código nesse estado continua sendo consulta de preço. "Consultar preço (F4)" volta a aparecer depois que a venda começa, e o menu ☰ do celular segue a mesma regra.
+- **Menu lateral do PC:** passa a ter 350px de largura. Em telas de PC mais estreitas, até 1279px, fica com 270px para o PDV continuar em duas colunas.
+- **Categorias de produtos:** a lista voltou a ficar num modal, aberto pelo botão "Gerenciar categorias" em Configurações. O campo de nova categoria fica fixo no topo do modal e só a lista rola.
+- **Nova ordem das Configurações:** Categorias, Notificações de venda, Sincronização na nuvem, Backup dos dados, Senha do gerente, Modo Faz-de-Conta e Financeiro.
+- **Número da versão:** saiu do cabeçalho e agora aparece só no fim de Configurações.
+
+---
+
 ## [2.2.0] - 2026-11-10
 
 ### Adicionado
@@ -656,6 +683,7 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[2.3.0]: #
 [2.2.0]: #
 [2.1.0]: #
 [2.0.0]: #
