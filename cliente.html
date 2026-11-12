@@ -125,6 +125,10 @@ main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
 .cl-fim .cl-insta .qr{max-width:clamp(200px,34vh,400px)}
 .cl-fim .cl-insta-cta{font-size:clamp(24px,2.2vw,44px)}
 
+/* o mascote animado fica numa camada própria: assim o texto ao lado não é redesenhado a cada quadro
+   (no Chrome do Windows isso fazia o título "tremer" para os lados) */
+.cl-boas-topo img,.cl-obrigado img{will-change:transform;backface-visibility:hidden}
+.cl-boas h1,.cl-obrigado h1{font-synthesis:none;text-rendering:geometricPrecision}
 @keyframes cl-flutua{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 @keyframes cl-pula{0%{transform:scale(.3) rotate(-12deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
 @keyframes cl-surge{0%{transform:translateY(18px);opacity:0}100%{transform:none;opacity:1}}
@@ -181,9 +185,12 @@ function blocoProduto(p){
 }
 
 /* ----- telas ----- */
-let ultimo = null, faseAnterior = '';
+let ultimo = null, faseAnterior = '', ultimaChave = '';
 function desenhar(d){
-  ultimo = d;
+  // o PDV reenvia o estado a cada 5 s (sinal de vida): se nada mudou, não redesenha a tela
+  const chave = JSON.stringify(d);
+  if(chave===ultimaChave) return;
+  ultimaChave = chave; ultimo = d;
   document.getElementById('clFaz').hidden = !d.faz;
   const el = document.getElementById('cl');
   if(d.fase==='concluida' && d.concluida){
