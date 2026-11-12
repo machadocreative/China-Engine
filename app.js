@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.1.0';
+const VERSAO = '2.4.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -130,7 +130,7 @@ function escapar(t){ return String(t).replace(/[&<>"]/g,s=>({'&':'&amp;','<':'&l
    ========================================================= */
 function alternarDirecao(){
   direcao = direcao==='asc' ? 'desc' : 'asc';
-  document.getElementById('btnDir').textContent = direcao==='asc' ? '↑' : '↓';
+  document.getElementById('btnDir').textContent = direcao==='asc' ? 'Crescente ↑' : 'Decrescente ↓';
   render();
 }
 
@@ -152,7 +152,6 @@ function render(){
     switch(ordenarPor){
       case 'estoque': va=estoqueDe(a); vb=estoqueDe(b); break;
       case 'preco':   va=a.preco||0;   vb=b.preco||0;   break;
-      case 'custo':   va=custoMedioDe(a)||0; vb=custoMedioDe(b)||0; break;
       case 'marca':   va=(a.marca||'').toLowerCase(); vb=(b.marca||'').toLowerCase(); break;
       case 'categoria': va=(a.categoria||'').toLowerCase(); vb=(b.categoria||'').toLowerCase(); break;
       default:        va=a.nome.toLowerCase(); vb=b.nome.toLowerCase();
@@ -164,6 +163,11 @@ function render(){
   });
 
   const cont = document.getElementById('conteudo');
+  // filtros que fogem do padrão ficam destacados (mesmo visual do Histórico)
+  document.getElementById('filtroCategoria').parentElement.classList.toggle('ativo', !!cat);
+  document.getElementById('ordenarPor').parentElement.classList.toggle('ativo', ordenarPor!=='nome');
+  document.getElementById('btnDir').classList.toggle('ativo', direcao!=='asc');
+  document.getElementById('esCab').style.display = estado.produtos.length ? '' : 'none';
 
   if(estado.produtos.length===0){
     cont.innerHTML = `<div class="vazio">
@@ -178,18 +182,17 @@ function render(){
     const est = estoqueDe(p);
     const baixo = !p.arquivado && est <= (p.minimo||0);
     const ar = aReceberDe(p);
-    const cm = custoMedioDe(p);
     const linha = `<div class="linha${p.arquivado?' arquivada':''}" data-id="${p.id}">
       <div class="nome">
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
         ${escapar(p.nome)}
         ${p.arquivado?'<span class="badge-arquivado">Arquivado</span>':''}
+        ${!p.arquivado && promoDoProduto(p) ? `<span class="badge-promo" title="${escapar(promoDoProduto(p).promo.titulo)}">${escapar(rotuloPromoCurto(promoDoProduto(p).promo))}</span>` : ''}
         ${p.codigo?`<small class="codigo">${escapar(p.codigo)}</small>`:''}
       </div>
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
       <div class="num" style="color:${baixo?'var(--vermelho)':'inherit'}">${est}${baixo?'<span class="badge-baixo"><span class="rot-l">estoque baixo</span><span class="rot-c">baixo</span></span>':''}</div>
       <div class="num">${fmtBRL(p.preco||null)}</div>
-      <div class="num col-custo">${fmtBRL(cm)}</div>
     </div>`;
     const sub = ar>0 ? `<div class="subrow">
         <span>${ar} unidade(s) a receber</span>
@@ -200,14 +203,7 @@ function render(){
 
   if(lista.length===0) linhas = `<div class="sem-resultado">Nenhum produto encontrado.</div>`;
 
-  cont.innerHTML = `<div class="tabela">
-    <div class="linha-cabecalho">
-      <div>Produto</div>
-      <div class="col-cat">Categoria</div>
-      <div class="num">Estoque</div>
-      <div class="num">Preço</div>
-      <div class="num col-custo">Custo médio</div>
-    </div>${linhas}</div>`;
+  cont.innerHTML = linhas;   // o cabeçalho da tabela fica no topo fixo (#esCab)
 
   bindLinhas();
 }
@@ -218,7 +214,7 @@ function preencherFiltroCategorias(){
   const contagem = {};
   estado.produtos.forEach(p=>{ if(!p.arquivado) contagem[p.categoria] = (contagem[p.categoria]||0)+1; });
   const comProdutos = estado.categorias.filter(c=>contagem[c]>0);
-  filtro.innerHTML = '<option value="">Todas as categorias</option>' +
+  filtro.innerHTML = '<option value="">Categoria</option>' +
     comProdutos.map(c=>`<option value="${escapar(c)}" ${c===atual?'selected':''}>${escapar(c)} (${contagem[c]})</option>`).join('');
   if(atual && !comProdutos.includes(atual)) filtro.value = '';
 }
@@ -255,6 +251,22 @@ function abrirAcoes(id){
 function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroEntrada(id); }
 function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id, 'dados'); }
+/* Duplicar registro: abre o cadastro de Novo produto já preenchido com os dados deste (sem estoque,
+   sem código de barras e com SKU novo), para agilizar o cadastro de itens parecidos */
+function acaoDuplicar(){
+  const p = prod(acaoAtivo); fechar('modalAcoes'); if(!p) return;
+  abrirProduto();
+  document.getElementById('tituloProduto').textContent = 'Duplicar produto';
+  document.getElementById('pMarca').value = p.marca||'';
+  document.getElementById('pNome').value = p.nome + ' (cópia)';
+  document.getElementById('pCategoria').value = p.categoria;
+  document.getElementById('pPreco').value = p.preco||'';
+  document.getElementById('pMinimo').value = p.minimo||0;
+  produtoFotoDuplicada = p.foto || '';
+  setTimeout(()=>{ const n = document.getElementById('pNome'); n.focus(); n.select(); }, 100);
+  toast('Confira o nome e o código de barras antes de salvar.');
+}
+let produtoFotoDuplicada = '';
 function acaoArquivar(){ const id=acaoAtivo; fechar('modalAcoes'); arquivarProduto(id, !prod(id).arquivado); }
 
 /* =========================================================
@@ -361,7 +373,8 @@ function salvarProduto(){
     if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
     if(temIni && qIni<1){ toast('Informe a quantidade do estoque inicial.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
-    estado.produtos.push({ id:uid(), ...dados, movimentacoes:movs });
+    estado.produtos.push({ id:uid(), ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
+    produtoFotoDuplicada = '';
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
     toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque inicial.` : 'Produto salvo.');
   }
@@ -423,7 +436,7 @@ function nomePagamento(id, curto){ const p = PAGAMENTOS.find(x=>x.id===id); retu
 function opcoesPagamento(sel){
   return `<option value="">Não informada</option>` + PAGAMENTOS.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${p.nome}</option>`).join('');
 }
-function ehVendaMov(m){ return m.tipo==='saida' && (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)); }
+function ehVendaMov(m){ return m.tipo==='avulsa' || (m.tipo==='saida' && (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido))); }
 
 const PDV_CHAVE = 'chinatown_pdv_v1';
 let vendaScanAtivo = false;   // a câmera foi aberta pelo PDV
@@ -443,7 +456,8 @@ function pdvGuardar(){
   }catch(e){}
 }
 let pdv = pdvCarregar();
-let pdvVisor = { tipo:'livre' };   // livre | produto {pid, modo} | erro {titulo, texto} | concluida {...}
+let pdvVisor = { tipo:'livre' };
+let pdvFimFesta = null;   // livre | produto {pid, modo} | erro {titulo, texto} | concluida {...}
 const cent = v => Math.round(v*100)/100;
 
 /* Contas da venda em andamento */
@@ -451,15 +465,21 @@ function pdvResumo(){
   pdv.itens = pdv.itens.filter(it=>prod(it.pid));   // produto excluído em outro aparelho sai da lista
   const linhas = pdv.itens.map((it,i)=>{
     const p = prod(it.pid), unit = p.preco||0, bruto = cent(unit*it.qtd);
-    const desc = it.desc ? Math.min(bruto, cent(it.desc.tipo==='pct' ? bruto*it.desc.v/100 : it.desc.v)) : 0;
-    return { i, it, p, unit, bruto, desc, liquido:cent(bruto-desc) };
+    // 1º a promoção vigente (automática), 2º o desconto manual do item, sobre o que sobrou
+    const pr = promoDoProduto(p);
+    const descPromo = pr ? cent(pr.descUnit*it.qtd) : 0;
+    const base = cent(bruto - descPromo);
+    const descManual = it.desc ? Math.min(base, cent(it.desc.tipo==='pct' ? base*it.desc.v/100 : it.desc.v)) : 0;
+    const desc = cent(descPromo + descManual);
+    return { i, it, p, unit, bruto, promo: pr ? pr.promo : null, unitPromo: pr ? cent(unit-pr.descUnit) : unit, descPromo, base, descManual, desc, liquido:cent(bruto-desc) };
   });
   const bruto = cent(linhas.reduce((s,l)=>s+l.bruto,0)), subtotal = cent(linhas.reduce((s,l)=>s+l.liquido,0));
   const d = pdv.desconto;
   const descVenda = d ? Math.min(subtotal, cent(d.tipo==='pct' ? subtotal*d.v/100 : d.v)) : 0;
   return { linhas, bruto, subtotal, descVenda, total:cent(subtotal-descVenda), unidades:linhas.reduce((s,l)=>s+l.it.qtd,0) };
 }
-function rotuloDesconto(d){ return d.tipo==='pct' ? `${String(d.v).replace('.',',')}%` : fmtBRL(d.v); }
+/* Desconto em % mostra a porcentagem entre parênteses; em R$ não repete o valor */
+function rotuloDesconto(d){ return d && d.tipo==='pct' ? ` (${String(d.v).replace('.',',')}%)` : ''; }
 
 /* ----- Ações principais ----- */
 function pdvFocar(){ if(viewAtual==='pdv' && window.matchMedia && matchMedia('(pointer:fine)').matches){ const b = document.getElementById('pdvBusca'); if(b) b.focus(); } }
@@ -568,7 +588,7 @@ function pdvRemover(i){
 
 /* ----- Desconto (item ou venda) — sempre com a senha do gerente ----- */
 let dc = { alvo:'venda', tipo:'valor' };
-function descontoBase(){ const r = pdvResumo(); return dc.alvo==='venda' ? r.subtotal : (r.linhas[dc.alvo] ? r.linhas[dc.alvo].bruto : 0); }
+function descontoBase(){ const r = pdvResumo(); return dc.alvo==='venda' ? r.subtotal : (r.linhas[dc.alvo] ? r.linhas[dc.alvo].base : 0); }   // item: já com a promoção
 function abrirDesconto(alvo){
   if(!pdv.ativa || !pdv.itens.length){ toast('Adicione produtos à venda antes de aplicar desconto.'); return; }
   const atual = alvo==='venda' ? pdv.desconto : (pdv.itens[alvo] && pdv.itens[alvo].desc);
@@ -576,8 +596,8 @@ function abrirDesconto(alvo){
   const r = pdvResumo();
   document.getElementById('dcTitulo').textContent = alvo==='venda' ? 'Desconto na venda' : 'Desconto no item';
   document.getElementById('dcSobre').textContent = alvo==='venda'
-    ? `Sobre o subtotal de ${fmtBRL(r.subtotal)}.`
-    : `${r.linhas[alvo].p.nome} · ${r.linhas[alvo].it.qtd} un. · ${fmtBRL(r.linhas[alvo].bruto)}`;
+    ? `Sobre ${fmtBRL(r.subtotal)}${r.subtotal<r.bruto ? ', o valor da venda já com os descontos dos itens' : ', o subtotal da venda'}.`
+    : `${r.linhas[alvo].p.nome} · ${r.linhas[alvo].it.qtd} un. · ${fmtBRL(r.linhas[alvo].base)}${r.linhas[alvo].promo ? ` (já com a promoção “${r.linhas[alvo].promo.titulo}”)` : ''}`;
   document.getElementById('dcValor').value = atual ? atual.v : '';
   document.getElementById('dcRemover').style.display = atual ? '' : 'none';
   descontoTipo(dc.tipo);
@@ -609,11 +629,20 @@ function descontoAplicar(){
   if(!c){ toast('Informe o valor do desconto.'); return; }
   if(c.invalido){ toast('O desconto não pode ser maior que o valor.'); return; }
   const novo = { tipo:dc.tipo, v:c.v }, alvo = dc.alvo;
-  pedirSenha(()=>{
+  const r = pdvResumo();
+  const emPromo = alvo==='venda' ? r.linhas.filter(l=>l.promo) : (r.linhas[alvo] && r.linhas[alvo].promo ? [r.linhas[alvo]] : []);
+  const senha = ()=>pedirSenha(()=>{
     if(alvo==='venda') pdv.desconto = novo; else if(pdv.itens[alvo]) pdv.itens[alvo].desc = novo;
     fechar('modalDesconto'); pdvGuardar(); renderPdv(); pdvFocar();
     toast('Desconto aplicado.');
   }, `Desconto de ${fmtBRL(c.d)} ${alvo==='venda'?'na venda':'no item'}. Digite a senha do gerente para confirmar.`);
+  if(!emPromo.length){ senha(); return; }
+  // Desconto por cima de promoção: dupla confirmação antes da senha
+  const nomes = [...new Set(emPromo.map(l=>`“${l.promo.titulo}”`))].join(', ');
+  const qual = alvo==='venda' ? `${emPromo.length} produto(s) desta venda já estão` : `“${emPromo[0].p.nome}” já está`;
+  pedirConfirmacao(`${qual} em promoção (${nomes}). Este desconto de ${fmtBRL(c.d)} vai se somar ao da promoção. Continuar?`, ()=>{
+    pedirConfirmacao(`Confirma o desconto acumulado? A venda fica com ${fmtBRL(cent(r.bruto - r.total + c.d))} de descontos no total.`, senha, 'Confirmar desconto acumulado');
+  }, 'Desconto sobre promoção');
 }
 function descontoRemover(){
   if(dc.alvo==='venda') pdv.desconto = null; else if(pdv.itens[dc.alvo]) delete pdv.itens[dc.alvo].desc;
@@ -653,7 +682,7 @@ function pdvConfirmar(){
   }
   const data = val('finData') || hoje(), hora = new Date().toTimeString().slice(0,5), vendaId = uid();
   // Desconto da venda repartido entre as linhas na proporção de cada uma (a última leva o resto dos centavos).
-  // Assim o preço unitário gravado já é o preço real cobrado, e o lucro do Desempenho continua certo.
+  // Assim o preço unitário gravado já é o preço real cobrado, e o lucro das Métricas continua certo.
   let resto = Math.round(r.total*100);
   r.linhas.forEach((l,i)=>{
     let liq = i===r.linhas.length-1 ? resto : Math.min(resto, Math.round((r.subtotal>0 ? l.liquido/r.subtotal : 0)*r.total*100));
@@ -661,16 +690,87 @@ function pdvConfirmar(){
     const liquido = liq/100;
     const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, pagamento:finPag, vendaId };
     if(liquido < l.bruto - 0.004){ mov.precoCheio = l.unit; mov.desconto = cent(l.bruto - liquido); }
+    if(l.promo){ mov.promocaoId = l.promo.id; mov.promocaoTitulo = l.promo.titulo; mov.descPromo = l.descPromo; }   // para as Métricas
     l.p.movimentacoes.push(mov);
   });
   const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, pagamento:finPag, nomes:r.linhas.map(l=>l.p.nome) };
   pdv = pdvVazio();
   pdvVisor = { tipo:'concluida', ...feita };
+  // a comemoração some sozinha depois de 15 s (se ninguém mexeu no caixa antes)
+  const comemoracao = pdvVisor;
+  clearTimeout(pdvFimFesta);
+  pdvFimFesta = setTimeout(()=>{ if(pdvVisor===comemoracao){ pdvVisor = { tipo:'livre' }; renderPdv(); } }, 15000);
   pdvGuardar();
   salvar(); render();
   fechar('modalFinalizar'); renderPdv(); pdvFocar();
   festejar();
   notificarVenda(feita);
+}
+
+/* =========================================================
+   MOVIMENTAÇÃO AVULSA (botão ⊕ do Histórico)
+   Receita que não passa pelo estoque: serviços (xerox, impressão, fichas de jogo, reparos)
+   ou venda de um produto sem cadastro. Fica em estado.avulsas = [{id, data, hora, descricao,
+   tipo:'servico'|'produto', valor, pagamento}] e entra no Histórico e nas Métricas (sem custo).
+   ========================================================= */
+let avEditando = null, avTipoSel = 'servico', avPagSel = null;
+function rotuloTipoAvulsa(t){ return t==='produto' ? 'Produto avulso' : 'Serviço'; }
+function abrirAvulsa(id){
+  const a = id ? (estado.avulsas||[]).find(x=>x.id===id) : null;
+  avEditando = a ? a.id : null;
+  document.getElementById('avTitulo').textContent = a ? 'Editar movimentação avulsa' : 'Movimentação avulsa';
+  document.getElementById('avData').value = a ? a.data : hoje();
+  document.getElementById('avDesc').value = a ? a.descricao : '';
+  document.getElementById('avValor').value = a ? a.valor : '';
+  document.getElementById('avExcluir').style.display = a ? '' : 'none';
+  avulsaTipo(a ? a.tipo : 'servico');
+  avPagSel = a ? (a.pagamento||null) : null;
+  avulsaRenderPags();
+  abrir('modalAvulsa');
+  setTimeout(()=>document.getElementById('avDesc').focus(), 80);
+}
+function avulsaTipo(t){
+  avTipoSel = t;
+  document.getElementById('avTipoServico').classList.toggle('ativo', t==='servico');
+  document.getElementById('avTipoProduto').classList.toggle('ativo', t==='produto');
+}
+function avulsaRenderPags(){
+  document.getElementById('avPags').innerHTML = PAGAMENTOS.map(p=>`
+    <button type="button" class="pdv-pag${avPagSel===p.id?' ativo':''}" onclick="avPagSel='${p.id}';avulsaRenderPags()">
+      <svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
+}
+function salvarAvulsa(){
+  const data = val('avData'), descricao = val('avDesc').trim(), valor = parseFloat(val('avValor'));
+  if(!data){ toast('Informe a data.'); return; }
+  if(!descricao){ toast('Escreva uma breve descrição.'); document.getElementById('avDesc').focus(); return; }
+  if(isNaN(valor) || valor<=0){ toast('Informe o valor.'); document.getElementById('avValor').focus(); return; }
+  if(!avPagSel){ toast('Escolha a forma de pagamento.'); return; }
+  estado.avulsas = estado.avulsas || [];
+  const dados = { data, descricao, tipo:avTipoSel, valor:Math.round(valor*100)/100, pagamento:avPagSel };
+  if(avEditando){
+    const a = estado.avulsas.find(x=>x.id===avEditando);
+    if(a) Object.assign(a, dados);
+    salvar(); fechar('modalAvulsa'); renderViewAtual();
+    toast('Movimentação avulsa atualizada.');
+    return;
+  }
+  estado.avulsas.push({ id:uid(), ...dados, hora:new Date().toTimeString().slice(0,5) });
+  salvar(); fechar('modalAvulsa'); renderViewAtual();
+  toast('Movimentação avulsa registrada.');
+  notificarVenda({ total:dados.valor, unidades:1, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
+}
+/* Editar ou excluir: como nas outras movimentações, pede a senha do gerente */
+function pedirEdicaoAvulsa(id){
+  const a = (estado.avulsas||[]).find(x=>x.id===id); if(!a) return;
+  pedirSenha(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente.`);
+}
+function excluirAvulsa(){
+  const a = (estado.avulsas||[]).find(x=>x.id===avEditando); if(!a) return;
+  pedirConfirmacao(`Excluir a movimentação avulsa “${a.descricao}” de ${fmtBRL(a.valor)} (${fmtData(a.data)})? Ela sai do Histórico e das Métricas. Não dá para desfazer.`, ()=>{
+    estado.avulsas = estado.avulsas.filter(x=>x.id!==a.id);
+    salvar(); fechar('modalAvulsa'); renderViewAtual();
+    toast('Movimentação avulsa excluída.');
+  }, 'Excluir movimentação avulsa');
 }
 
 /* ----- Desenho da tela ----- */
@@ -684,6 +784,24 @@ function pdvVisorHtml(){
   if(v.tipo==='produto' && prod(v.pid)){
     const p = prod(v.pid), est = estoqueDe(p), it = pdv.itens.find(x=>x.pid===p.id);
     const consulta = v.modo==='consulta';
+    const pr = promoDoProduto(p);
+    const precoHtml = !(p.preco>0) ? '<div class="pdv-preco">Sem preço</div>'
+      : pr ? `<div class="pdv-preco-de">${fmtBRL(p.preco)}</div><div class="pdv-preco">${fmtBRL(cent(p.preco-pr.descUnit))}</div><div class="pdv-promo-selo">${escapar(pr.promo.titulo)} · ${escapar(rotuloPromoCurto(pr.promo))}</div>`
+      : `<div class="pdv-preco">${fmtBRL(p.preco)}</div>`;
+    if(pdv.ativa){   // faixa: foto | marca, estado, nome, detalhes | preço
+      return `<div class="pdv-visor-in faixa ${consulta?'consulta':'adicionado'}">
+        <div class="pdv-faixa">
+          ${pdvFotoHtml(p)}
+          <div class="pdv-info">
+            <div class="pdv-marca">${p.marca?escapar(p.marca):''}<span class="pdv-estado">${consulta ? 'Consulta de preço · não entrou na venda' : `● Na venda · ${it?it.qtd:1} un.`}</span></div>
+            <div class="pdv-nome">${escapar(p.nome)}</div>
+            <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
+            ${consulta ? `<button class="btn btn-escuro btn-mini pdv-visor-btn" onclick="pdvAdicionar('${p.id}')">Adicionar à venda</button>` : ''}
+          </div>
+          <div class="pdv-precos">${precoHtml}</div>
+        </div>
+      </div>`;
+    }
     return `<div class="pdv-visor-in ${consulta?'consulta':'adicionado'}">
       <div class="pdv-selo">${consulta ? 'Consulta de preço · não entrou na venda' : `Na venda · ${it?it.qtd:1} un.`}</div>
       <div class="pdv-prod">
@@ -691,7 +809,7 @@ function pdvVisorHtml(){
         <div class="pdv-info">
           ${p.marca?`<div class="pdv-marca">${escapar(p.marca)}</div>`:''}
           <div class="pdv-nome">${escapar(p.nome)}</div>
-          <div class="pdv-preco">${p.preco>0 ? fmtBRL(p.preco) : 'Sem preço'}</div>
+          <div class="pdv-precos-grande">${precoHtml}</div>
           <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
           ${consulta ? `<button class="btn btn-escuro pdv-visor-btn" onclick="${pdv.ativa?`pdvAdicionar('${p.id}')`:`pdvIniciarCom('${p.id}')`}">${pdv.ativa?'Adicionar à venda':'Iniciar venda com este produto'}</button>` : ''}
         </div>
@@ -699,7 +817,7 @@ function pdvVisorHtml(){
     </div>`;
   }
   if(v.tipo==='erro'){
-    return `<div class="pdv-visor-in erro">
+    return `<div class="pdv-visor-in erro${pdv.ativa?' faixa':''}">
       <div class="pdv-selo">Atenção</div>
       <div class="pdv-msg"><b>${escapar(v.titulo)}</b><span>${escapar(v.texto||'')}</span></div>
     </div>`;
@@ -712,14 +830,15 @@ function pdvVisorHtml(){
         <em>Parabéns pela venda!</em>
         <b>${fmtBRL(v.total)}</b>
         <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
+        <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas nas Métricas →</button>
       </div>
     </div>`;
   }
   if(pdv.ativa){
-    return `<div class="pdv-visor-in livre${pdv.consulta?' consulta':''}">
+    return `<div class="pdv-visor-in livre faixa${pdv.consulta?' consulta':''}">
       <div class="pdv-selo">${pdv.consulta ? 'Consulta de preço' : 'Venda em andamento'}</div>
       <div class="pdv-msg"><b>${pdv.consulta ? 'Leia o código para consultar' : 'Passe os produtos'}</b>
-        <span>${pdv.consulta ? 'O próximo produto lido só mostra o preço: não entra na venda.' : 'Leia o código de barras ou digite o nome no campo abaixo.'}</span></div>
+        <span>${pdv.consulta ? 'O próximo produto lido só mostra o preço: não entra na venda.' : 'Leia o código de barras ou digite o nome no campo de leitura.'}</span></div>
     </div>`;
   }
   return `<div class="pdv-visor-in livre">
@@ -733,38 +852,57 @@ function renderPdv(){
   document.getElementById('pdvVisor').innerHTML = pdvVisorHtml();
   document.querySelector('.pdv').classList.toggle('ativa', pdv.ativa);
 
+  // coluna da direita (PC): botões empilhados, "Finalizar venda" grande no fim
   document.getElementById('pdvAcoes').innerHTML = pdv.ativa ? `
     <button class="pdv-btn${pdv.consulta?' ligado':''}" onclick="pdvConsultar()"><span>${pdv.consulta?'Consultando…':'Consultar preço'}</span><kbd>F4</kbd></button>
     <button class="pdv-btn" onclick="abrirDesconto('venda')"><span>Aplicar desconto</span><kbd>F8</kbd></button>
-    <button class="pdv-btn primario" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>
-    <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>` : `
+    <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>
+    <button class="pdv-btn primario pdv-finalizar" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>` : `
     <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>
-    <button class="pdv-btn" onclick="pdvConsultar()"><span>Consultar preço</span><kbd>F4</kbd></button>`;
+    <button type="button" class="pdv-link-cliente so-pc" onclick="abrirTelaCliente()">${telaClienteAberta() ? '✓ Tela do cliente aberta' : 'Abrir tela do cliente (2º monitor)'}</button>`;   // caixa livre: toda leitura já é consulta de preço
 
-  document.getElementById('pdvListaCab').innerHTML = pdv.ativa
-    ? `<b>Venda em andamento</b><span>${r.linhas.length} produto(s) · ${r.unidades} un.</span>`
-    : `<b>Itens da venda</b><span>Caixa livre</span>`;
+  // menu ☰ (celular/tablet): mesmas ações dos botões
+  const ic = d=>`<i><svg viewBox="0 0 24 24">${d}</svg></i>`;
+  const IC = {
+    iniciar:'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+    consultar:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    desconto:'<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+    finalizar:'<path d="M20 6 9 17l-5-5"/>',
+    cancelar:'<path d="M6 6l12 12M18 6 6 18"/>'
+  };
+  const opc = (fn, txt, icone)=>`<button class="fab-opcao" onclick="pdvMenuAcao(${fn})"><span>${txt}</span>${ic(icone)}</button>`;
+  document.getElementById('pdvMenu').innerHTML = pdv.ativa
+    ? opc('pdvCancelar','Cancelar venda',IC.cancelar) + opc("()=>abrirDesconto('venda')",'Aplicar desconto',IC.desconto)
+      + opc('pdvConsultar', pdv.consulta ? 'Consultando… (toque para sair)' : 'Consultar preço', IC.consultar) + opc('pdvFinalizar','Finalizar venda',IC.finalizar)
+    : opc('pdvIniciar','Iniciar venda',IC.iniciar);
+
+  // cabeçalho da tabela (uma linha por item)
+  document.getElementById('pdvListaCab').innerHTML = `<span>Produto</span><span class="c">Qtd</span><span class="r pdv-col-unit">Unit.</span><span class="r">Total</span><span></span><span></span>`;
 
   // o item mais recente fica no topo, sem precisar rolar
   document.getElementById('pdvLista').innerHTML = r.linhas.length ? [...r.linhas].reverse().map(l=>`
-    <div class="pdv-item${pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado' ? ' atual':''}">
-      <div class="pdv-item-nome">${escapar(l.p.nome)}<small>${l.p.marca?escapar(l.p.marca)+' · ':''}${fmtBRL(l.unit)}/un</small></div>
+    <div class="pdv-item${pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado' ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
+      <div class="pdv-item-nome"><span>${escapar(l.p.nome)}</span>${l.promo?`<em class="pdv-promo-tag" title="Promoção: ${escapar(l.promo.titulo)}">${escapar(rotuloPromoCurto(l.promo))}</em>`:''}</div>
       <div class="pdv-qtd">
         <button type="button" onclick="pdvQtd(${l.i},-1)" aria-label="Diminuir">−</button>
         <input type="number" min="1" value="${l.it.qtd}" onchange="pdvDefinirQtd(${l.i},this.value)" onkeydown="if(event.key==='Enter')this.blur()" aria-label="Quantidade">
         <button type="button" onclick="pdvQtd(${l.i},1)" aria-label="Aumentar">+</button>
       </div>
-      <div class="pdv-item-total">${fmtBRL(l.liquido)}${l.desc>0?`<small>−${fmtBRL(l.desc)} (${rotuloDesconto(l.it.desc)})</small>`:''}</div>
-      <button type="button" class="pdv-ico${l.desc>0?' ligado':''}" onclick="abrirDesconto(${l.i})" title="Desconto neste item" aria-label="Desconto neste item">%</button>
+      <div class="pdv-col-unit pdv-item-unit">${l.promo?`<s>${fmtBRL(l.unit)}</s>`:''}${fmtBRL(l.unitPromo)}</div>
+      <div class="pdv-item-total">${fmtBRL(l.liquido)}${l.descManual>0?`<small>−${fmtBRL(l.descManual)}${rotuloDesconto(l.it.desc)}</small>`:''}</div>
+      <button type="button" class="pdv-ico${l.descManual>0?' ligado':''}" onclick="abrirDesconto(${l.i})" title="Desconto neste item" aria-label="Desconto neste item">%</button>
       <button type="button" class="pdv-ico" onclick="pdvRemover(${l.i})" title="Remover da venda" aria-label="Remover da venda">×</button>
     </div>`).join('')
     : `<div class="pdv-lista-vazia">${pdv.ativa ? 'Os produtos lidos aparecem aqui.' : 'Clique em “Iniciar venda” para começar.'}</div>`;
 
+  // Subtotal = preços cheios; "Descontos" soma os dos itens e o da venda toda
+  const descontos = cent(r.bruto - r.total);
   document.getElementById('pdvTotais').innerHTML = `
-    <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.subtotal)}</b></div>
-    ${pdv.desconto ? `<div class="pdv-tl desc"><span>Desconto na venda (${rotuloDesconto(pdv.desconto)})
-        <button type="button" onclick="abrirDesconto('venda')">alterar</button></span><b>−${fmtBRL(r.descVenda)}</b></div>` : ''}
+    <div class="pdv-tl"><span>Itens</span><b>${r.linhas.length} produto(s) · ${r.unidades} un.</b></div>
+    <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.bruto)}</b></div>
+    ${descontos>0 ? `<div class="pdv-tl desc"><span>Descontos</span><b>−${fmtBRL(descontos)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
+  telaClienteEnviar();   // a tela do cliente (2º monitor) acompanha cada mudança
 }
 
 /* ----- Comemoração da venda: chuva de confete nas cores da marca (~2,5 s) -----
@@ -821,7 +959,7 @@ document.addEventListener('keydown', e=>{
   }
   if(document.querySelector('.overlay.aberto')) return;
   if(e.key==='F2'){ e.preventDefault(); if(!pdv.ativa) pdvIniciar(); }
-  else if(e.key==='F4'){ e.preventDefault(); pdvConsultar(); }
+  else if(e.key==='F4'){ e.preventDefault(); if(pdv.ativa) pdvConsultar(); else document.getElementById('pdvBusca').focus(); }
   else if(e.key==='F8'){ e.preventDefault(); abrirDesconto('venda'); }
   else if(e.key==='F9'){ e.preventDefault(); pdvFinalizar(); }
   else if(!emCampo && e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey){
@@ -901,6 +1039,7 @@ function blocoEntrada(p){
   </div>`;
 }
 function blocoSaida(p){
+  const pr = promoDoProduto(p);   // promoção valendo hoje: o preço já vem com o desconto
   return `<div class="bloco saida">
     <h4>Registrar saída (baixa)</h4>
     <div class="mini-campo"><label>Data</label><input type="date" id="sData" value="${hoje()}"></div>
@@ -917,7 +1056,8 @@ function blocoSaida(p){
     </div>
     <div class="mini-campo" id="campoPrecoSaida">
       <label>Preço de venda (un.)</label>
-      <input type="number" id="sPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
+      <input type="number" id="sPreco" min="0" step="0.01" value="${pr ? cent(p.preco-pr.descUnit) : (p.preco||'')}" placeholder="0,00">
+      ${pr ? `<small style="color:var(--vermelho);font-size:14px;font-weight:600">Preço da promoção “${escapar(pr.promo.titulo)}” (cheio: ${fmtBRL(p.preco)}).</small>` : ''}
       <small style="color:var(--texto-sec);font-size:14px">Alterar o preço base exige senha do gerente.</small>
     </div>
     <div class="mini-campo" id="campoPagSaida">
@@ -1093,6 +1233,7 @@ function selecionarLinhaProduto(idx, id){
 }
 function registrarCompraLote(){
   const data = document.getElementById('compraData').value || hoje();
+  const loteId = uid();   // todas as entradas desta compra ficam agrupadas no Histórico
   const fornCompra = val('compraFornecedor').trim();
   const linhas = [...document.querySelectorAll('#compraLinhas .linha-compra')];
   const itens = [];
@@ -1125,7 +1266,7 @@ function registrarCompraLote(){
       p = prod(it.id);
     }
     const forn = fornCompra;
-    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, ...(forn?{fornecedor:forn}:{}) });
+    p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, loteId, ...(forn?{fornecedor:forn}:{}) });
   });
   salvar(); fechar('modalCompra'); render();
   toast(`Compra registrada: ${itens.length} item(ns).`);
@@ -1288,7 +1429,7 @@ function ppMovimentacoes(p){
         return `<div class="hx-linha pp-linha" data-pid="${p.id}" data-mid="${m.id}" title="Toque e segure para editar">
           <div class="hx-mov">${tagMov(m)}${extra?`<small class="pp-forn">${escapar(extra)}</small>`:''}</div>
           <div class="num">${m.qtd} un.</div>
-          <div class="num hx-valor ${v?c:''}">${valorHtml(v)}</div>
+          <div class="num hx-valor ${v?c:''}">${valorHtml(v, m.qtd)}</div>
         </div>`; }).join('')}
     </div>`).join('') + `</div>`;
 }
@@ -1474,7 +1615,11 @@ function registrarSaida(){
     if(isNaN(precoVenda)||precoVenda<0){ toast('Informe o preço de venda.'); return; }
     mov.precoVenda = precoVenda;
     if(val('sPag')) mov.pagamento = val('sPag');
-    if(base>0 && Math.abs(precoVenda-base)>0.001){
+    // preço da promoção que vale na data da baixa: não pede senha e entra nas Métricas da promoção
+    const pr = promoDoProduto(p, data);
+    if(pr && Math.abs(precoVenda-cent(base-pr.descUnit))<0.001){
+      Object.assign(mov, { precoCheio:base, desconto:cent(pr.descUnit*qtd), promocaoId:pr.promo.id, promocaoTitulo:pr.promo.titulo, descPromo:cent(pr.descUnit*qtd) });
+    } else if(base>0 && Math.abs(precoVenda-base)>0.001){
       pedirSenha(()=>efetivarSaida(p, mov),
         'O preço de venda foi alterado em relação ao preço base. Digite a senha do gerente para confirmar a baixa.');
       return;
@@ -1537,12 +1682,14 @@ let histPor = 'data', histDir = 'desc';
    Venda / recebido = dinheiro entra (verde) · Aquisição = dinheiro sai (vermelho)
    A receber pendente = âmbar · Perda, devolução, ajuste, outros = neutro */
 function classeMov(m){
+  if(m.tipo==='avulsa') return 'pos';   // receita avulsa: dinheiro entra
   if(m.tipo==='entrada') return m.inicial ? 'ini' : 'neg';
   if(m.motivo==='Venda') return 'pos';
   if(m.motivo==='A receber') return m.recebido ? 'pos' : 'pend';
   return 'neu';
 }
 function rotuloMov(m){
+  if(m.tipo==='avulsa') return 'Avulsa';
   if(m.tipo==='entrada') return m.inicial ? 'Estoque inicial' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
@@ -1551,6 +1698,7 @@ function rotuloMov(m){
 /* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
    Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
 function valorMov(m){
+  if(m.tipo==='avulsa') return { unit:m.valor, total:m.valor };
   if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
   if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
@@ -1565,13 +1713,15 @@ function tagMov(m){
     : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`) + pag;
 }
 /* Célula de valor (Histórico e Painel do Produto) */
-function valorHtml(v){
+function valorHtml(v, qtd){
   if(!v) return '<span class="hx-sem">—</span>';
-  if(v.foraCaixa) return `${fmtBRL(v.total)}<small>${fmtBRL(v.unit)}/un</small><span class="hx-fora">fora do saldo</span>`;
+  const unit = qtd===1 || v.unit==null ? '' : `<small>${fmtBRL(v.unit)}/un</small>`;   // 1 unidade: o unitário seria igual ao total
+  if(v.foraCaixa) return `<b>${fmtBRL(v.total)}</b>${unit}<span class="hx-fora">fora do saldo</span>`;
   const s = v.total>0 ? '+' : v.total<0 ? '−' : '';
-  return `${s}${fmtBRL(Math.abs(v.total))}<small>${fmtBRL(v.unit)}/un</small>`;
+  return `<b>${s}${fmtBRL(Math.abs(v.total))}</b>${unit}`;
 }
 function tipoFiltroMov(m){
+  if(m.tipo==='avulsa') return 'avulsa';
   if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
   if(m.motivo==='Venda') return 'venda';
   if(m.motivo==='A receber') return 'areceber';
@@ -1581,7 +1731,7 @@ function tipoFiltroMov(m){
 /* ----- Período (navegação estilo "‹ Novembro 2026 ›") ----- */
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 /* Um "período" é { tipo, ref } ou { tipo:'custom', de, ate }.
-   tipo: dia | semana | mes | ano | tudo | custom. Usado pelo Histórico e pelo Desempenho. */
+   tipo: dia | semana | mes | ano | tudo | custom. Usado pelo Histórico e pelas Métricas. */
 let hxPeriodo = { tipo:'mes', ref:hoje() };
 function isoDe(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dataDe(iso){ const [a,m,d]=iso.split('-').map(Number); return new Date(a,m-1,d); }
@@ -1632,7 +1782,7 @@ function rotuloPeriodo(){ return rotuloDe(hxPeriodo); }
 function periodoPasso(dir){ passoDe(hxPeriodo, dir); renderHistorico(); }
 function definirPeriodo(tipo){ hxPeriodo = { tipo, ref:hoje() }; fecharPops(); renderHistorico(); }
 
-/* Escolher período (modal compartilhado): alvo 'hx' = Histórico, 'ds' = Desempenho */
+/* Escolher período (modal compartilhado): alvo 'hx' = Histórico, 'ds' = Métricas */
 let periodoAlvo = 'hx';
 function abrirPeriodoPersonalizado(alvo){
   periodoAlvo = alvo || 'hx';
@@ -1700,6 +1850,11 @@ function renderHistorico(){
                     data:m.data, qtd:m.qtd, v, tipoF:tipoFiltroMov(m), arquivado:!!p.arquivado });
     });
   });
+  (estado.avulsas||[]).forEach(a=>{
+    const m = { ...a, tipo:'avulsa' };
+    linhas.push({ pid:'', mid:a.id, m, avulsa:true, nome:a.descricao, marca:'', categoria: rotuloTipoAvulsa(a.tipo),
+                  data:a.data, qtd:1, v:valorMov(m), tipoF:'avulsa', arquivado:false });
+  });
 
   linhas = linhas.filter(l=>{
     if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // estoque inicial só aparece filtrando por ele
@@ -1744,24 +1899,57 @@ function renderHistorico(){
   const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
   const fmtSem = v=> fmtBRL(Math.abs(v));
 
-  cont.innerHTML = dias.map(d=>{
-    const saldo = d.itens.reduce((s,l)=>s+(l.v && !l.v.foraCaixa ? l.v.total : 0),0);
-    const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
-    return `<div class="hx-dia">
-      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
-      ${d.itens.map(l=>{ const c = classeMov(l.m); return `
-      <div class="hx-linha" data-pid="${l.pid}" data-mid="${l.mid}" title="Toque e segure para editar">
-        <div class="hx-mov">${tagMov(l.m)}</div>
+  // Dentro do dia, os itens da mesma venda (vendaId) ou da mesma compra em lote (loteId) viram um bloco só
+  const blocosDo = itens=>{
+    const blocos = [], porChave = {};
+    itens.forEach(l=>{
+      const k = l.m.vendaId ? 'v:'+l.m.vendaId : l.m.loteId ? 'l:'+l.m.loteId : null;
+      if(k && porChave[k]){ porChave[k].itens.push(l); return; }
+      const b = { itens:[l] }; if(k) porChave[k] = b; blocos.push(b);
+    });
+    return blocos;
+  };
+  const linhaHtml = (l, noGrupo)=>{ const c = classeMov(l.m); return `
+      <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}"${l.avulsa?' data-avulsa="1"':''} title="Toque e segure para editar">
+        <div class="hx-mov">${noGrupo ? '' : tagMov(l.m)}</div>
         <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num col-qtd">${l.qtd}</div>
-        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v)}<span class="hx-qtd-m">${l.qtd} un.</span></div>
-      </div>`; }).join('')}
-      <div class="hx-saldo">Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></div>
+        <div class="num hx-valor ${l.v?c:''}">${valorHtml(l.v, l.qtd)}<span class="hx-qtd-m">${l.qtd} un.</span></div>
+      </div>`; };
+  const grupoHtml = b=>{
+    const m0 = b.itens[0].m, c = classeMov(m0);
+    const qtd = b.itens.reduce((s,l)=>s+l.qtd,0);
+    const total = b.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
+    const temValor = b.itens.some(l=>l.v);
+    const sub = [m0.hora ? `às ${m0.hora}` : '', m0.tipo==='entrada' && m0.fornecedor ? escapar(m0.fornecedor) : ''].filter(Boolean).join(' · ');
+    return `<div class="hx-grupo">
+      <div class="hx-linha hx-grupo-cab">
+        <div class="hx-mov">${tagMov(m0)}</div>
+        <div class="hx-prod">${b.itens.length} produtos${sub?`<small>${sub}</small>`:''}</div>
+        <div class="col-cat"></div>
+        <div class="num col-qtd">${qtd}</div>
+        <div class="num hx-valor ${temValor?c:''}">${temValor ? `<b>${total>0?'+':total<0?'−':''}${fmtSem(total)}</b>` : '<span class="hx-sem">—</span>'}<span class="hx-qtd-m">${qtd} un.</span></div>
+      </div>
+      ${b.itens.map(l=>linhaHtml(l, true)).join('')}
+    </div>`;
+  };
+
+  cont.innerHTML = dias.map(d=>{
+    const conta = d.itens.filter(l=>l.v && !l.v.foraCaixa).map(l=>l.v.total);
+    const entra = conta.filter(v=>v>0).reduce((s,v)=>s+v,0), sai = conta.filter(v=>v<0).reduce((s,v)=>s+v,0), saldo = entra + sai;
+    const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
+    return `<div class="hx-dia">
+      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
+      ${blocosDo(d.itens).map(b=> b.itens.length>1 ? grupoHtml(b) : linhaHtml(b.itens[0], false)).join('')}
+      <div class="hx-saldo">
+        ${entra && sai ? `<span>Entradas <b class="pos">+${fmtSem(entra)}</b></span><span>Saídas <b class="neg">−${fmtSem(sai)}</b></span>` : ''}
+        <span>Saldo no dia <b class="${saldo>0?'pos':saldo<0?'neg':''}">${sinal(saldo)}${fmtSem(saldo)}</b></span>
+      </div>
     </div>`;
   }).join('');
   cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
-    toqueLongo(el, ()=>pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+    toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
 }
 
 /* Toque e segure genérico (mouse e toque) */
@@ -1857,7 +2045,7 @@ function excluirMovimentacao(){
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
-    (ent ? ' O custo médio e a composição do estoque também mudam.' : ' Os números de vendas e lucro do Desempenho também mudam.') +
+    (ent ? ' O custo médio e a composição do estoque também mudam.' : ' Os números de vendas e lucro das Métricas também mudam.') +
     ' Recomendamos baixar um backup antes (botão “↓ Backup” na tela de edição ou em Configurações).',
     ()=>{
       // 2ª confirmação: ação irreversível
@@ -1933,6 +2121,13 @@ function salvarEdicaoMov(){
    ========================================================= */
 let catEditando = null;
 /* Categorias são gerenciadas só em Configurações (bloco "Categorias de produtos") */
+function abrirCategorias(){
+  catEditando = null; renderCategorias();
+  document.getElementById('cfgNovaCat').value = '';
+  abrir('modalCategorias');
+  setTimeout(()=>document.getElementById('cfgNovaCat').focus(), 80);
+}
+function fecharCategorias(){ catEditando = null; fechar('modalCategorias'); renderConfig(); }
 function renderCategorias(){
   const ativa = document.getElementById('cfgListaCat');
   if(!ativa) return;
@@ -2093,7 +2288,7 @@ const VIEWS = {
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
-  desempenho: { secao:'viewDesempenho', titulo:'Desempenho' },
+  desempenho: { secao:'viewDesempenho', titulo:'Métricas' },   // módulo renomeado de Desempenho para Métricas (2.3.0)
   config:     { secao:'viewConfig',     titulo:'Configurações' }
 };
 let viewAtual = 'pdv', viewAnterior = 'pdv';
@@ -2107,9 +2302,11 @@ function mostrarView(v){
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
-  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');
-  document.getElementById('fab').style.display = ['estoque','historico'].includes(v) ? '' : 'none';   // ⊕ só em Estoque e Histórico
+  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');   // no PC a engrenagem some e Configurações fica no menu lateral
+  document.getElementById('fab').style.display = (v==='estoque' || v==='historico') ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
+  document.querySelectorAll('#fabMenu [data-fab]').forEach(b=>b.style.display = b.dataset.fab===v ? '' : 'none');   // cada tela tem as suas ações
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
+  document.body.classList.toggle('modo-estoque', v==='estoque');       // idem no Estoque: filtros e cabeçalho fixos
   document.body.classList.toggle('modo-pdv', v==='pdv');               // PDV usa a tela toda
   document.querySelector('main').scrollTop = 0;
   renderViewAtual();
@@ -2119,7 +2316,8 @@ function mostrarView(v){
 function ajustarNav(){
   const nav = document.querySelector('.barra-inferior'); if(!nav) return;
   nav.classList.remove('compacta');
-  const precisa = [...nav.querySelectorAll('.nav-item span')].reduce((t,sp)=>t + sp.scrollWidth + 8, 0);   // 8px de respiro por item
+  if(window.matchMedia('(min-width:901px)').matches) return;   // no PC a navegação é o menu lateral
+  const precisa = [...nav.querySelectorAll('.nav-item > span')].reduce((t,sp)=>t + sp.scrollWidth + 8, 0);   // 8px de respiro por item
   nav.classList.toggle('compacta', precisa > nav.clientWidth);
 }
 window.addEventListener('resize', ajustarNav);
@@ -2142,7 +2340,7 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
-  syncRenderConfig(); pushRenderConfig(); sandboxTela();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2239,10 +2437,16 @@ function renderAlertas(){
 /* ===== Botão de ação flutuante (⊕) ===== */
 function alternarFab(){ document.getElementById('fabMenu').classList.contains('aberto') ? fecharFab() : abrirFab(); }
 function abrirFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto')); }
-function fecharFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.remove('aberto')); }
+function fecharFab(){ ['fab','fabMenu','fabFundo','pdvFab','pdvMenu'].forEach(id=>{ const el = document.getElementById(id); if(el) el.classList.remove('aberto'); }); }
+/* Menu ☰ do PDV (celular e tablet): as mesmas ações dos botões da tela do PC */
+function alternarPdvMenu(){
+  if(document.getElementById('pdvMenu').classList.contains('aberto')){ fecharFab(); return; }
+  ['pdvFab','pdvMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto'));
+}
+function pdvMenuAcao(fn){ fecharFab(); fn(); }
 
 /* =========================================================
-   DESEMPENHO — métricas e gráficos das vendas
+   MÉTRICAS (antigo Desempenho) — métricas e gráficos das vendas
    Venda = saída "Venda" ou "A receber" já recebida (A receber pendente não entra).
    Lucro = receita − custo do lote vendido (FIFO: as unidades mais antigas saem primeiro,
    a mesma lógica da Composição do estoque).
@@ -2290,6 +2494,14 @@ function vendasDe(de, ate){
     const receita = m.qtd*(m.precoVenda||0), custo = custos.get(m.id)||0;
     lista.push({ p, m, data:m.data, qtd:m.qtd, receita, custo, lucro:receita-custo, pagamento:m.pagamento||'' });
   }));
+  // Movimentações avulsas (serviços e produtos sem cadastro): receita sem custo informado.
+  // Ficam num "produto" virtual por tipo, com a categoria "Serviços" ou "Produtos avulsos".
+  (estado.avulsas||[]).forEach(a=>{
+    if(de && a.data<de) return;
+    if(ate && a.data>ate) return;
+    const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
+    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:1, receita:a.valor, custo:0, lucro:a.valor, pagamento:a.pagamento||'' });
+  });
   return lista;
 }
 function soma(lista, k){ return lista.reduce((s,x)=>s+x[k],0); }
@@ -2319,6 +2531,9 @@ function renderDesempenho(){
   estado.produtos.forEach(p=>saidas(p).forEach(m=>{
     if(m.motivo==='A receber' && !m.recebido && (!de || m.data>=de) && (!ate || m.data<=ate)) pendentes.push(m);
   }));
+  const avs = vendas.filter(v=>v.avulsa);
+  const notaAvulsa = avs.length
+    ? `<p class="dica ds-nota">Inclui ${fmtBRL(soma(avs,'receita'))} em ${avs.length} movimentação(ões) avulsa(s) (serviços e produtos sem cadastro). Elas não têm custo informado, então entram inteiras no lucro.</p>` : '';
   const notaPend = pendentes.length
     ? `<p class="dica ds-nota">${soma(pendentes,'qtd')} un. em vendas “a receber” ainda pendentes neste período não entram nos números até o recebimento.</p>` : '';
 
@@ -2337,7 +2552,7 @@ function renderDesempenho(){
       <div class="ds-tile"><span>Lucro bruto</span><b class="${lucro<0?'neg':''}">${fmtBRL(lucro)}</b><small>faturamento − custo</small></div>
       <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b><small>lucro ÷ faturamento</small></div>
     </div>
-    ${notaPend}
+    ${notaPend}${notaAvulsa}
     ${dsBlocoEvolucao(vendas, de, ate)}
     <div class="ds-grade">
       ${dsBlocoCategorias(vendas)}
@@ -2348,6 +2563,7 @@ function renderDesempenho(){
       ${dsBlocoProdutos(vendas)}
     </div>
     ${dsBlocoPagamentos(vendas)}
+    ${dsBlocoPromocoes(vendas)}
     ${dsBlocoParados()}`;
   ligarTooltips(cont);
   ligarCrosshair();
@@ -2473,6 +2689,30 @@ function dsBlocoPagamentos(vendas){
   </div>`;
 }
 
+/* ----- Promoções: o que cada promoção vendeu no período e quanto deu de desconto ----- */
+function dsBlocoPromocoes(vendas){
+  const g = {};
+  vendas.forEach(v=>{
+    if(!v.m.promocaoId) return;
+    const k = v.m.promocaoId;
+    g[k] = g[k] || { titulo:v.m.promocaoTitulo||'Promoção', fat:0, desc:0, qtd:0, vendas:new Set() };
+    g[k].fat += v.receita; g[k].desc += v.m.descPromo||0; g[k].qtd += v.qtd; g[k].vendas.add(v.m.vendaId || v.m.id);
+  });
+  const lista = Object.entries(g).map(([id,x])=>{ const pr = (estado.promocoes||[]).find(y=>y.id===id); return { ...x, titulo: pr ? pr.titulo : x.titulo, n:x.vendas.size }; })
+    .sort((a,b)=>b.fat-a.fat);
+  if(!lista.length) return '';
+  const fatTotal = soma(vendas,'receita') || 1, fatPromo = soma(lista,'fat'), descPromo = soma(lista,'desc'), max = Math.max(...lista.map(x=>x.fat)) || 1;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Promoções</h3><small>${fmtBRL(fatPromo)} vendidos em promoção (${fmtPctDs(fatPromo/fatTotal*100)} do faturamento) · ${fmtBRL(descPromo)} em descontos de promoção</small></div></div>
+    <div class="ds-barras">${lista.map(c=>`
+      <div class="ds-barra-linha" data-tip="<b>${escapar(c.titulo)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Desconto dado <em>${fmtBRL(c.desc)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. vendidas</span>">
+        <div class="ds-barra-rot">${escapar(c.titulo)}<small>${c.n} venda(s) · ${c.qtd} un. · −${fmtBRL(c.desc)}</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:var(--vermelho)"></div></div>
+        <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
+      </div>`).join('')}</div>
+  </div>`;
+}
+
 /* ----- Dias da semana (colunas; destaque no melhor dia) ----- */
 function dsBlocoSemana(vendas, de, ate){
   const tot = Array.from({length:7},()=>({ fat:0, qtd:0 }));
@@ -2516,6 +2756,8 @@ function dsBlocoMelhoresDatas(vendas){
 
 /* ----- Produtos mais vendidos ----- */
 function dsBlocoProdutos(vendas){
+  vendas = vendas.filter(v=>!v.avulsa);   // ranking só de produtos do estoque
+  if(!vendas.length) return '';
   const g = {};
   vendas.forEach(v=>{ const id = v.p.id; g[id] = g[id] || { p:v.p, qtd:0, fat:0, lucro:0 }; g[id].qtd+=v.qtd; g[id].fat+=v.receita; g[id].lucro+=v.lucro; });
   const k = dsRanking==='unidades' ? 'qtd' : 'fat';
@@ -2607,6 +2849,8 @@ function garantirFinanceiro(e){
   f.tetos = f.tetos || {};
   f.cancelamentos = f.cancelamentos || [];
   f.abertura = f.abertura || '';
+  e.avulsas = Array.isArray(e.avulsas) ? e.avulsas : [];   // movimentações avulsas (receitas sem produto em estoque) — 2.3.0
+  e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];   // promoções (Configurações) — 2.4.0
   return e;
 }
 garantirFinanceiro(estado);
@@ -3225,7 +3469,7 @@ function syncRenderStatus(){
   if(!Sync.conectado()){
     cls = syncFase.tipo==='erro' ? 'erro' : syncFase.tipo==='rodando' ? 'carregando' : '';
     txt = syncFase.msg || 'Não conectado.';
-  } else if(sandbox.ativo){ cls = 'aviso'; txt = 'Em pausa enquanto o sandbox está ligado.'; }
+  } else if(sandbox.ativo){ cls = 'aviso'; txt = 'Em pausa enquanto o Modo Faz-de-Conta está ligado.'; }
   else if(syncFase.tipo==='rodando'){ cls = 'carregando'; txt = 'Sincronizando…'; }
   else if(syncFase.tipo==='erro'){ cls = 'erro'; txt = syncFase.msg; }
   else if(syncFase.tipo==='offline'){ cls = 'aviso'; txt = syncFase.msg; }
@@ -3246,28 +3490,28 @@ function syncIniciar(){
 }
 
 /* =========================================================
-   SANDBOX (modo de teste) — Configurações
+   SANDBOX = "MODO FAZ-DE-CONTA" (nome escolhido pelo gerente) — Configurações e menu lateral do PC
    Com o sandbox ligado, o app trabalha só na memória: nada é gravado neste aparelho,
    nada é enviado ou recebido da nuvem e nenhuma notificação sai. Ao desligar (ou ao
    recarregar a página), os dados voltam a ser exatamente os de antes.
    ========================================================= */
 function emSandbox(acao){
   if(!sandbox.ativo) return false;
-  toast(`Desligue o sandbox para ${acao}.`);
+  toast(`Desligue o Modo Faz-de-Conta para ${acao}.`);
   return true;
 }
 function sandboxAlternar(ligar){ if(ligar) sandboxLigar(); else sandboxDesligar(); }
 function sandboxLigar(){
   if(sandbox.ativo) return;
   if(pdv.ativa && pdv.itens.length){
-    toast('Finalize ou cancele a venda em andamento antes de ligar o sandbox.');
+    toast('Finalize ou cancele a venda em andamento antes de ligar o Modo Faz-de-Conta.');
     sandboxTela(); return;
   }
   sandbox = { ativo:true, copia:JSON.stringify(estado) };
   clearTimeout(syncTimer);
   pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar();
   sandboxTela(); renderViewAtual();
-  toast('Sandbox ligado: nada do que for feito agora é salvo.');
+  toast('Modo Faz-de-Conta ligado: nada do que for feito agora é salvo.');
 }
 function sandboxDesligar(){
   if(!sandbox.ativo) return;
@@ -3277,13 +3521,18 @@ function sandboxDesligar(){
   document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
   render(); atualizarAlertas(); sandboxTela(); renderViewAtual();
   if(Sync.conectado()) sincronizar();   // recebe o que mudou na nuvem enquanto o sandbox esteve ligado
-  toast('Sandbox desligado: os dados voltaram ao que eram.');
+  toast('Modo Faz-de-Conta desligado: os dados voltaram ao que eram.');
 }
 function sandboxTela(){
   document.getElementById('sbxFaixa').hidden = !sandbox.ativo;
   document.body.classList.toggle('modo-sandbox', sandbox.ativo);
-  const c = document.getElementById('cfgSandbox');
-  if(c){ c.checked = sandbox.ativo; document.getElementById('cfgSandboxRotulo').textContent = sandbox.ativo ? 'Sandbox ligado: nada está sendo salvo' : 'Sandbox desligado'; }
+  // as duas chaves (Configurações e menu lateral do PC) mostram sempre o mesmo estado
+  [['cfgSandbox','cfgSandboxRotulo','Ligado: nada está sendo salvo'],['navSandbox','navSbxRotulo','Ligado: nada é salvo']].forEach(([chave, rot, txt])=>{
+    const c = document.getElementById(chave); if(!c) return;
+    c.checked = sandbox.ativo;
+    document.getElementById(rot).textContent = sandbox.ativo ? txt : 'Desligado';
+  });
+  const nav = document.querySelector('.nav-sbx'); if(nav) nav.classList.toggle('ligado', sandbox.ativo);
 }
 
 /* =========================================================
@@ -3327,7 +3576,13 @@ async function pushAtivar(){
     const perm = await Notification.requestPermission();
     if(perm!=='granted'){ pushRenderConfig(); return; }
     const reg = await pushRegistrarSW();
-    if(!reg) throw new Error('Não foi possível instalar o serviço de notificações neste navegador.');
+    if(!reg){
+      let faltando = false;
+      try{ const r = await fetch('sw.js', { method:'HEAD', cache:'no-store' }); faltando = !r.ok; }catch(e){}
+      throw new Error(faltando
+        ? 'O arquivo sw.js não foi encontrado no site. Confira se ele está na raiz do repositório, com o nome todo em minúsculas (sw.js).'
+        : 'Não foi possível instalar o serviço de notificações neste navegador. Em janela anônima ou com bloqueio de rastreadores ele não funciona.');
+    }
     await navigator.serviceWorker.ready;
     const { chave } = await syncReq('GET', '/push/chave');
     let sub = await reg.pushManager.getSubscription();
@@ -3404,9 +3659,9 @@ function notificarVenda(v){
   if(sandbox.ativo || !Sync.conectado()) return;
   const d = Sync.ler();
   const nomes = (v.nomes||[]).slice(0,3).join(', ') + ((v.nomes||[]).length>3 ? '…' : '');
-  const linha1 = [`${v.unidades} un.`, nomePagamento(v.pagamento), d.aparelho].filter(Boolean).join(' · ');
+  const linha1 = [v.titulo ? '' : `${v.unidades} un.`, nomePagamento(v.pagamento), d.aparelho].filter(Boolean).join(' · ');   // avulsa: sem "1 un."
   const fila = (d.fila||[]).filter(n=>Date.now()-n.em < PUSH_VALIDADE);
-  fila.push({ em:Date.now(), titulo:`Venda concluída · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
+  fila.push({ em:Date.now(), titulo:`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
   Sync.atualizar({ fila });
   sincronizar();
 }
@@ -3422,8 +3677,199 @@ async function pushEnviarFila(){
   Sync.atualizar({ fila:restam });
 }
 
+/* =========================================================
+   PROMOÇÕES (Configurações) — 2.4.0
+   estado.promocoes = [{ id, titulo, alcance:'loja'|'categorias', categorias:[...], tipo:'pct'|'valor', valor,
+                         inicio:'AAAA-MM-DD'|'', fim:'AAAA-MM-DD'|'', ativa }]
+   - Vale quando está ligada e a data de hoje está dentro do período (início/fim opcionais).
+   - No PDV entra sozinha ao ler o produto. Se duas valem para o mesmo produto, vale a de MAIOR desconto
+     (não somam). Desconto manual por cima pede dupla confirmação (modal de desconto).
+   - Ligar uma promoção (ou salvar uma promoção ligada) pede a senha do gerente.
+   ========================================================= */
+function promoVigente(pr, dia){
+  dia = dia || hoje();
+  return !!pr.ativa && (!pr.inicio || pr.inicio<=dia) && (!pr.fim || pr.fim>=dia);
+}
+function promoSituacao(pr){
+  const d = hoje();
+  if(!pr.ativa) return { cls:'off', txt:'Desligada' };
+  if(pr.inicio && pr.inicio>d) return { cls:'agendada', txt:`Começa em ${fmtData(pr.inicio)}` };
+  if(pr.fim && pr.fim<d) return { cls:'encerrada', txt:`Encerrada em ${fmtData(pr.fim)}` };
+  return { cls:'vigente', txt: pr.fim ? `Valendo até ${fmtData(pr.fim)}` : 'Valendo' };
+}
+function promoValeParaProduto(pr, p){ return pr.alcance==='loja' || (pr.categorias||[]).includes(p.categoria); }
+/* Promoção que vale agora para o produto (a de maior desconto) → { promo, descUnit } ou null */
+function promoDoProduto(p, dia){
+  if(!p || !(p.preco>0)) return null;
+  let melhor = null;
+  (estado.promocoes||[]).forEach(pr=>{
+    if(!promoVigente(pr, dia) || !promoValeParaProduto(pr, p)) return;
+    const d = cent(Math.min(p.preco, pr.tipo==='pct' ? p.preco*pr.valor/100 : pr.valor));
+    if(d>0 && (!melhor || d>melhor.descUnit)) melhor = { promo:pr, descUnit:d };
+  });
+  return melhor;
+}
+function periodoPromo(pr){
+  if(pr.inicio && pr.fim) return `${fmtData(pr.inicio)} a ${fmtData(pr.fim)}`;
+  if(pr.inicio) return `a partir de ${fmtData(pr.inicio)}, sem data de fim`;
+  if(pr.fim) return `até ${fmtData(pr.fim)}`;
+  return 'sem período definido';
+}
+function promosVigentes(){ return (estado.promocoes||[]).filter(pr=>promoVigente(pr)); }
+function rotuloPromoCurto(pr){ return pr.tipo==='pct' ? `−${String(pr.valor).replace('.',',')}%` : `−${fmtBRL(pr.valor)}`; }
+function rotuloPromoAlcance(pr){
+  if(pr.alcance==='loja') return 'Loja toda';
+  const c = pr.categorias||[];
+  return c.length ? c.join(', ') : 'Nenhuma categoria';
+}
+/* Frase para o cliente: "10% de desconto em Celulares" */
+function frasePromo(pr){
+  const quanto = pr.tipo==='pct' ? `${String(pr.valor).replace('.',',')}% de desconto` : `${fmtBRL(pr.valor)} de desconto por unidade`;
+  return pr.alcance==='loja' ? `${quanto} na loja toda` : `${quanto} em ${rotuloPromoAlcance(pr)}`;
+}
+
+/* ----- Configurações: lista ----- */
+function renderPromocoes(){
+  const el = document.getElementById('cfgPromoLista'); if(!el) return;
+  const lista = [...(estado.promocoes||[])].sort((a,b)=>(promoVigente(b)-promoVigente(a)) || (b.inicio||'').localeCompare(a.inicio||''));
+  el.innerHTML = lista.length ? lista.map(pr=>{ const st = promoSituacao(pr); return `
+    <li class="pm-item">
+      <label class="sbx-chave pm-chave" title="${pr.ativa?'Desligar':'Ligar (pede a senha do gerente)'}"><input type="checkbox" ${pr.ativa?'checked':''} onchange="promoAlternar('${pr.id}', this.checked, this)"><i></i></label>
+      <div class="pm-info"><b>${escapar(pr.titulo)}</b>
+        <small>${escapar(frasePromo(pr))} · ${periodoPromo(pr)}</small>
+        <span class="pm-st ${st.cls}">${st.txt}</span></div>
+      <button class="btn btn-claro btn-mini" onclick="abrirPromocao('${pr.id}')">Editar</button>
+    </li>`; }).join('') : '<li class="pm-vazia">Nenhuma promoção cadastrada.</li>';
+}
+function promoAlternar(id, ligar, chk){
+  const pr = (estado.promocoes||[]).find(x=>x.id===id); if(!pr) return;
+  if(!ligar){ pr.ativa = false; salvar(); renderPromocoes(); renderViewAtual(); toast(`Promoção “${pr.titulo}” desligada.`); return; }
+  chk.checked = false;   // só liga depois da senha
+  pedirSenha(()=>{ pr.ativa = true; salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
+    `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite a senha do gerente.`);
+}
+
+/* ----- Modal: nova / editar ----- */
+let pmEditando = null, pmTipo = 'pct', pmAlcance = 'loja';
+function abrirPromocao(id){
+  const pr = id ? (estado.promocoes||[]).find(x=>x.id===id) : null;
+  pmEditando = pr ? pr.id : null;
+  document.getElementById('pmTituloModal').textContent = pr ? 'Editar promoção' : 'Nova promoção';
+  document.getElementById('pmTitulo').value = pr ? pr.titulo : '';
+  document.getElementById('pmValor').value = pr ? pr.valor : '';
+  document.getElementById('pmInicio').value = pr ? (pr.inicio||'') : hoje();
+  document.getElementById('pmFim').value = pr ? (pr.fim||'') : '';
+  document.getElementById('pmAtiva').checked = pr ? !!pr.ativa : true;
+  document.getElementById('pmExcluir').style.display = pr ? '' : 'none';
+  const sel = pr ? (pr.categorias||[]) : [];
+  document.getElementById('pmCategorias').innerHTML = estado.categorias.map(c=>`
+    <label class="pm-cat"><input type="checkbox" value="${escapar(c)}" ${sel.includes(c)?'checked':''}> ${escapar(c)}</label>`).join('');
+  promoTipo(pr ? pr.tipo : 'pct'); promoAlcance(pr ? pr.alcance : 'loja');
+  abrir('modalPromocao');
+  setTimeout(()=>document.getElementById('pmTitulo').focus(), 80);
+}
+function promoTipo(t){
+  pmTipo = t;
+  document.getElementById('pmTipoPct').classList.toggle('ativo', t==='pct');
+  document.getElementById('pmTipoValor').classList.toggle('ativo', t==='valor');
+  document.getElementById('pmValorRot').textContent = t==='pct' ? 'Desconto (%)' : 'Desconto por unidade (R$)';
+}
+function promoAlcance(a){
+  pmAlcance = a;
+  document.getElementById('pmAlcLoja').classList.toggle('ativo', a==='loja');
+  document.getElementById('pmAlcCat').classList.toggle('ativo', a==='categorias');
+  document.getElementById('pmCategoriasBloco').style.display = a==='categorias' ? '' : 'none';
+}
+function salvarPromocao(){
+  const titulo = val('pmTitulo').trim(), valor = parseFloat(val('pmValor'));
+  const inicio = val('pmInicio'), fim = val('pmFim'), ativa = document.getElementById('pmAtiva').checked;
+  const categorias = [...document.querySelectorAll('#pmCategorias input:checked')].map(i=>i.value);
+  if(!titulo){ toast('Dê um título à promoção (ex: Black Friday 2026).'); document.getElementById('pmTitulo').focus(); return; }
+  if(isNaN(valor) || valor<=0){ toast('Informe o desconto.'); document.getElementById('pmValor').focus(); return; }
+  if(pmTipo==='pct' && valor>=100){ toast('O desconto em % precisa ser menor que 100.'); return; }
+  if(pmAlcance==='categorias' && !categorias.length){ toast('Escolha ao menos uma categoria.'); return; }
+  if(inicio && fim && fim<inicio){ toast('A data de fim é antes da de início.'); return; }
+  const dados = { titulo:titulo.slice(0,60), alcance:pmAlcance, categorias: pmAlcance==='categorias' ? categorias : [], tipo:pmTipo,
+                  valor:Math.round(valor*100)/100, inicio, fim, ativa };
+  const gravar = ()=>{
+    estado.promocoes = estado.promocoes || [];
+    if(pmEditando){ const pr = estado.promocoes.find(x=>x.id===pmEditando); if(pr) Object.assign(pr, dados); }
+    else estado.promocoes.push({ id:uid(), ...dados });
+    salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual();
+    toast(pmEditando ? 'Promoção atualizada.' : 'Promoção criada.');
+  };
+  // promoção ligada: exige a senha do gerente
+  if(ativa) pedirSenha(gravar, `Salvar a promoção ligada “${dados.titulo}” (${frasePromo(dados)}). Digite a senha do gerente.`);
+  else gravar();
+}
+function excluirPromocao(){
+  const pr = (estado.promocoes||[]).find(x=>x.id===pmEditando); if(!pr) return;
+  pedirConfirmacao(`Excluir a promoção “${pr.titulo}”? As vendas já feitas com ela continuam nas Métricas.`, ()=>{
+    estado.promocoes = estado.promocoes.filter(x=>x.id!==pr.id);
+    salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual(); toast('Promoção excluída.');
+  }, 'Excluir promoção');
+}
+
+/* =========================================================
+   TELA DO CLIENTE (2º monitor) — 2.4.0
+   O PDV abre cliente.html numa janela separada (o caixa arrasta para o monitor do cliente e põe em
+   tela cheia). As duas janelas conversam pelo BroadcastChannel, no próprio computador: sem internet.
+   A tela do cliente só desenha o que recebe: nunca vê custo, estoque ou botões.
+   ========================================================= */
+const canalCliente = ('BroadcastChannel' in window) ? new BroadcastChannel('china-engine-cliente') : null;
+let janelaCliente = null, clienteVistoEm = 0;
+function telaClienteAberta(){ return (janelaCliente && !janelaCliente.closed) || (Date.now()-clienteVistoEm < 8000); }
+async function abrirTelaCliente(){
+  if(!canalCliente){ toast('Este navegador não permite a tela do cliente. Use o Chrome ou o Edge.'); return; }
+  let recursos = 'popup=yes,width=1280,height=800';
+  // Chrome/Edge: com permissão, já abre a janela no outro monitor
+  try{
+    if('getScreenDetails' in window){
+      const tel = await window.getScreenDetails();
+      const outra = tel.screens.find(t=>t!==tel.currentScreen);
+      if(outra) recursos = `popup=yes,left=${outra.availLeft},top=${outra.availTop},width=${outra.availWidth},height=${outra.availHeight}`;
+    }
+  }catch(e){}
+  janelaCliente = window.open('cliente.html', 'china-engine-cliente', recursos);
+  if(!janelaCliente){ toast('O navegador bloqueou a janela. Permita pop-ups para este site e tente de novo.'); return; }
+  setTimeout(()=>{ telaClienteEnviar(); renderPdv(); }, 800);
+}
+function telaClienteDados(){
+  const r = pdvResumo(), v = pdvVisor;
+  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? (()=>{ const p = prod(v.pid), pr = promoDoProduto(p);
+    return { nome:p.nome, marca:p.marca||'', foto:p.foto||'', preco:p.preco||0, precoPromo: pr ? cent(p.preco-pr.descUnit) : null,
+             promo: pr ? `${pr.promo.titulo} · ${rotuloPromoCurto(pr.promo)}` : '', consulta: v.modo==='consulta' }; })() : null;
+  return {
+    tipo:'estado', faz: sandbox.ativo,
+    fase: v.tipo==='concluida' ? 'concluida' : pdv.ativa ? 'venda' : (prodVisor ? 'consulta' : 'livre'),
+    produto: prodVisor,
+    itens: r.linhas.map(l=>({ nome:l.p.nome, qtd:l.it.qtd, unit:l.unitPromo, total:l.liquido, promo:!!l.promo })),
+    subtotal:r.bruto, descontos:cent(r.bruto-r.total), total:r.total, unidades:r.unidades,
+    concluida: v.tipo==='concluida' ? { total:v.total, unidades:v.unidades, pagamento:nomePagamento(v.pagamento) } : null,
+    promocoes: promosVigentes().map(pr=>({ titulo:pr.titulo, frase:frasePromo(pr) }))
+  };
+}
+function telaClienteEnviar(){ if(canalCliente) try{ canalCliente.postMessage(telaClienteDados()); }catch(e){} }
+if(canalCliente) canalCliente.onmessage = e=>{
+  if(e.data && e.data.tipo==='oi'){   // a tela do cliente acabou de abrir (ou recarregou): manda o estado atual
+    const novo = !telaClienteAberta(); clienteVistoEm = Date.now(); telaClienteEnviar();
+    if(novo && viewAtual==='pdv') renderPdv();
+  }
+};
+
+/* =========================================================
+   MENU LATERAL RECOLHIDO (PC) — 2.4.0. A escolha fica salva neste computador.
+   ========================================================= */
+const MENU_CHAVE = 'chinatown_menu_recolhido';
+function menuRecolher(recolher){
+  document.body.classList.toggle('menu-recolhido', recolher);
+  try{ if(recolher) localStorage.setItem(MENU_CHAVE,'1'); else localStorage.removeItem(MENU_CHAVE); }catch(e){}
+  setTimeout(()=>{ if(viewAtual==='desempenho') renderDesempenho(); }, 220);   // gráficos acompanham a nova largura
+}
+try{ if(localStorage.getItem(MENU_CHAVE)==='1') document.body.classList.add('menu-recolhido'); }catch(e){}
+
 /* ===== Início ===== */
-document.getElementById('versao').textContent = 'v'+VERSAO;
+document.getElementById('versao').textContent = VERSAO;   // a versão aparece só em Configurações
 render();
 atualizarAlertas();
 mostrarView('pdv');

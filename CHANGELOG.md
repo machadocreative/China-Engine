@@ -32,6 +32,121 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.4.0] - 2026-11-12
+
+### Adicionado
+
+- **Promoções** (em Configurações, logo abaixo de Categorias):
+  - Cada promoção tem título (ex.: "Black Friday 2026"), desconto em % ou em R$ por unidade, alcance (loja toda ou categorias escolhidas), data de início e de fim, e uma chave para ligar e desligar.
+  - O status aparece na lista: "Valendo", "Começa em…", "Encerrada em…" ou "Desligada".
+  - Para ligar uma promoção, ou salvar uma que já está ligada, é preciso a senha do gerente.
+  - No PDV o desconto entra sozinho quando o produto é lido. O visor e a tabela mostram o preço cheio riscado e o selo da promoção.
+  - Se duas promoções valem para o mesmo produto, vale a de maior desconto (elas não se somam).
+  - Desconto manual em cima de um produto que já está em promoção pede duas confirmações antes da senha do gerente.
+  - "Registrar saída" no Estoque já sugere o preço da promoção. Nesse caso não pede senha, e a venda também conta para a promoção.
+  - No Estoque, os produtos em promoção têm um selo com o desconto.
+  - Nas Métricas há um novo bloco "Promoções", com o faturamento, o desconto dado, as unidades e as vendas de cada promoção no período.
+  - As promoções entram no backup e na sincronização.
+- **Tela do cliente (2º monitor):**
+  - No PDV do PC, com o caixa livre, o link "Abrir tela do cliente" abre uma janela para o monitor virado para o cliente. Arraste a janela para esse monitor e use "Tela cheia" (ou clique duas vezes). No Chrome e no Edge, se o navegador tiver permissão, a janela já abre no outro monitor.
+  - A tela acompanha o caixa em tempo real: produto lido, itens, totais e quanto o cliente economizou.
+  - Ao concluir a venda, mostra uma animação de agradecimento com o mascote e confete, junto com o QR code e o convite para seguir @chinatownimports no Instagram.
+  - Com o caixa livre, mostra as boas-vindas, as promoções valendo e o QR code.
+  - Nunca mostra custo, estoque nem botões. Funciona no próprio computador, sem internet.
+- **Duplicar registro:** nova opção nas ações rápidas do produto, no Estoque. Abre o cadastro de Novo produto já preenchido (nome com "(cópia)", marca, categoria, preço, estoque mínimo e foto), sem código de barras e com SKU novo.
+- **Recolher o menu lateral (PC):** o botão « no topo do menu esconde o menu inteiro. O ☰ no cabeçalho traz ele de volta, e a escolha fica salva no computador.
+
+### Alterado
+
+- **PDV no estilo caixa de supermercado (opção B):**
+  - No PC, com a venda em andamento, o visor vira uma faixa no alto, com foto, nome e preço grande.
+  - Abaixo do visor, o campo de leitura e a tabela dos itens formam um só cartão, com uma linha por item e as colunas Produto, Qtd, Unit. e Total.
+  - À direita ficam os totais e os botões, com "Finalizar venda" grande no fim.
+  - Com o caixa livre, o visor ocupa a tela, com o campo de leitura e "Iniciar venda" embaixo.
+  - No celular, a ordem é visor, itens, totais e campo de leitura, e as ações continuam no ☰.
+- **Avisos rápidos no PDV (PC):** durante a venda, aparecem embaixo, sobre a tabela, para não cobrir o visor.
+- **Modais com rolagem:** os botões do rodapé ficam sempre à vista.
+
+### Corrigido
+
+- **Ativar notificações:** se o arquivo `sw.js` não for encontrado no site, a mensagem de erro diz isso e explica como corrigir. Antes, aparecia só um erro genérico.
+
+---
+
+## [2.3.1] - 2026-11-11
+
+### Alterado
+
+- **Totais do PDV:** o "Subtotal" passa a mostrar a soma dos preços cheios. Logo abaixo vem uma linha "Descontos", que junta os descontos dos itens e o da venda toda, e por fim o "Total". Assim fica visível quando houve desconto em algum item, o que antes não aparecia no resumo. Para mudar ou tirar o desconto da venda, use "Aplicar desconto" (F8).
+- **Desconto num item:** quando é em reais, aparece só o valor ("−R$ 10,00"), sem repetir entre parênteses. A porcentagem continua aparecendo quando o desconto é em % ("−R$ 3,00 (10%)").
+- **Janela do desconto na venda:** o texto agora explica que o desconto incide sobre o valor já com os descontos dos itens.
+- **Cabeçalho:** saiu o subtítulo "Chinatown Imports" abaixo do título do módulo, no PC e no celular. O nome da loja já aparece junto do logo. No PC, o cabeçalho e o topo do menu lateral passaram a ter a mesma altura (64px).
+
+---
+
+## [2.3.0] - 2026-11-10
+
+### Adicionado
+
+- **Configurações no menu lateral (PC):** virou um item do menu lateral. No celular, continua na engrenagem do cabeçalho.
+- **Chave do Modo Faz-de-Conta no PC:** fica no pé do menu lateral e mostra se o modo está ligado. Ela funciona junto com a chave de Configurações.
+- **Campo de leitura do PDV:** o contorno pulsa de leve, para ficar mais fácil de achar. Quem ativou "reduzir movimento" no sistema vê o contorno fixo.
+- **Movimentação avulsa (Histórico):** o Histórico ganhou o botão ⊕ de ações rápidas, por enquanto com uma ação, "Inserir movimentação avulsa". Ela registra receitas que não passam pelo estoque, como xerox, impressão, fichas de jogo, reparos ou a venda de um produto sem cadastro.
+  - **Campos:** data, breve descrição, tipo (Serviço ou Produto), valor e forma de pagamento.
+  - **No Histórico:** aparece com o selo verde "Avulsa", a forma de pagamento, a descrição e o tipo na coluna Categoria. Entra no saldo do dia, e o filtro Tipo ganhou a opção "Avulsa".
+  - **Edição:** toque longo, com a senha do gerente. Dá para corrigir ou excluir.
+  - **Nas Métricas:** entra no faturamento, nas formas de pagamento, nos dias da semana e nas melhores datas. Em "Vendas por categoria" aparece como "Serviços" ou "Produtos avulsos". Não entra no ranking de produtos mais vendidos. Como não tem custo informado, conta inteira no lucro, e uma nota avisa quanto do período veio de avulsas.
+  - **Outros aparelhos:** recebem a notificação de "Movimentação avulsa", como numa venda.
+  - **Dados:** ficam em `avulsas`, junto do estoque. Vão no backup e na sincronização e nunca mexem no estoque.
+
+### Alterado
+
+- **Desempenho → Métricas:** o módulo mudou de nome no menu, no título da tela e nos textos do app.
+- **Sandbox → Modo Faz-de-Conta:** a pedido do gerente, o modo de teste mudou de nome na faixa amarela, em Configurações, no menu lateral e nos avisos.
+- **PDV com o caixa livre:** a tela mostra só o visor, o campo de leitura e "Iniciar venda (F2)". A leitura de um código nesse estado continua sendo consulta de preço. "Consultar preço (F4)" volta a aparecer depois que a venda começa, e o menu ☰ do celular segue a mesma regra.
+- **Menu lateral do PC:** passa a ter 350px de largura. Em telas de PC mais estreitas, até 1279px, fica com 270px para o PDV continuar em duas colunas.
+- **Categorias de produtos:** a lista voltou a ficar num modal, aberto pelo botão "Gerenciar categorias" em Configurações. O campo de nova categoria fica fixo no topo do modal e só a lista rola.
+- **Nova ordem das Configurações:** Categorias, Notificações de venda, Sincronização na nuvem, Backup dos dados, Senha do gerente, Modo Faz-de-Conta e Financeiro.
+- **Número da versão:** saiu do cabeçalho e agora aparece só no fim de Configurações.
+
+---
+
+## [2.2.0] - 2026-11-10
+
+### Adicionado
+
+- **Histórico agrupado:** os produtos de uma mesma venda do PDV, ou de uma mesma compra em lote, aparecem juntos num só bloco.
+  - O bloco tem um selo de tipo, a forma de pagamento, o horário (ou o fornecedor, na compra) e o total da operação. Embaixo vêm os produtos, em linhas mais leves.
+  - O toque longo num produto continua abrindo a edição.
+  - As compras em lote passam a guardar a identificação do lote, mas só as feitas a partir desta versão aparecem agrupadas. Registros antigos continuam um por linha.
+- **Subtotais do dia no Histórico:** quando o dia tem entradas e saídas de dinheiro, aparecem "Entradas" e "Saídas" ao lado do "Saldo no dia".
+- **Desempenho depois da venda:** a tela de venda concluída mostra um link para o Desempenho.
+- **Menu ☰ no PDV (celular e tablet):** reúne Iniciar venda, Consultar preço, Aplicar desconto, Finalizar venda e Cancelar venda, no mesmo estilo do botão ⊕.
+- **Menu lateral no PC:** em telas com mais de 900px, a navegação vira um menu lateral à esquerda, com ícone e nome lado a lado e o logo da loja no topo. A barra inferior fica só no celular e no tablet em pé.
+- **Atalho para o Financeiro em Ajustes:** novo bloco "Financeiro (em pausa)".
+
+### Alterado
+
+- **PDV no celular e no tablet:** os botões saíram da tela e foram para o menu ☰. O campo de leitura do código de barras desceu para depois da lista de itens e do total.
+- **Comemoração da venda:** some sozinha depois de 15 segundos, e o caixa volta a ficar livre.
+- **Estoque:**
+  - os filtros e o cabeçalho da tabela ficam fixos, e só a lista de produtos rola;
+  - os filtros seguem o mesmo visual do Histórico: Categoria, Ordenar e Crescente/Decrescente em chips, com a busca à direita.
+- **Valores no Histórico e no Painel do Produto:**
+  - o total fica maior e em destaque;
+  - quando a movimentação é de 1 unidade, o valor unitário não se repete embaixo.
+- **Botão ⊕:** aparece só no Estoque, com Novo produto e Nova compra em lote.
+- **Navegação:** fica com PDV, Estoque, Histórico e Desempenho.
+
+### Removido
+
+- Coluna e ordenação por **custo médio** na lista do Estoque. É uma informação sensível; ela continua no Painel do Produto.
+- "Nova venda" do botão ⊕. A venda é feita pelo PDV.
+- Botão ⊕ da tela Histórico.
+- **Financeiro** da navegação principal. O módulo continua acessível pelo atalho em Ajustes.
+
+---
+
 ## [2.1.0] - 2026-11-10
 
 ### Adicionado
@@ -620,6 +735,9 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
+[2.3.1]: #
+[2.3.0]: #
+[2.2.0]: #
 [2.1.0]: #
 [2.0.0]: #
 [1.0.0]: #
