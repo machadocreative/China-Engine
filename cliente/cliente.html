@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chinatown Imports — Tela do cliente</title>
-<link rel="icon" href="icones/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="../imagens/icones/favicon.ico" sizes="16x16 32x32 48x48">
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -147,7 +147,7 @@ main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
 </head>
 <body>
 <div class="cl-topo">
-  <img src="Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
+  <img src="../imagens/Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
   <b>Chinatown Imports</b>
   <span class="cl-faz" id="clFaz" hidden>Demonstração</span>
 </div>
@@ -196,7 +196,7 @@ function desenhar(d){
   if(d.fase==='concluida' && d.concluida){
     el.innerHTML = `<div class="cl-fim">
       <div class="cl-obrigado">
-        <img src="icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <img src="../imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
         <h1>Obrigado pela <span>compra!</span></h1>
         <p>Total pago: <b>${fmt(d.concluida.total)}</b> · ${esc(d.concluida.pagamento)}</p>
         <p>Volte sempre!</p>
@@ -234,7 +234,7 @@ function desenhar(d){
     const promos = d.promocoes||[];
     el.innerHTML = `<div class="cl-livre">
       <div class="cl-cartao cl-boas">
-        <div class="cl-boas-topo"><img src="icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <div class="cl-boas-topo"><img src="../imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
           <h1>Bem-vindo à<br><span>Chinatown Imports!</span></h1></div>
         ${promos.length ? `<div class="cl-promos"><div class="cl-promos-rot">Promoções de hoje</div>${promos.slice(0,3).map(p=>`
           <div class="cl-promo"><div><b>${esc(p.titulo)}</b><span>${esc(p.frase)}</span></div></div>`).join('')}</div>`

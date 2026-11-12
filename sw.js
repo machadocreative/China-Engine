@@ -14,8 +14,8 @@ self.addEventListener('push', e => {
     await self.registration.showNotification(d.titulo || 'China Engine', {
       body: d.corpo || '',
       tag: d.tag || undefined,
-      icon: 'icones/icone-192.png',
-      badge: 'icones/icone-selo-96.png',
+      icon: 'imagens/icones/icone-192.png',
+      badge: 'imagens/icones/icone-selo-96.png',
       data: { url: self.registration.scope }
     });
     const janelas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

@@ -171,7 +171,7 @@ function render(){
 
   if(estado.produtos.length===0){
     cont.innerHTML = `<div class="vazio">
-      <img src="Chinego_Compras.png" alt="" onerror="this.style.display='none'">
+      <img src="imagens/Chinego_Compras.png" alt="" onerror="this.style.display='none'">
       <h3>Seu estoque está vazio</h3>
       <p>Clique em “+ Novo produto” para começar a cadastrar.</p>
     </div>`;
@@ -826,7 +826,7 @@ function pdvVisorHtml(){
     return `<div class="pdv-visor-in concluida">
       <div class="pdv-selo">Venda concluída</div>
       <div class="pdv-msg pdv-festa">
-        <img class="pdv-mascote" src="icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <img class="pdv-mascote" src="imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
         <em>Parabéns pela venda!</em>
         <b>${fmtBRL(v.total)}</b>
         <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
@@ -3830,7 +3830,7 @@ async function abrirTelaCliente(){
       if(outra) recursos = `popup=yes,left=${outra.availLeft},top=${outra.availTop},width=${outra.availWidth},height=${outra.availHeight}`;
     }
   }catch(e){}
-  janelaCliente = window.open('cliente.html', 'china-engine-cliente', recursos);
+  janelaCliente = window.open('cliente/cliente.html', 'china-engine-cliente', recursos);
   if(!janelaCliente){ toast('O navegador bloqueou a janela. Permita pop-ups para este site e tente de novo.'); return; }
   setTimeout(()=>{ telaClienteEnviar(); renderPdv(); }, 800);
 }
