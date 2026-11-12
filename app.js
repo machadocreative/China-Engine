@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.4.1';
+const VERSAO = '2.5.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -849,7 +849,12 @@ function pdvVisorHtml(){
 function renderPdv(){
   if(!document.getElementById('pdvVisor')) return;
   const r = pdvResumo();
-  document.getElementById('pdvVisor').innerHTML = pdvVisorHtml();
+  // ícone Expandir no canto do título do visor: abre a tela do cliente no 2º monitor (só PC)
+  const clienteAberta = telaClienteAberta();
+  document.getElementById('pdvVisor').innerHTML = pdvVisorHtml() + `
+    <button type="button" class="pdv-cliente-btn so-pc${clienteAberta?' ligado':''}" onclick="abrirTelaCliente()"
+      title="${clienteAberta ? 'Tela do cliente aberta (clique para trazer de volta)' : 'Abrir a tela do cliente (2º monitor)'}" aria-label="Abrir a tela do cliente">
+      <svg viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/><path d="M14 4h6v6M20 4l-9 9"/></svg></button>`;
   document.querySelector('.pdv').classList.toggle('ativa', pdv.ativa);
 
   // coluna da direita (PC): botões empilhados, "Finalizar venda" grande no fim
@@ -858,8 +863,7 @@ function renderPdv(){
     <button class="pdv-btn" onclick="abrirDesconto('venda')"><span>Aplicar desconto</span><kbd>F8</kbd></button>
     <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>
     <button class="pdv-btn primario pdv-finalizar" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>` : `
-    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>
-    <button type="button" class="pdv-link-cliente so-pc" onclick="abrirTelaCliente()">${telaClienteAberta() ? '✓ Tela do cliente aberta' : 'Abrir tela do cliente (2º monitor)'}</button>`;   // caixa livre: toda leitura já é consulta de preço
+    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>`;   // caixa livre: toda leitura já é consulta de preço
 
   // menu ☰ (celular/tablet): mesmas ações dos botões
   const ic = d=>`<i><svg viewBox="0 0 24 24">${d}</svg></i>`;
@@ -3821,6 +3825,7 @@ let janelaCliente = null, clienteVistoEm = 0;
 function telaClienteAberta(){ return (janelaCliente && !janelaCliente.closed) || (Date.now()-clienteVistoEm < 8000); }
 async function abrirTelaCliente(){
   if(!canalCliente){ toast('Este navegador não permite a tela do cliente. Use o Chrome ou o Edge.'); return; }
+  if(janelaCliente && !janelaCliente.closed){ janelaCliente.focus(); return; }
   let recursos = 'popup=yes,width=1280,height=800';
   // Chrome/Edge: com permissão, já abre a janela no outro monitor
   try{
@@ -3834,11 +3839,15 @@ async function abrirTelaCliente(){
   if(!janelaCliente){ toast('O navegador bloqueou a janela. Permita pop-ups para este site e tente de novo.'); return; }
   setTimeout(()=>{ telaClienteEnviar(); renderPdv(); }, 800);
 }
+/* Só o que o cliente pode ver de um produto: nada de custo nem estoque */
+function produtoParaCliente(p){
+  const pr = promoDoProduto(p);
+  return { nome:p.nome, marca:p.marca||'', foto:p.foto||'', preco:p.preco||0, precoPromo: pr ? cent(p.preco-pr.descUnit) : null,
+           promo: pr ? `${pr.promo.titulo} · ${rotuloPromoCurto(pr.promo)}` : '' };
+}
 function telaClienteDados(){
   const r = pdvResumo(), v = pdvVisor;
-  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? (()=>{ const p = prod(v.pid), pr = promoDoProduto(p);
-    return { nome:p.nome, marca:p.marca||'', foto:p.foto||'', preco:p.preco||0, precoPromo: pr ? cent(p.preco-pr.descUnit) : null,
-             promo: pr ? `${pr.promo.titulo} · ${rotuloPromoCurto(pr.promo)}` : '', consulta: v.modo==='consulta' }; })() : null;
+  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? { ...produtoParaCliente(prod(v.pid)), consulta: v.modo==='consulta' } : null;
   return {
     tipo:'estado', faz: sandbox.ativo,
     fase: v.tipo==='concluida' ? 'concluida' : pdv.ativa ? 'venda' : (prodVisor ? 'consulta' : 'livre'),
@@ -3851,9 +3860,22 @@ function telaClienteDados(){
 }
 function telaClienteEnviar(){ if(canalCliente) try{ canalCliente.postMessage(telaClienteDados()); }catch(e){} }
 if(canalCliente) canalCliente.onmessage = e=>{
-  if(e.data && e.data.tipo==='oi'){   // a tela do cliente acabou de abrir (ou recarregou): manda o estado atual
+  const d = e.data || {};
+  if(d.tipo==='oi'){   // a tela do cliente acabou de abrir (ou recarregou): manda o estado atual
     const novo = !telaClienteAberta(); clienteVistoEm = Date.now(); telaClienteEnviar();
     if(novo && viewAtual==='pdv') renderPdv();
+  }
+  // "Consultar preço" tocado na tela do cliente: responde só com nome, foto e preço. Não mexe na venda do caixa.
+  else if(d.tipo==='consulta'){
+    const q = String(d.codigo||'').trim(), ql = q.toLowerCase();
+    const p = q && (estado.produtos.find(x=>!x.arquivado && ((x.codigoBarras && x.codigoBarras===q) || (x.codigo && x.codigo.toLowerCase()===ql)))
+                  || (()=>{ const l = pdvBuscar(q).filter(x=>!x.arquivado); return l.length===1 ? l[0] : null; })());
+    try{ canalCliente.postMessage({ tipo:'consultaResp', codigo:q, produto: p && p.preco>0 ? produtoParaCliente(p) : null }); }catch(err){}
+  }
+  // Leitura feita com a janela do cliente em foco (o leitor USB digita na janela ativa): vale como leitura no caixa
+  else if(d.tipo==='leitura' && d.codigo){
+    if(viewAtual!=='pdv') mostrarView('pdv');
+    pdvCodigoLido(String(d.codigo).trim());
   }
 };
 

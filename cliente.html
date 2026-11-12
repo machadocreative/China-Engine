@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chinatown Imports — Tela do cliente</title>
+<link rel="icon" href="../imagens/icones/favicon.ico" sizes="16x16 32x32 48x48">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  TELA DO CLIENTE (2º monitor) — China Engine 2.4.0
+  Aberta pelo PDV ("Abrir tela do cliente"). Recebe o estado da venda pelo BroadcastChannel
+  "china-engine-cliente", no próprio computador (não usa internet nem guarda dados).
+  Só mostra o que o cliente pode ver: produto lido, itens, totais, agradecimento, promoções e o Instagram.
+-->
+<style>
+:root{
+  --amarelo:#F7C600;--amarelo-claro:#FFF3BF;--preto:#1A1A17;--vermelho:#E0241B;--verde:#2E7D32;
+  --bg:#F4F1E8;--card:#FFFFFF;--borda:rgba(26,26,23,.12);--texto:#1A1A17;--texto-sec:#74726A;
+  --display:'Bricolage Grotesque',sans-serif;--corpo:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--corpo);background:var(--bg);color:var(--texto);font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden;cursor:default;
+  font-size:clamp(16px,1.25vw,24px);
+}
+/* topo */
+.cl-topo{
+  flex-shrink:0;display:flex;align-items:center;gap:16px;padding:0 3vw;height:clamp(64px,8vh,96px);
+  background:var(--preto);color:#fff;border-bottom:5px solid var(--amarelo);
+}
+.cl-topo img{height:70%;aspect-ratio:1;border-radius:50%;background:var(--amarelo);object-fit:contain}
+.cl-topo b{font-family:var(--display);font-weight:800;font-size:clamp(22px,2vw,38px)}
+.cl-topo-dir{margin-left:auto;display:flex;align-items:center;gap:16px;height:100%}
+.cl-topo .cl-faz{font-size:clamp(14px,1vw,18px);font-weight:700;color:var(--preto);background:var(--amarelo);padding:4px 12px;border-radius:999px}
+.cl-tela-cheia{
+  position:fixed;bottom:14px;right:14px;z-index:20;border:1px solid rgba(255,255,255,.3);background:rgba(26,26,23,.85);color:#fff;
+  font:600 15px var(--corpo);padding:8px 14px;border-radius:10px;cursor:pointer;opacity:0;transition:opacity .2s;
+}
+body:hover .cl-tela-cheia{opacity:1}
+:fullscreen .cl-tela-cheia{display:none}
+/* Consultar preço (touch): botão grande no topo e tela de consulta */
+.cl-consultar{
+  display:flex;align-items:center;gap:12px;height:76%;min-height:52px;padding:0 clamp(18px,1.8vw,30px);border:none;border-radius:14px;
+  background:var(--amarelo);color:var(--preto);font:800 clamp(18px,1.5vw,28px) var(--display);cursor:pointer;touch-action:manipulation;
+}
+.cl-consultar svg{width:1.2em;height:1.2em;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
+.cl-consultar:active{transform:scale(.97)}
+body.consultando .cl-consultar{visibility:hidden}
+.cl-cons{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3vh;text-align:center;min-width:0}
+.cl-cons-card{width:min(100%,1100px);display:flex;flex-direction:column;align-items:center;gap:2.4vh;padding:5vh 4vw}
+.cl-cons-ic{width:clamp(110px,18vh,200px);height:auto;stroke:var(--preto);fill:none;stroke-width:1.6;stroke-linecap:round;animation:cl-pulsa 1.6s ease-in-out infinite}
+.cl-cons h1{font-family:var(--display);font-weight:800;font-size:clamp(32px,3.6vw,72px);line-height:1.05}
+.cl-cons p{font-size:clamp(17px,1.5vw,28px);color:var(--texto-sec)}
+.cl-cons input{
+  width:min(100%,520px);font:600 clamp(18px,1.4vw,26px) var(--corpo);text-align:center;padding:14px 18px;border-radius:14px;
+  border:2px solid var(--borda);background:#fff;outline:none;
+}
+.cl-cons input:focus{border-color:var(--preto)}
+.cl-cons .cl-prod{width:min(100%,1100px);flex-direction:column;text-align:center;padding:4vh 3vw}
+.cl-cons .cl-foto{width:clamp(140px,28vh,360px)}
+.cl-cons .cl-precos{text-align:center}
+.cl-cons .cl-preco{font-size:clamp(56px,7vw,140px)}
+.cl-cons .cl-nome{font-size:clamp(28px,3vw,60px)}
+.cl-cons-nao h1{color:var(--vermelho)}
+.cl-cons-botoes{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.cl-cons-botoes button{
+  min-height:64px;min-width:220px;padding:0 28px;border-radius:14px;font:700 clamp(18px,1.4vw,26px) var(--corpo);cursor:pointer;
+  border:2px solid var(--preto);background:#fff;color:var(--preto);touch-action:manipulation;
+}
+.cl-cons-botoes button.prim{background:var(--preto);color:#fff}
+@keyframes cl-pulsa{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:.75}}
+main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
+.cl-cartao{background:var(--card);border:1px solid var(--borda);border-radius:20px;overflow:hidden}
+
+/* Instagram: QR + chamada */
+.cl-insta{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:1.4vh;padding:2.6vh 2vw}
+.cl-insta .qr{width:100%;max-width:clamp(150px,22vh,320px);height:auto;display:block}
+.cl-insta-cta{font-family:var(--display);font-weight:800;font-size:clamp(20px,1.8vw,36px);line-height:1.1}
+.cl-insta-cta em{font-style:normal;display:block;color:var(--vermelho)}
+.cl-insta small{font-size:clamp(14px,1vw,18px);color:var(--texto-sec)}
+.cl-insta-ic{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:clamp(15px,1.1vw,20px)}
+.cl-insta-ic svg{width:1.4em;height:1.4em;stroke:currentColor;fill:none;stroke-width:1.8}
+
+/* ----- Livre: boas-vindas + promoções ----- */
+.cl-livre{flex:1;display:flex;gap:2.4vw;min-height:0}
+.cl-boas{flex:1;display:flex;flex-direction:column;justify-content:center;gap:2.4vh;padding:4vh 3.4vw;min-width:0}
+.cl-boas-topo{display:flex;align-items:center;gap:2vw}
+.cl-boas-topo img{width:clamp(90px,14vh,180px);height:auto;animation:cl-flutua 4s ease-in-out infinite}
+.cl-boas h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,4.2vw,84px);line-height:1.02;letter-spacing:-.5px}
+.cl-boas h1 span{color:var(--vermelho)}
+.cl-boas p{font-size:clamp(17px,1.5vw,28px);color:var(--texto-sec)}
+.cl-promos{display:flex;flex-direction:column;gap:1.4vh}
+.cl-promos-rot{font-size:clamp(14px,1vw,18px);font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--vermelho)}
+.cl-promo{display:flex;align-items:center;gap:16px;padding:1.6vh 1.6vw;border-radius:16px;background:var(--preto);color:#fff;border-left:8px solid var(--vermelho)}
+.cl-promo b{font-family:var(--display);font-weight:800;font-size:clamp(20px,1.9vw,38px);color:var(--amarelo);line-height:1.1}
+.cl-promo span{display:block;font-size:clamp(15px,1.25vw,24px)}
+.cl-lado{width:clamp(280px,27vw,520px);flex-shrink:0;display:flex;flex-direction:column;gap:2vh}
+.cl-lado .cl-insta{flex:1}
+
+/* ----- Produto lido (consulta de preço / último item) ----- */
+.cl-prod{display:flex;align-items:center;gap:2vw;padding:2.4vh 2vw;min-width:0}
+.cl-foto{flex-shrink:0;width:clamp(90px,16vh,220px);aspect-ratio:1;border-radius:16px;background:var(--bg);border:1px solid var(--borda);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.cl-foto img{width:100%;height:100%;object-fit:contain;background:#fff}
+.cl-foto svg{width:42%;height:42%;stroke:#C4C0B4;fill:none;stroke-width:1.2}
+.cl-prod-info{flex:1;min-width:0}
+.cl-marca{font-size:clamp(14px,1vw,20px);font-weight:600;color:var(--texto-sec);text-transform:uppercase;letter-spacing:.6px}
+.cl-nome{font-family:var(--display);font-weight:700;font-size:clamp(22px,2.4vw,48px);line-height:1.1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cl-precos{text-align:right;flex-shrink:0}
+.cl-de{font-size:clamp(16px,1.4vw,28px);color:var(--texto-sec);text-decoration:line-through;font-weight:600}
+.cl-preco{font-family:var(--display);font-weight:800;font-size:clamp(40px,4.6vw,96px);line-height:1;letter-spacing:-1px;white-space:nowrap}
+.cl-selo{display:inline-block;margin-top:8px;padding:4px 14px;border-radius:999px;background:var(--vermelho);color:#fff;font-weight:700;font-size:clamp(14px,1.05vw,20px)}
+.cl-consulta{flex:1;display:flex;flex-direction:column;gap:2vh;min-width:0;justify-content:center}
+.cl-consulta .cl-prod{flex-direction:column;text-align:center;padding:5vh 3vw}
+.cl-consulta .cl-foto{width:clamp(140px,30vh,380px)}
+.cl-consulta .cl-precos{text-align:center}
+.cl-consulta .cl-preco{font-size:clamp(56px,7vw,140px)}
+.cl-consulta .cl-nome{font-size:clamp(28px,3vw,60px)}
+
+/* ----- Venda em andamento ----- */
+.cl-venda{flex:1;display:flex;flex-direction:column;gap:2vh;min-width:0;min-height:0}
+.cl-itens{flex:1;min-height:0;display:flex;flex-direction:column}
+.cl-itens-cab{display:grid;grid-template-columns:minmax(0,1fr) 7em 9em;gap:1vw;padding:1.2vh 1.6vw;background:#F3F1EA;border-bottom:1px solid var(--borda);font-size:clamp(14px,.95vw,18px);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-sec)}
+.cl-itens-cab span:not(:first-child){text-align:right}
+.cl-itens-lista{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.cl-item{display:grid;grid-template-columns:minmax(0,1fr) 7em 9em;gap:1vw;align-items:center;padding:1.2vh 1.6vw;border-bottom:1px solid var(--borda)}
+.cl-item:first-child{background:#E5F2E6;animation:cl-entra .4s ease-out}
+.cl-item-nome{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-item-nome em{font-style:normal;margin-left:8px;font-size:.8em;font-weight:700;color:#fff;background:var(--vermelho);padding:1px 7px;border-radius:6px}
+.cl-item-q{text-align:right;color:var(--texto-sec);white-space:nowrap}
+.cl-item-t{text-align:right;font-weight:700;white-space:nowrap}
+.cl-mais{padding:1vh 1.6vw;color:var(--texto-sec);font-size:clamp(14px,1vw,18px)}
+.cl-totais{padding:2.4vh 1.8vw;display:flex;flex-direction:column;gap:.6vh;border-top:4px solid var(--preto)}
+.cl-tl{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:clamp(16px,1.3vw,26px)}
+.cl-tl span{color:var(--texto-sec)}
+.cl-tl b{font-weight:600}
+.cl-tl.desc b{color:var(--verde)}
+.cl-tl.total{margin-top:1vh;padding-top:1.2vh;border-top:1px solid var(--borda);flex-wrap:wrap}
+.cl-tl.total b{margin-left:auto}
+.cl-tl.total span{color:var(--texto);font-weight:600;font-size:clamp(20px,1.7vw,34px)}
+.cl-tl.total b{font-family:var(--display);font-weight:800;font-size:clamp(40px,3.6vw,80px);line-height:1;white-space:nowrap}
+.cl-economia{align-self:flex-end;font-weight:700;color:var(--verde);font-size:clamp(14px,1.1vw,22px)}
+
+/* ----- Venda concluída: agradecimento ----- */
+.cl-fim{flex:1;display:flex;gap:3vw;align-items:center;justify-content:center;min-width:0}
+.cl-obrigado{display:flex;flex-direction:column;align-items:center;text-align:center;gap:1.6vh;max-width:52vw}
+.cl-obrigado img{width:clamp(130px,26vh,320px);height:auto;animation:cl-pula 1s cubic-bezier(.3,1.6,.5,1) both, cl-flutua 3.4s ease-in-out 1s infinite}
+.cl-obrigado h1{font-family:var(--display);font-weight:800;font-size:clamp(44px,5.4vw,120px);line-height:1;letter-spacing:-1px;animation:cl-surge .6s ease-out .25s both}
+.cl-obrigado h1 span{color:var(--vermelho)}
+.cl-obrigado p{font-size:clamp(18px,1.6vw,32px);color:var(--texto-sec);animation:cl-surge .6s ease-out .45s both}
+.cl-obrigado p b{color:var(--texto)}
+.cl-fim .cl-insta{width:clamp(280px,26vw,480px);border:3px solid var(--preto);box-shadow:10px 10px 0 var(--amarelo);animation:cl-surge .6s ease-out .7s both}
+.cl-fim .cl-insta .qr{max-width:clamp(200px,34vh,400px)}
+.cl-fim .cl-insta-cta{font-size:clamp(24px,2.2vw,44px)}
+
+/* o mascote animado fica numa camada própria: assim o texto ao lado não é redesenhado a cada quadro
+   (no Chrome do Windows isso fazia o título "tremer" para os lados) */
+.cl-boas-topo img,.cl-obrigado img{will-change:transform;backface-visibility:hidden}
+.cl-boas h1,.cl-obrigado h1{font-synthesis:none;text-rendering:geometricPrecision}
+@keyframes cl-flutua{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes cl-pula{0%{transform:scale(.3) rotate(-12deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes cl-surge{0%{transform:translateY(18px);opacity:0}100%{transform:none;opacity:1}}
+@keyframes cl-entra{0%{background:var(--amarelo-claro)}100%{background:#E5F2E6}}
+@media (prefers-reduced-motion: reduce){ *{animation:none !important} }
+#festa{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
+
+/* tela em pé (monitor girado) ou estreita */
+@media (max-aspect-ratio: 1/1){
+  main{flex-direction:column}
+  .cl-livre,.cl-fim{flex-direction:column}
+  .cl-lado{width:auto}
+  .cl-obrigado{max-width:none}
+}
+</style>
+</head>
+<body>
+<div class="cl-topo">
+  <img src="../imagens/Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
+  <b>Chinatown Imports</b>
+  <div class="cl-topo-dir">
+    <span class="cl-faz" id="clFaz" hidden>Demonstração</span>
+    <button class="cl-consultar" onclick="consultaAbrir()"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Consultar preço</button>
+  </div>
+</div>
+<button class="cl-tela-cheia" onclick="telaCheia()">⛶ Tela cheia</button>
+<main id="cl"></main>
+<canvas id="festa"></canvas>
+
+<template id="tplQr"><svg class="qr" viewBox="-2 -2 33 33" shape-rendering="crispEdges" role="img" aria-label="QR code: linktr.ee/chinatownimports"><rect x="-2" y="-2" width="33" height="33" fill="#fff"/><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM12 0h1v1h-1zM13 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM22 0h1v1h-1zM23 0h1v1h-1zM24 0h1v1h-1zM25 0h1v1h-1zM26 0h1v1h-1zM27 0h1v1h-1zM28 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM11 1h1v1h-1zM13 1h1v1h-1zM16 1h1v1h-1zM17 1h1v1h-1zM20 1h1v1h-1zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM16 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h1v1h-1zM25 2h1v1h-1zM26 2h1v1h-1zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM12 3h1v1h-1zM14 3h1v1h-1zM15 3h1v1h-1zM17 3h1v1h-1zM19 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM25 3h1v1h-1zM26 3h1v1h-1zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM10 4h1v1h-1zM14 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM18 4h1v1h-1zM19 4h1v1h-1zM22 4h1v1h-1zM24 4h1v1h-1zM25 4h1v1h-1zM26 4h1v1h-1zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM12 5h1v1h-1zM13 5h1v1h-1zM15 5h1v1h-1zM16 5h1v1h-1zM18 5h1v1h-1zM19 5h1v1h-1zM20 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM23 6h1v1h-1zM24 6h1v1h-1zM25 6h1v1h-1zM26 6h1v1h-1zM27 6h1v1h-1zM28 6h1v1h-1zM8 7h1v1h-1zM9 7h1v1h-1zM15 7h1v1h-1zM16 7h1v1h-1zM17 7h1v1h-1zM20 7h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM7 8h1v1h-1zM10 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM15 8h1v1h-1zM16 8h1v1h-1zM17 8h1v1h-1zM18 8h1v1h-1zM22 8h1v1h-1zM25 8h1v1h-1zM27 8h1v1h-1zM28 8h1v1h-1zM1 9h1v1h-1zM4 9h1v1h-1zM8 9h1v1h-1zM12 9h1v1h-1zM13 9h1v1h-1zM14 9h1v1h-1zM15 9h1v1h-1zM17 9h1v1h-1zM18 9h1v1h-1zM19 9h1v1h-1zM20 9h1v1h-1zM22 9h1v1h-1zM23 9h1v1h-1zM24 9h1v1h-1zM28 9h1v1h-1zM1 10h1v1h-1zM4 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM10 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM13 10h1v1h-1zM16 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM21 10h1v1h-1zM24 10h1v1h-1zM26 10h1v1h-1zM27 10h1v1h-1zM0 11h1v1h-1zM2 11h1v1h-1zM5 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM10 11h1v1h-1zM15 11h1v1h-1zM16 11h1v1h-1zM18 11h1v1h-1zM19 11h1v1h-1zM22 11h1v1h-1zM24 11h1v1h-1zM28 11h1v1h-1zM1 12h1v1h-1zM2 12h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM5 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM9 12h1v1h-1zM11 12h1v1h-1zM12 12h1v1h-1zM14 12h1v1h-1zM15 12h1v1h-1zM16 12h1v1h-1zM17 12h1v1h-1zM19 12h1v1h-1zM25 12h1v1h-1zM26 12h1v1h-1zM0 13h1v1h-1zM5 13h1v1h-1zM7 13h1v1h-1zM10 13h1v1h-1zM14 13h1v1h-1zM15 13h1v1h-1zM16 13h1v1h-1zM17 13h1v1h-1zM18 13h1v1h-1zM19 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM26 13h1v1h-1zM27 13h1v1h-1zM28 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM6 14h1v1h-1zM9 14h1v1h-1zM10 14h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM18 14h1v1h-1zM19 14h1v1h-1zM20 14h1v1h-1zM22 14h1v1h-1zM24 14h1v1h-1zM26 14h1v1h-1zM27 14h1v1h-1zM28 14h1v1h-1zM0 15h1v1h-1zM1 15h1v1h-1zM4 15h1v1h-1zM7 15h1v1h-1zM10 15h1v1h-1zM12 15h1v1h-1zM14 15h1v1h-1zM15 15h1v1h-1zM16 15h1v1h-1zM19 15h1v1h-1zM21 15h1v1h-1zM22 15h1v1h-1zM23 15h1v1h-1zM27 15h1v1h-1zM0 16h1v1h-1zM1 16h1v1h-1zM2 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM7 16h1v1h-1zM9 16h1v1h-1zM11 16h1v1h-1zM14 16h1v1h-1zM16 16h1v1h-1zM18 16h1v1h-1zM20 16h1v1h-1zM23 16h1v1h-1zM24 16h1v1h-1zM25 16h1v1h-1zM27 16h1v1h-1zM1 17h1v1h-1zM3 17h1v1h-1zM5 17h1v1h-1zM7 17h1v1h-1zM8 17h1v1h-1zM11 17h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM15 17h1v1h-1zM17 17h1v1h-1zM20 17h1v1h-1zM23 17h1v1h-1zM25 17h1v1h-1zM26 17h1v1h-1zM27 17h1v1h-1zM0 18h1v1h-1zM2 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM7 18h1v1h-1zM9 18h1v1h-1zM10 18h1v1h-1zM12 18h1v1h-1zM13 18h1v1h-1zM14 18h1v1h-1zM15 18h1v1h-1zM17 18h1v1h-1zM20 18h1v1h-1zM22 18h1v1h-1zM23 18h1v1h-1zM24 18h1v1h-1zM26 18h1v1h-1zM2 19h1v1h-1zM3 19h1v1h-1zM4 19h1v1h-1zM7 19h1v1h-1zM8 19h1v1h-1zM10 19h1v1h-1zM11 19h1v1h-1zM13 19h1v1h-1zM14 19h1v1h-1zM15 19h1v1h-1zM17 19h1v1h-1zM19 19h1v1h-1zM22 19h1v1h-1zM23 19h1v1h-1zM24 19h1v1h-1zM26 19h1v1h-1zM1 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM6 20h1v1h-1zM7 20h1v1h-1zM8 20h1v1h-1zM11 20h1v1h-1zM13 20h1v1h-1zM14 20h1v1h-1zM17 20h1v1h-1zM18 20h1v1h-1zM20 20h1v1h-1zM21 20h1v1h-1zM22 20h1v1h-1zM23 20h1v1h-1zM24 20h1v1h-1zM25 20h1v1h-1zM26 20h1v1h-1zM8 21h1v1h-1zM9 21h1v1h-1zM10 21h1v1h-1zM11 21h1v1h-1zM16 21h1v1h-1zM17 21h1v1h-1zM18 21h1v1h-1zM20 21h1v1h-1zM24 21h1v1h-1zM25 21h1v1h-1zM26 21h1v1h-1zM27 21h1v1h-1zM28 21h1v1h-1zM0 22h1v1h-1zM1 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM5 22h1v1h-1zM6 22h1v1h-1zM8 22h1v1h-1zM9 22h1v1h-1zM14 22h1v1h-1zM16 22h1v1h-1zM17 22h1v1h-1zM19 22h1v1h-1zM20 22h1v1h-1zM22 22h1v1h-1zM24 22h1v1h-1zM25 22h1v1h-1zM27 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM8 23h1v1h-1zM13 23h1v1h-1zM14 23h1v1h-1zM15 23h1v1h-1zM18 23h1v1h-1zM19 23h1v1h-1zM20 23h1v1h-1zM24 23h1v1h-1zM25 23h1v1h-1zM0 24h1v1h-1zM2 24h1v1h-1zM3 24h1v1h-1zM4 24h1v1h-1zM6 24h1v1h-1zM10 24h1v1h-1zM11 24h1v1h-1zM17 24h1v1h-1zM20 24h1v1h-1zM21 24h1v1h-1zM22 24h1v1h-1zM23 24h1v1h-1zM24 24h1v1h-1zM26 24h1v1h-1zM27 24h1v1h-1zM0 25h1v1h-1zM2 25h1v1h-1zM3 25h1v1h-1zM4 25h1v1h-1zM6 25h1v1h-1zM8 25h1v1h-1zM9 25h1v1h-1zM15 25h1v1h-1zM16 25h1v1h-1zM19 25h1v1h-1zM20 25h1v1h-1zM21 25h1v1h-1zM23 25h1v1h-1zM24 25h1v1h-1zM25 25h1v1h-1zM28 25h1v1h-1zM0 26h1v1h-1zM2 26h1v1h-1zM3 26h1v1h-1zM4 26h1v1h-1zM6 26h1v1h-1zM8 26h1v1h-1zM11 26h1v1h-1zM12 26h1v1h-1zM14 26h1v1h-1zM16 26h1v1h-1zM18 26h1v1h-1zM23 26h1v1h-1zM26 26h1v1h-1zM28 26h1v1h-1zM0 27h1v1h-1zM6 27h1v1h-1zM14 27h1v1h-1zM15 27h1v1h-1zM20 27h1v1h-1zM24 27h1v1h-1zM25 27h1v1h-1zM27 27h1v1h-1zM0 28h1v1h-1zM1 28h1v1h-1zM2 28h1v1h-1zM3 28h1v1h-1zM4 28h1v1h-1zM5 28h1v1h-1zM6 28h1v1h-1zM8 28h1v1h-1zM9 28h1v1h-1zM12 28h1v1h-1zM13 28h1v1h-1zM16 28h1v1h-1zM18 28h1v1h-1zM19 28h1v1h-1zM20 28h1v1h-1zM21 28h1v1h-1zM24 28h1v1h-1zM27 28h1v1h-1z" fill="#1A1A17"/></svg></template>
+
+<script>
+/* ----- utilidades ----- */
+const fmt = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const esc = t => String(t==null?'':t).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const QR = document.getElementById('tplQr').innerHTML;
+const INSTA = '@chinatownimports';
+const icInsta = '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r=".6"/></svg>';
+const caixaFoto = '<svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>';
+
+function blocoInsta(cta){
+  return `<div class="cl-cartao cl-insta">
+    ${QR}
+    <div class="cl-insta-cta">${cta}<em>${INSTA}</em></div>
+    <span class="cl-insta-ic">${icInsta} Aponte a câmera do celular</span>
+  </div>`;
+}
+function blocoProduto(p){
+  return `<div class="cl-cartao cl-prod">
+    <div class="cl-foto">${p.foto ? `<img src="${esc(p.foto)}" alt="">` : caixaFoto}</div>
+    <div class="cl-prod-info">${p.marca?`<div class="cl-marca">${esc(p.marca)}</div>`:''}<div class="cl-nome">${esc(p.nome)}</div></div>
+    <div class="cl-precos">
+      ${p.precoPromo!=null ? `<div class="cl-de">${fmt(p.preco)}</div><div class="cl-preco">${fmt(p.precoPromo)}</div><div class="cl-selo">${esc(p.promo)}</div>`
+        : `<div class="cl-preco">${p.preco>0 ? fmt(p.preco) : '—'}</div>`}
+    </div>
+  </div>`;
+}
+
+/* ----- telas ----- */
+let ultimo = null, faseAnterior = '', ultimaChave = '';
+function desenhar(d){
+  // o PDV reenvia o estado a cada 5 s (sinal de vida): se nada mudou, não redesenha a tela
+  const chave = JSON.stringify(d);
+  if(chave===ultimaChave) return;
+  ultimaChave = chave; ultimo = d;
+  document.getElementById('clFaz').hidden = !d.faz;
+  if(cons) return;   // o cliente está consultando um preço: a tela da venda volta quando ele terminar
+  const el = document.getElementById('cl');
+  if(d.fase==='concluida' && d.concluida){
+    el.innerHTML = `<div class="cl-fim">
+      <div class="cl-obrigado">
+        <img src="../imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+        <h1>Obrigado pela <span>compra!</span></h1>
+        <p>Total pago: <b>${fmt(d.concluida.total)}</b> · ${esc(d.concluida.pagamento)}</p>
+        <p>Volte sempre!</p>
+      </div>
+      ${blocoInsta('Siga a gente no Instagram')}
+    </div>`;
+    if(faseAnterior!=='concluida') festejar();
+  } else if(d.fase==='venda'){
+    const itens = d.itens.slice().reverse(), max = 9;
+    el.innerHTML = `<div class="cl-venda">
+      ${d.produto ? blocoProduto(d.produto) : ''}
+      <div class="cl-cartao cl-itens">
+        <div class="cl-itens-cab"><span>Produto</span><span>Qtd</span><span>Total</span></div>
+        <div class="cl-itens-lista">${itens.length ? itens.slice(0,max).map(i=>`
+          <div class="cl-item"><div class="cl-item-nome">${esc(i.nome)}${i.promo?'<em>Promoção</em>':''}</div>
+            <div class="cl-item-q">${i.qtd} × ${fmt(i.unit)}</div><div class="cl-item-t">${fmt(i.total)}</div></div>`).join('')
+            + (itens.length>max ? `<div class="cl-mais">+ ${itens.length-max} item(ns) anterior(es)</div>` : '')
+          : '<div class="cl-mais" style="padding:3vh 1.6vw">Os produtos aparecem aqui conforme são registrados.</div>'}</div>
+      </div>
+    </div>
+    <div class="cl-lado">
+      <div class="cl-cartao cl-totais">
+        <div class="cl-tl"><span>Itens</span><b>${d.unidades} un.</b></div>
+        <div class="cl-tl"><span>Subtotal</span><b>${fmt(d.subtotal)}</b></div>
+        ${d.descontos>0 ? `<div class="cl-tl desc"><span>Descontos</span><b>−${fmt(d.descontos)}</b></div>` : ''}
+        <div class="cl-tl total"><span>Total</span><b>${fmt(d.total)}</b></div>
+        ${d.descontos>0 ? `<div class="cl-economia">Você economizou ${fmt(d.descontos)}!</div>` : ''}
+      </div>
+      ${blocoInsta('Siga no Instagram')}
+    </div>`;
+  } else if(d.fase==='consulta' && d.produto){
+    el.innerHTML = `<div class="cl-consulta">${blocoProduto(d.produto)}</div>
+      <div class="cl-lado">${blocoInsta('Siga no Instagram')}</div>`;
+  } else {
+    const promos = d.promocoes||[];
+    el.innerHTML = `<div class="cl-livre">
+      <div class="cl-cartao cl-boas">
+        <div class="cl-boas-topo"><img src="../imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
+          <h1>Bem-vindo à<br><span>Chinatown Imports!</span></h1></div>
+        ${promos.length ? `<div class="cl-promos"><div class="cl-promos-rot">Promoções de hoje</div>${promos.slice(0,3).map(p=>`
+          <div class="cl-promo"><div><b>${esc(p.titulo)}</b><span>${esc(p.frase)}</span></div></div>`).join('')}</div>`
+          : '<p>Pergunte ao caixa sobre as novidades da loja.</p>'}
+      </div>
+      <div class="cl-lado">${blocoInsta('Siga a gente no Instagram')}</div>
+    </div>`;
+  }
+  faseAnterior = d.fase;
+}
+
+/* ----- confete (igual ao do PDV) ----- */
+let festaAnim = null;
+function festejar(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.getElementById('festa'), ctx = cv.getContext('2d'), dpr = Math.min(devicePixelRatio||1,2);
+  const W = innerWidth, H = innerHeight; cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  const cores = ['#F7C600','#E0241B','#1A1A17','#2E7D32','#FFFFFF','#FFD84D'];
+  const pecas = Array.from({length:Math.min(260,Math.round(W/6))},(_,i)=>{
+    const esq = i%2===0, ang = (esq?-60:-120)+(Math.random()*30-15), vel = H*.019+Math.random()*H*.012;
+    return { x:esq?-10:W+10, y:H*.92, vx:Math.cos(ang*Math.PI/180)*vel, vy:Math.sin(ang*Math.PI/180)*vel, w:8+Math.random()*8, h:5+Math.random()*5,
+      rot:Math.random()*6.28, vr:(Math.random()-.5)*.35, cor:cores[i%cores.length], c:Math.random()<.25, atraso:Math.random()*12 };
+  });
+  cancelAnimationFrame(festaAnim);
+  const ini = performance.now(), dur = 3000;
+  const q = t=>{
+    const dt = t-ini; ctx.clearRect(0,0,W,H); ctx.globalAlpha = dt>dur-500 ? Math.max(0,(dur-dt)/500) : 1;
+    pecas.forEach(p=>{ if(p.atraso>0){p.atraso--;return;} p.vy+=H*.00055; p.vx*=.99; p.vy*=.992; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.cor;
+      if(p.c){ctx.beginPath();ctx.arc(0,0,p.h*.8,0,6.28);ctx.fill();} else ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h*Math.abs(Math.cos(p.rot*2))+1);
+      ctx.restore(); });
+    if(dt<dur) festaAnim = requestAnimationFrame(q); else ctx.clearRect(0,0,W,H);
+  };
+  festaAnim = requestAnimationFrame(q);
+}
+
+/* ----- tela cheia: botão no canto (aparece com o mouse) ou duplo clique ----- */
+function telaCheia(){
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>{});
+}
+document.addEventListener('dblclick', telaCheia);
+
+/* ----- Consultar preço (pelo cliente) -----
+   O cliente toca em "Consultar preço" e passa o produto no leitor de código de barras.
+   A tela pergunta ao PDV, que responde só nome, foto e preço (com a promoção, se houver).
+   A consulta NÃO mexe na venda do caixa. */
+let cons = null, consTimer = null, consResp = null;
+const icBarras = '<svg class="cl-cons-ic" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>';
+function consultaAbrir(){ cons = { etapa:'aguardando' }; document.body.classList.add('consultando'); desenharConsulta(); }
+function consultaFechar(){
+  cons = null; clearTimeout(consTimer); clearTimeout(consResp); document.body.classList.remove('consultando');
+  const d = ultimo; ultimaChave = ''; desenhar(d || { fase:'livre', promocoes:[] });
+  try{ if(window.opener && !window.opener.closed) window.opener.focus(); }catch(e){}   // devolve o foco ao caixa, se o navegador deixar
+}
+function consultaPrazo(seg){ clearTimeout(consTimer); consTimer = setTimeout(consultaFechar, seg*1000); }   // volta sozinha se ninguém mexer
+function consultar(codigo){
+  codigo = String(codigo||'').trim(); if(!codigo || !cons) return;
+  cons = { etapa:'buscando', codigo };
+  if(!canal){ cons = { etapa:'nao', codigo, msg:'A tela do caixa não está aberta.' }; desenharConsulta(); return; }
+  canal.postMessage({ tipo:'consulta', codigo });
+  clearTimeout(consResp);
+  consResp = setTimeout(()=>{ if(cons && cons.etapa==='buscando'){ cons = { etapa:'nao', codigo, msg:'O caixa não respondeu. Peça ajuda a um atendente.' }; desenharConsulta(); } }, 2500);
+}
+function desenharConsulta(){
+  const el = document.getElementById('cl'), voltar = '<button onclick="consultaFechar()">Voltar</button>';
+  if(cons.etapa==='resultado'){
+    el.innerHTML = `<div class="cl-cons">${blocoProduto(cons.produto)}
+      <div class="cl-cons-botoes"><button class="prim" onclick="consultaAbrir()">Consultar outro</button>${voltar}</div></div>`;
+    consultaPrazo(15);
+  } else if(cons.etapa==='nao'){
+    el.innerHTML = `<div class="cl-cons cl-cons-nao"><div class="cl-cartao cl-cons-card">
+      <h1>Produto não encontrado</h1><p>${esc(cons.msg || 'Não encontramos o preço deste produto. Peça ajuda no caixa.')}</p>
+      <div class="cl-cons-botoes"><button class="prim" onclick="consultaAbrir()">Tentar de novo</button>${voltar}</div></div></div>`;
+    consultaPrazo(12);
+  } else if(cons.etapa==='aguardando'){
+    el.innerHTML = `<div class="cl-cons"><div class="cl-cartao cl-cons-card">
+      ${icBarras}
+      <h1>Passe o código de barras no leitor</h1>
+      <p>Aponte o leitor para a etiqueta do produto.</p>
+      <input id="clCodigo" type="text" inputmode="numeric" autocomplete="off" placeholder="ou toque aqui e digite o código"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();consultar(this.value)}">
+      <div class="cl-cons-botoes">${voltar}</div></div></div>`;
+    consultaPrazo(40);
+  }
+}
+
+/* ----- Leitor USB: ele "digita" o código na janela que está em foco e termina com Enter.
+   Com a consulta aberta, a leitura é do cliente. Fora dela, a leitura é do caixa: vai para o PDV
+   (acontece quando esta janela ficou em foco depois de um toque). */
+let leitBuf = '', leitUlt = 0;
+document.addEventListener('keydown', e=>{
+  if(e.target && e.target.id==='clCodigo') return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const agora = Date.now();
+  if(agora - leitUlt > 300) leitBuf = '';
+  leitUlt = agora;
+  if(e.key==='Enter'){
+    const cod = leitBuf.trim(); leitBuf = '';
+    if(cod.length < 3) return;
+    e.preventDefault();
+    if(cons) consultar(cod);
+    else if(canal) canal.postMessage({ tipo:'leitura', codigo:cod });
+  } else if(e.key.length===1) leitBuf += e.key;
+});
+
+/* ----- conversa com o PDV ----- */
+const canal = ('BroadcastChannel' in window) ? new BroadcastChannel('china-engine-cliente') : null;
+desenhar({ fase:'livre', promocoes:[] });
+if(canal){
+  canal.onmessage = e=>{
+    const d = e.data || {};
+    if(d.tipo==='estado') desenhar(d);
+    else if(d.tipo==='consultaResp' && cons && cons.etapa==='buscando' && d.codigo===cons.codigo){
+      clearTimeout(consResp);
+      cons = d.produto ? { etapa:'resultado', produto:d.produto } : { etapa:'nao', codigo:d.codigo };
+      desenharConsulta();
+    }
+  };
+  canal.postMessage({ tipo:'oi' });
+  setInterval(()=>canal.postMessage({ tipo:'oi' }), 5000);   // avisa o PDV que a tela segue aberta (e recebe o estado de novo)
+}
+</script>
+</body>
+</html>

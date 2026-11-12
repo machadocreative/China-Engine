@@ -1101,11 +1101,6 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 .pdv-acoes{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
 .pdv-acoes .pdv-btn{min-height:54px;flex-shrink:0}
 .pdv-btn.pdv-finalizar{flex:1;min-height:84px;font-size:clamp(20px,1.7vw,26px)}
-.pdv-link-cliente{
-  border:none;background:none;color:var(--texto-sec);font-size:14px;font-weight:600;text-decoration:underline;
-  text-underline-offset:3px;padding:6px;border-radius:8px;align-self:center;
-}
-.pdv-link-cliente:hover{color:var(--texto);background:rgba(0,0,0,.04)}
 
 /* com a venda: campo de leitura e tabela formam um só cartão */
 .pdv.ativa .pdv-leitor{
@@ -1291,3 +1286,16 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 /* Modais com rolagem interna: os botões do rodapé ficam sempre à vista */
 .modal-rola .modal-corpo > .rodape-modal{position:sticky;bottom:-20px;margin:6px -20px -20px;padding:12px 20px 16px;background:var(--card);border-top:1px solid var(--borda);z-index:2}
 @media(min-width:901px){ .pdv:not(.ativa) .pdv-busca{min-height:64px} }
+
+/* ===== 2.5.0 ===== */
+/* Ícone "Expandir" no canto do título do visor: abre a tela do cliente no 2º monitor (só PC) */
+.pdv-visor{position:relative}
+.pdv-cliente-btn{
+  position:absolute;top:8px;right:10px;z-index:2;width:32px;height:32px;padding:0;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;border:1px solid rgba(26,26,23,.18);background:rgba(255,255,255,.92);color:var(--preto);
+}
+.pdv-cliente-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.pdv-cliente-btn:hover{background:#fff;border-color:var(--preto)}
+.pdv-cliente-btn.ligado{background:var(--amarelo);border-color:var(--preto)}
+.pdv.ativa .pdv-cliente-btn{top:4px;width:30px;height:30px}   /* faixa: título de 36px */
+@media(min-width:901px){ .pdv-faixa{padding-right:52px} }

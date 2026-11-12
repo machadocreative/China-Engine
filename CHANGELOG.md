@@ -32,6 +32,24 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.5.0] - 2026-11-12
+
+### Adicionado
+
+- **Consultar preço na tela do cliente:** botão amarelo grande no topo, pensado para tela touch. O cliente toca nele e passa o produto no leitor de código de barras, ou digita o código. A tela mostra foto, nome e preço, com a promoção quando houver.
+  - Volta sozinha para a tela da venda depois de alguns segundos.
+  - A consulta não mexe na venda do caixa e não mostra estoque nem custo.
+
+### Alterado
+
+- **Abrir a tela do cliente:** em vez do link de texto, há um ícone "Expandir" no canto superior direito do visor do PDV, em todas as situações (Caixa livre, Venda em andamento, Consulta de preço). Fica amarelo quando a tela do cliente está aberta. Clicar de novo traz a janela para a frente, sem abrir outra.
+- **Leitor de código de barras com a tela do cliente em foco:** se a janela do cliente estiver ativa (por exemplo, depois de um toque), uma leitura feita fora da consulta vai para o caixa, como se tivesse sido feita no PDV.
+- **Organização do repositório:**
+  - As imagens foram para `imagens/`, com os ícones em `imagens/icones/`.
+  - A tela do cliente foi para `cliente/cliente.html`.
+
+---
+
 ## [2.4.1] - 2026-11-12
 
 ### Corrigido
