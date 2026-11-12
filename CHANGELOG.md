@@ -32,58 +32,6 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
-## [2.4.0] - 2026-11-12
-
-### Adicionado
-
-- **Promoções** (em Configurações, logo abaixo de Categorias):
-  - Cada promoção tem título (ex.: "Black Friday 2026"), desconto em % ou em R$ por unidade, alcance (loja toda ou categorias escolhidas), data de início e de fim, e uma chave para ligar e desligar.
-  - O status aparece na lista: "Valendo", "Começa em…", "Encerrada em…" ou "Desligada".
-  - Para ligar uma promoção, ou salvar uma que já está ligada, é preciso a senha do gerente.
-  - No PDV o desconto entra sozinho quando o produto é lido. O visor e a tabela mostram o preço cheio riscado e o selo da promoção.
-  - Se duas promoções valem para o mesmo produto, vale a de maior desconto (elas não se somam).
-  - Desconto manual em cima de um produto que já está em promoção pede duas confirmações antes da senha do gerente.
-  - "Registrar saída" no Estoque já sugere o preço da promoção. Nesse caso não pede senha, e a venda também conta para a promoção.
-  - No Estoque, os produtos em promoção têm um selo com o desconto.
-  - Nas Métricas há um novo bloco "Promoções", com o faturamento, o desconto dado, as unidades e as vendas de cada promoção no período.
-  - As promoções entram no backup e na sincronização.
-- **Tela do cliente (2º monitor):**
-  - No PDV do PC, com o caixa livre, o link "Abrir tela do cliente" abre uma janela para o monitor virado para o cliente. Arraste a janela para esse monitor e use "Tela cheia" (ou clique duas vezes). No Chrome e no Edge, se o navegador tiver permissão, a janela já abre no outro monitor.
-  - A tela acompanha o caixa em tempo real: produto lido, itens, totais e quanto o cliente economizou.
-  - Ao concluir a venda, mostra uma animação de agradecimento com o mascote e confete, junto com o QR code e o convite para seguir @chinatownimports no Instagram.
-  - Com o caixa livre, mostra as boas-vindas, as promoções valendo e o QR code.
-  - Nunca mostra custo, estoque nem botões. Funciona no próprio computador, sem internet.
-- **Duplicar registro:** nova opção nas ações rápidas do produto, no Estoque. Abre o cadastro de Novo produto já preenchido (nome com "(cópia)", marca, categoria, preço, estoque mínimo e foto), sem código de barras e com SKU novo.
-- **Recolher o menu lateral (PC):** o botão « no topo do menu esconde o menu inteiro. O ☰ no cabeçalho traz ele de volta, e a escolha fica salva no computador.
-
-### Alterado
-
-- **PDV no estilo caixa de supermercado (opção B):**
-  - No PC, com a venda em andamento, o visor vira uma faixa no alto, com foto, nome e preço grande.
-  - Abaixo do visor, o campo de leitura e a tabela dos itens formam um só cartão, com uma linha por item e as colunas Produto, Qtd, Unit. e Total.
-  - À direita ficam os totais e os botões, com "Finalizar venda" grande no fim.
-  - Com o caixa livre, o visor ocupa a tela, com o campo de leitura e "Iniciar venda" embaixo.
-  - No celular, a ordem é visor, itens, totais e campo de leitura, e as ações continuam no ☰.
-- **Avisos rápidos no PDV (PC):** durante a venda, aparecem embaixo, sobre a tabela, para não cobrir o visor.
-- **Modais com rolagem:** os botões do rodapé ficam sempre à vista.
-
-### Corrigido
-
-- **Ativar notificações:** se o arquivo `sw.js` não for encontrado no site, a mensagem de erro diz isso e explica como corrigir. Antes, aparecia só um erro genérico.
-
----
-
-## [2.3.1] - 2026-11-11
-
-### Alterado
-
-- **Totais do PDV:** o "Subtotal" passa a mostrar a soma dos preços cheios. Logo abaixo vem uma linha "Descontos", que junta os descontos dos itens e o da venda toda, e por fim o "Total". Assim fica visível quando houve desconto em algum item, o que antes não aparecia no resumo. Para mudar ou tirar o desconto da venda, use "Aplicar desconto" (F8).
-- **Desconto num item:** quando é em reais, aparece só o valor ("−R$ 10,00"), sem repetir entre parênteses. A porcentagem continua aparecendo quando o desconto é em % ("−R$ 3,00 (10%)").
-- **Janela do desconto na venda:** o texto agora explica que o desconto incide sobre o valor já com os descontos dos itens.
-- **Cabeçalho:** saiu o subtítulo "Chinatown Imports" abaixo do título do módulo, no PC e no celular. O nome da loja já aparece junto do logo. No PC, o cabeçalho e o topo do menu lateral passaram a ter a mesma altura (64px).
-
----
-
 ## [2.3.0] - 2026-11-10
 
 ### Adicionado
@@ -735,7 +683,6 @@ Primeira versão do MVP — controle de estoque com custo por lote.
 <!-- Ao publicar no GitHub, troque o "#" abaixo pelos links de comparação do seu repositório,
      ex.: https://github.com/machadocreative/China-Engine/releases/tag/v0.3.0 -->
 [Não lançado]: #
-[2.3.1]: #
 [2.3.0]: #
 [2.2.0]: #
 [2.1.0]: #

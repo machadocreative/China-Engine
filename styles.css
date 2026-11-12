@@ -50,7 +50,7 @@ header .logo{
 }
 header .titulo{display:flex;flex-direction:column;line-height:1.1}
 header .titulo b{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.2px}
-header .titulo span{font-size:14px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}   /* (sem uso desde a 2.3.1: o nome da loja saiu do cabeçalho) */
+header .titulo span{font-size:14px;color:#C9C7BE;letter-spacing:.5px;text-transform:uppercase}
 header .titulo em{font-style:normal;color:var(--amarelo);font-weight:600;margin-left:4px}
 header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 header{padding-right:120px}   /* espaço dos botões Ajustes e sininho */
@@ -774,6 +774,22 @@ header .acoes [data-view].fora{display:none}
 
 /* ----- PDV (pdv-) ----- */
 body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
+/* Grade: [visor | itens da venda] em cima, [leitor + botões | totais] embaixo.
+   A linha de baixo tem a altura dos controles, então a linha preta dos totais fica na altura do campo de leitura. */
+.pdv{
+  display:grid;grid-template-columns:minmax(0,1.2fr) minmax(380px,.8fr);grid-template-rows:minmax(0,1fr) auto;
+  grid-template-areas:"visor venda" "controles totais";column-gap:16px;row-gap:12px;height:100%;min-height:0;
+}
+.pdv:not(.ativa){grid-template-columns:minmax(0,1fr);grid-template-areas:"visor" "controles"}
+.pdv:not(.ativa) .pdv-venda,.pdv:not(.ativa) .pdv-totais{display:none}   /* painel da venda só com a venda iniciada */
+#viewPdv:not([hidden]){height:100%}
+.pdv-visor{grid-area:visor}
+.pdv-controles{grid-area:controles;display:flex;flex-direction:column;gap:12px;min-width:0;container:controles / inline-size}
+/* itens + totais formam um só cartão: os itens descem até a linha preta (margem negativa cobre o espaço entre as linhas da grade) */
+.pdv-venda{
+  grid-area:venda;container:venda / inline-size;display:flex;flex-direction:column;min-height:0;margin-bottom:-12px;
+  background:var(--card);border:1px solid var(--borda);border-bottom:none;border-radius:var(--raio) var(--raio) 0 0;overflow:hidden;
+}
 
 /* Visor */
 .pdv-visor{flex:1;min-height:0;display:flex;container-type:inline-size}   /* os tamanhos do visor acompanham a largura dele (cqw) */
@@ -843,6 +859,7 @@ body.modo-pdv main{padding:16px max(16px, calc((100% - 1560px) / 2)) 16px}
 
 /* Botões de ação */
 .pdv-acoes{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;flex-shrink:0}   /* caixa livre: só "Iniciar venda" */
+.pdv.ativa .pdv-acoes{grid-template-columns:repeat(4,minmax(0,1fr))}
 .pdv-btn{
   display:flex;align-items:center;justify-content:center;gap:10px;min-height:64px;padding:10px 12px;
   border-radius:14px;border:1px solid var(--borda-forte);background:#fff;color:var(--preto);
@@ -886,15 +903,16 @@ kbd{
 
 /* Totais */
 .pdv-totais{
-  display:flex;flex-direction:column;border:1px solid var(--borda);border-top:3px solid var(--preto);border-radius:var(--raio);
-  padding:14px 18px 16px;background:#FBFAF6;
+  grid-area:totais;position:relative;z-index:1;display:flex;flex-direction:column;justify-content:flex-end;
+  border:1px solid var(--borda);border-top:2px solid var(--preto);border-radius:0 0 var(--raio) var(--raio);
+  padding:10px 16px 12px;background:#FBFAF6;
 }
 .pdv-tl{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:16px;padding:2px 0}
 .pdv-tl span{color:var(--texto-sec)}
 .pdv-tl b{font-weight:600;white-space:nowrap}
 .pdv-tl.desc b{color:var(--verde)}
 .pdv-tl.desc button{border:none;background:none;color:var(--texto);text-decoration:underline;font-size:14px;padding:0 0 0 6px}
-.pdv-tl.total{margin-top:8px;padding-top:8px;border-top:1px solid var(--borda)}
+.pdv-tl.total{margin-top:auto;padding-top:6px;border-top:1px solid var(--borda)}
 .pdv-tl.total span{font-size:18px;font-weight:600;color:var(--texto)}
 .pdv-tl.total b{font-family:var(--display);font-weight:800;font-size:clamp(34px,3.4vw,52px);line-height:1}
 
@@ -923,6 +941,31 @@ kbd{
 .pdv-pag.ativo{background:var(--preto);color:#fff;border-color:var(--preto)}
 .pdv-pag.ativo svg{stroke:var(--amarelo)}
 
+/* PDV em telas menores: uma coluna, a página rola */
+@media(max-width:900px){
+  body.modo-pdv main{padding:14px 14px 96px}   /* espaço do botão ☰ */
+  #viewPdv:not([hidden]){height:auto}
+  /* celular/tablet: campo de leitura embaixo, depois da lista; os botões vão para o menu ☰ */
+  .pdv{grid-template-columns:minmax(0,1fr);grid-template-areas:"visor" "venda" "totais" "controles";grid-template-rows:auto;height:auto}
+  .pdv:not(.ativa){grid-template-columns:minmax(0,1fr);grid-template-areas:"visor" "controles";grid-template-rows:auto;height:auto}
+  .pdv-acoes{display:none !important}
+  body.modo-pdv #pdvFab{display:flex}
+  .pdv-visor{flex:none;min-height:200px}
+  .pdv-prod{align-items:flex-start}
+  .pdv-lista{flex:none;max-height:none;overflow:visible}
+  .pdv-acoes,.pdv.ativa .pdv-acoes{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pdv-btn{min-height:56px;font-size:16px}
+  .pdv-btn.primario{font-size:17px}
+  .pdv-busca input{font-size:17px;padding:13px 0}
+}
+/* Coluna da venda estreita (celular, ou PC com janela pequena): nome em cima, quantidade e total embaixo */
+@container venda (max-width:520px){
+  .pdv-item{grid-template-columns:minmax(0,1fr) auto auto auto;row-gap:8px;padding-left:12px}
+  .pdv-item-nome{grid-column:1 / -1}
+  .pdv-item-total{grid-column:1;grid-row:2;text-align:left}
+  .pdv-qtd{grid-column:2;grid-row:2}
+  .pdv-item .pdv-ico{grid-row:2}
+}
 
 /* Forma de pagamento sempre na linha de baixo do selo */
 .hx-mov{flex-wrap:wrap;row-gap:0}
@@ -1016,6 +1059,9 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
   #toast{bottom:24px}
 }
 
+/* Coluna dos controles estreita (PC com janela menor, ou com o menu lateral): menos aperto nos botões */
+@container controles (max-width:640px){ .pdv-btn kbd{display:none} }
+@container controles (max-width:480px){ .pdv.ativa .pdv-acoes{grid-template-columns:repeat(2,minmax(0,1fr))} .pdv-btn{min-height:52px} }
 
 /* ===== 2.3.0 ===== */
 /* ----- Campo de leitura do PDV: contorno pulsando de leve, para chamar a atenção ----- */
@@ -1074,220 +1120,3 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
   body{padding-left:270px}
   .barra-inferior{width:270px}
 }
-
-/* ===== 2.3.1 ===== */
-/* Sem o subtítulo, o cabeçalho ficou mais baixo: no PC, cabeçalho e topo do menu lateral têm a mesma altura (64px) */
-@media(min-width:901px){
-  header{min-height:64px}
-  .nav-logo{height:64px}
-}
-
-/* ===== 2.4.0 ===== */
-/* ----- PDV estilo caixa de supermercado (opção B) -----
-   PC com venda: visor em faixa no alto; à esquerda o campo de leitura e a tabela dos itens (um só cartão);
-   à direita os totais e os botões, com "Finalizar venda" grande no fim.
-   Caixa livre: visor grande, campo de leitura e "Iniciar venda" embaixo. */
-#viewPdv:not([hidden]){height:100%}
-.pdv{
-  display:grid;height:100%;min-height:0;column-gap:16px;row-gap:0;
-  grid-template-columns:minmax(0,1fr) clamp(300px,25vw,360px);
-  grid-template-rows:auto auto minmax(0,1fr);
-  grid-template-areas:"visor visor" "leitor lado" "venda lado";
-}
-.pdv-visor{grid-area:visor;margin-bottom:14px}
-.pdv-leitor{grid-area:leitor;min-width:0}
-.pdv-venda{grid-area:venda;min-width:0}
-.pdv-lado{grid-area:lado;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
-.pdv-acoes{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
-.pdv-acoes .pdv-btn{min-height:54px;flex-shrink:0}
-.pdv-btn.pdv-finalizar{flex:1;min-height:84px;font-size:clamp(20px,1.7vw,26px)}
-.pdv-link-cliente{
-  border:none;background:none;color:var(--texto-sec);font-size:14px;font-weight:600;text-decoration:underline;
-  text-underline-offset:3px;padding:6px;border-radius:8px;align-self:center;
-}
-.pdv-link-cliente:hover{color:var(--texto);background:rgba(0,0,0,.04)}
-
-/* com a venda: campo de leitura e tabela formam um só cartão */
-.pdv.ativa .pdv-leitor{
-  background:var(--card);border:1px solid var(--borda);border-bottom:none;border-radius:var(--raio) var(--raio) 0 0;padding:12px 12px 12px;
-}
-.pdv.ativa .pdv-busca input{font-size:18px;padding:12px 0}
-.pdv-venda{
-  display:flex;flex-direction:column;min-height:0;container:venda / inline-size;
-  background:var(--card);border:1px solid var(--borda);border-top:none;border-radius:0 0 var(--raio) var(--raio);overflow:hidden;
-}
-/* na faixa de cima, a lista de busca abre para baixo (sobre a tabela) */
-@media(min-width:901px){ .pdv.ativa .pdv-resultados{top:calc(100% + 8px);bottom:auto} }
-
-/* caixa livre */
-.pdv:not(.ativa){grid-template-rows:minmax(0,1fr) auto;grid-template-areas:"visor visor" "leitor lado";align-items:start}
-.pdv:not(.ativa) .pdv-visor{align-self:stretch;height:100%}
-.pdv:not(.ativa) .pdv-venda,.pdv:not(.ativa) .pdv-totais{display:none}
-.pdv:not(.ativa) .pdv-acoes .pdv-btn{min-height:64px}
-
-/* Visor em faixa (venda em andamento) */
-.pdv.ativa .pdv-visor{flex:none;height:clamp(132px,18vh,170px)}
-.pdv-precos:has(.pdv-preco-de) .pdv-preco{font-size:clamp(30px,4.6cqw,56px)}
-.pdv-faixa .pdv-preco-de{font-size:16px}
-.pdv-faixa .pdv-promo-selo{margin-top:2px}
-.pdv-faixa{flex:1;min-height:0;display:flex;align-items:center;gap:clamp(12px,2cqw,24px);padding:12px clamp(14px,2cqw,24px)}
-.pdv-faixa .pdv-foto{width:auto;height:100%;max-height:124px;min-width:72px}
-.pdv-faixa .pdv-info{min-width:0;flex:1}
-.pdv-faixa .pdv-marca{font-size:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:18px}
-.pdv-estado{color:var(--verde);font-weight:700}
-.pdv-visor-in.consulta .pdv-estado{color:var(--preto)}
-.pdv-faixa .pdv-nome{font-size:clamp(20px,2.6cqw,30px);margin:2px 0 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.pdv-faixa .pdv-sub{margin-top:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pdv-faixa .pdv-visor-btn{margin-top:6px;padding:7px 14px;font-size:14px}
-.pdv-precos{flex-shrink:0;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.pdv-faixa .pdv-preco{font-size:clamp(34px,5.6cqw,68px)}
-.pdv-preco-de{font-size:clamp(15px,2cqw,22px);color:var(--texto-sec);text-decoration:line-through;font-weight:600;white-space:nowrap}
-.pdv-promo-selo{
-  display:inline-block;margin-top:4px;padding:3px 10px;border-radius:999px;background:var(--vermelho);color:#fff;
-  font-size:14px;font-weight:700;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;
-}
-.pdv-precos-grande{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
-.pdv-precos-grande .pdv-promo-selo{margin-top:8px}
-.pdv-visor-in.faixa .pdv-selo{height:36px}
-.pdv-visor-in.faixa .pdv-msg{padding:8px 20px;gap:2px}
-.pdv-visor-in.faixa .pdv-msg b{font-size:clamp(22px,3cqw,32px)}
-.pdv-visor-in.faixa .pdv-msg span{font-size:15px}
-.pdv-visor-in.faixa.adicionado{border-color:var(--verde)}
-
-/* Tabela da venda: uma linha por item */
-.pdv-lista-cab,.pdv-item{
-  display:grid;align-items:center;gap:8px;
-  grid-template-columns:minmax(0,1fr) auto 92px 108px 36px 36px;
-}
-.pdv-lista-cab{
-  height:auto;justify-content:normal;padding:8px 12px 8px 16px;background:#F3F1EA;color:var(--texto-sec);
-  border-top:1px solid var(--borda);border-bottom:1px solid var(--borda);
-}
-.pdv-lista-cab span{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--texto-sec)}
-.pdv-lista-cab .c{text-align:center}
-.pdv-lista-cab .r{text-align:right}
-.pdv-item{padding:6px 12px 6px 16px}
-.pdv-item-nome{display:flex;align-items:center;gap:8px;min-width:0;overflow-wrap:normal}
-.pdv-item-nome span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.pdv-promo-tag{
-  flex-shrink:0;font-style:normal;font-size:14px;font-weight:700;color:#fff;background:var(--vermelho);
-  border-radius:6px;padding:1px 6px;line-height:1.3;
-}
-.pdv-item-unit{text-align:right;font-size:15px;color:var(--texto-sec);white-space:nowrap;line-height:1.2}
-.pdv-item-unit s{display:block;font-size:14px;opacity:.75}
-.pdv-item-total{line-height:1.2}
-.pdv-qtd button{width:32px;height:34px}
-.pdv-qtd input{width:42px;height:34px}
-.pdv-ico{width:36px;height:34px}
-/* tabela estreita: some a coluna do preço unitário */
-@container venda (max-width:600px){
-  .pdv-lista-cab,.pdv-item{grid-template-columns:minmax(0,1fr) auto 96px 36px 36px}
-  .pdv-col-unit{display:none}
-}
-/* bem estreita (celular): nome em cima, quantidade e total embaixo */
-@container venda (max-width:440px){
-  .pdv-lista-cab{display:none}
-  .pdv-item{grid-template-columns:minmax(0,1fr) auto auto auto;row-gap:6px;padding:10px 10px 10px 12px}
-  .pdv-item-nome{grid-column:1 / -1}
-  .pdv-item-total{grid-column:1;grid-row:2;text-align:left}
-  .pdv-qtd{grid-column:2;grid-row:2}
-  .pdv-item .pdv-ico{grid-row:2}
-}
-
-/* Totais na coluna da direita */
-.pdv-totais{flex-shrink:0}
-.pdv-tl.total b{font-size:clamp(34px,3vw,48px)}
-
-/* Janela de PC baixa: botões menores, para tudo caber sem rolar */
-@media(min-width:901px) and (max-height:760px){
-  .pdv-acoes .pdv-btn{min-height:46px}
-  .pdv-btn.pdv-finalizar{min-height:64px}
-  .pdv-totais{padding:10px 16px 12px}
-}
-/* Coluna estreita: sem os atalhos de teclado nos botões secundários */
-@media(min-width:901px) and (max-width:1279px){
-  .pdv-acoes .pdv-btn:not(.primario) kbd{display:none}
-}
-
-/* Celular e tablet: uma coluna, a página rola; os botões vão para o menu ☰ */
-@media(max-width:900px){
-  body.modo-pdv main{padding:14px 14px 96px}
-  #viewPdv:not([hidden]){height:auto}
-  .pdv,.pdv:not(.ativa){display:flex;flex-direction:column;align-items:stretch;gap:12px;height:auto}
-  .pdv-visor{order:1;margin:0;flex:none;min-height:200px}
-  .pdv.ativa .pdv-visor{height:auto;min-height:0}
-  .pdv-venda{order:2;border-top:1px solid var(--borda);border-radius:var(--raio)}
-  .pdv-lado{order:3}
-  .pdv-leitor{order:4}
-  .pdv.ativa .pdv-leitor{background:none;border:none;padding:0}
-  .pdv-acoes{display:none !important}
-  body.modo-pdv #pdvFab{display:flex}
-  .pdv-prod{align-items:flex-start}
-  .pdv-lista{flex:none;max-height:none;overflow:visible}
-  .pdv-busca input,.pdv.ativa .pdv-busca input{font-size:17px;padding:13px 0}
-  .pdv-lista-cab{border-top:none}
-}
-/* Faixa do visor em tela estreita: preço embaixo do nome */
-@container (max-width:560px){
-  .pdv-faixa{flex-wrap:wrap;align-items:flex-start}
-  .pdv-faixa .pdv-foto{height:auto;width:72px;min-width:0}
-  .pdv-faixa .pdv-info{flex:1 1 calc(100% - 96px)}
-  .pdv-precos{flex-basis:100%;flex-direction:row;align-items:baseline;justify-content:flex-end;flex-wrap:wrap;column-gap:10px}
-  .pdv-faixa .pdv-preco{font-size:40px}
-}
-
-/* ----- Promoções (pm-) ----- */
-.pm-lista{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:8px}
-.pm-item{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--borda);border-radius:12px;background:#fff}
-.pm-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.pm-info b{font-size:16px;overflow-wrap:anywhere}
-.pm-info small{font-size:14px;color:var(--texto-sec)}
-.pm-st{align-self:flex-start;font-size:14px;font-weight:700;padding:1px 9px;border-radius:999px;margin-top:2px;background:#ECEAE3;color:var(--texto-sec)}
-.pm-st.vigente{background:#E5F2E6;color:var(--verde)}
-.pm-st.agendada{background:var(--amarelo-claro);color:var(--preto)}
-.pm-st.encerrada{background:#ECEAE3;color:var(--texto-sec)}
-.pm-chave{width:auto;flex-shrink:0}
-.pm-vazia{padding:14px;border:1px dashed var(--borda-forte);border-radius:12px;color:var(--texto-sec);font-size:15px;text-align:center}
-.pm-cats{margin:-4px 0 14px}
-.pm-cats > div{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:220px;overflow-y:auto;padding:2px}
-.pm-cat{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--borda);border-radius:10px;font-size:15px;cursor:pointer;background:#fff}
-.pm-cat:has(input:checked){border-color:var(--preto);background:var(--amarelo-claro)}
-.pm-cat input{width:18px;height:18px;accent-color:var(--preto);flex-shrink:0}
-.pm-ligar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:12px;background:var(--bg);margin:6px 0 16px;cursor:pointer}
-.pm-ligar b{display:block;font-size:15px}
-.pm-ligar small{display:block;font-size:14px;color:var(--texto-sec)}
-.pm-ligar .sbx-chave{width:auto}
-/* Estoque: selo "Promoção" no produto */
-.badge-promo{display:inline-block;margin-left:6px;padding:0 7px;border-radius:6px;background:var(--vermelho);color:#fff;font-size:14px;font-weight:700;vertical-align:1px}
-/* Métricas: bloco das promoções */
-.ds-promo-lista{display:flex;flex-direction:column;gap:8px}
-.ds-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 14px;padding:12px 14px;border:1px solid var(--borda);border-radius:12px}
-.ds-promo b{font-size:16px}
-.ds-promo .ds-promo-fat{font-family:var(--display);font-weight:800;font-size:20px;text-align:right;white-space:nowrap}
-.ds-promo small{font-size:14px;color:var(--texto-sec)}
-.ds-promo small.r{text-align:right;color:var(--verde);font-weight:600}
-
-/* ----- Menu lateral recolhido (PC) ----- */
-.menu-abrir,.nav-recolher{display:none}
-@media(min-width:901px){
-  .nav-recolher{
-    display:flex;position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:10px;align-items:center;justify-content:center;
-    border:1px solid rgba(255,255,255,.18);background:transparent;color:#C9C7BE;
-  }
-  .nav-recolher:hover{background:rgba(255,255,255,.08);color:#fff}
-  .nav-recolher svg,.menu-abrir svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .nav-logo{padding-right:60px}
-  body.menu-recolhido{padding-left:0}
-  body.menu-recolhido .barra-inferior{display:none}
-  body.menu-recolhido .menu-abrir{
-    display:flex;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0;
-    border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;
-  }
-  body.menu-recolhido .menu-abrir:hover{background:rgba(255,255,255,.08)}
-  body.menu-recolhido header .logo{display:block}   /* sem o menu, o logo volta para o cabeçalho */
-}
-/* aviso rápido no PDV: embaixo, sobre a área da tabela (no alto cobriria o visor) */
-@media(min-width:901px){ body.modo-pdv:has(.pdv.ativa) #toast{top:auto;bottom:28px} }
-/* Modais com rolagem interna: os botões do rodapé ficam sempre à vista */
-.modal-rola .modal-corpo > .rodape-modal{position:sticky;bottom:-20px;margin:6px -20px -20px;padding:12px 20px 16px;background:var(--card);border-top:1px solid var(--borda);z-index:2}
-@media(min-width:901px){ .pdv:not(.ativa) .pdv-busca{min-height:64px} }
