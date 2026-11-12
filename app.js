@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.3.0';
+const VERSAO = '2.4.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -187,6 +187,7 @@ function render(){
         ${p.marca?`<span class="marca">${escapar(p.marca)}</span>`:''}
         ${escapar(p.nome)}
         ${p.arquivado?'<span class="badge-arquivado">Arquivado</span>':''}
+        ${!p.arquivado && promoDoProduto(p) ? `<span class="badge-promo" title="${escapar(promoDoProduto(p).promo.titulo)}">${escapar(rotuloPromoCurto(promoDoProduto(p).promo))}</span>` : ''}
         ${p.codigo?`<small class="codigo">${escapar(p.codigo)}</small>`:''}
       </div>
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
@@ -250,6 +251,22 @@ function abrirAcoes(id){
 function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroEntrada(id); }
 function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id, 'dados'); }
+/* Duplicar registro: abre o cadastro de Novo produto já preenchido com os dados deste (sem estoque,
+   sem código de barras e com SKU novo), para agilizar o cadastro de itens parecidos */
+function acaoDuplicar(){
+  const p = prod(acaoAtivo); fechar('modalAcoes'); if(!p) return;
+  abrirProduto();
+  document.getElementById('tituloProduto').textContent = 'Duplicar produto';
+  document.getElementById('pMarca').value = p.marca||'';
+  document.getElementById('pNome').value = p.nome + ' (cópia)';
+  document.getElementById('pCategoria').value = p.categoria;
+  document.getElementById('pPreco').value = p.preco||'';
+  document.getElementById('pMinimo').value = p.minimo||0;
+  produtoFotoDuplicada = p.foto || '';
+  setTimeout(()=>{ const n = document.getElementById('pNome'); n.focus(); n.select(); }, 100);
+  toast('Confira o nome e o código de barras antes de salvar.');
+}
+let produtoFotoDuplicada = '';
 function acaoArquivar(){ const id=acaoAtivo; fechar('modalAcoes'); arquivarProduto(id, !prod(id).arquivado); }
 
 /* =========================================================
@@ -356,7 +373,8 @@ function salvarProduto(){
     if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
     if(temIni && qIni<1){ toast('Informe a quantidade do estoque inicial.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
-    estado.produtos.push({ id:uid(), ...dados, movimentacoes:movs });
+    estado.produtos.push({ id:uid(), ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
+    produtoFotoDuplicada = '';
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
     toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque inicial.` : 'Produto salvo.');
   }
@@ -447,15 +465,21 @@ function pdvResumo(){
   pdv.itens = pdv.itens.filter(it=>prod(it.pid));   // produto excluído em outro aparelho sai da lista
   const linhas = pdv.itens.map((it,i)=>{
     const p = prod(it.pid), unit = p.preco||0, bruto = cent(unit*it.qtd);
-    const desc = it.desc ? Math.min(bruto, cent(it.desc.tipo==='pct' ? bruto*it.desc.v/100 : it.desc.v)) : 0;
-    return { i, it, p, unit, bruto, desc, liquido:cent(bruto-desc) };
+    // 1º a promoção vigente (automática), 2º o desconto manual do item, sobre o que sobrou
+    const pr = promoDoProduto(p);
+    const descPromo = pr ? cent(pr.descUnit*it.qtd) : 0;
+    const base = cent(bruto - descPromo);
+    const descManual = it.desc ? Math.min(base, cent(it.desc.tipo==='pct' ? base*it.desc.v/100 : it.desc.v)) : 0;
+    const desc = cent(descPromo + descManual);
+    return { i, it, p, unit, bruto, promo: pr ? pr.promo : null, unitPromo: pr ? cent(unit-pr.descUnit) : unit, descPromo, base, descManual, desc, liquido:cent(bruto-desc) };
   });
   const bruto = cent(linhas.reduce((s,l)=>s+l.bruto,0)), subtotal = cent(linhas.reduce((s,l)=>s+l.liquido,0));
   const d = pdv.desconto;
   const descVenda = d ? Math.min(subtotal, cent(d.tipo==='pct' ? subtotal*d.v/100 : d.v)) : 0;
   return { linhas, bruto, subtotal, descVenda, total:cent(subtotal-descVenda), unidades:linhas.reduce((s,l)=>s+l.it.qtd,0) };
 }
-function rotuloDesconto(d){ return d.tipo==='pct' ? `${String(d.v).replace('.',',')}%` : fmtBRL(d.v); }
+/* Desconto em % mostra a porcentagem entre parênteses; em R$ não repete o valor */
+function rotuloDesconto(d){ return d && d.tipo==='pct' ? ` (${String(d.v).replace('.',',')}%)` : ''; }
 
 /* ----- Ações principais ----- */
 function pdvFocar(){ if(viewAtual==='pdv' && window.matchMedia && matchMedia('(pointer:fine)').matches){ const b = document.getElementById('pdvBusca'); if(b) b.focus(); } }
@@ -564,7 +588,7 @@ function pdvRemover(i){
 
 /* ----- Desconto (item ou venda) — sempre com a senha do gerente ----- */
 let dc = { alvo:'venda', tipo:'valor' };
-function descontoBase(){ const r = pdvResumo(); return dc.alvo==='venda' ? r.subtotal : (r.linhas[dc.alvo] ? r.linhas[dc.alvo].bruto : 0); }
+function descontoBase(){ const r = pdvResumo(); return dc.alvo==='venda' ? r.subtotal : (r.linhas[dc.alvo] ? r.linhas[dc.alvo].base : 0); }   // item: já com a promoção
 function abrirDesconto(alvo){
   if(!pdv.ativa || !pdv.itens.length){ toast('Adicione produtos à venda antes de aplicar desconto.'); return; }
   const atual = alvo==='venda' ? pdv.desconto : (pdv.itens[alvo] && pdv.itens[alvo].desc);
@@ -572,8 +596,8 @@ function abrirDesconto(alvo){
   const r = pdvResumo();
   document.getElementById('dcTitulo').textContent = alvo==='venda' ? 'Desconto na venda' : 'Desconto no item';
   document.getElementById('dcSobre').textContent = alvo==='venda'
-    ? `Sobre o subtotal de ${fmtBRL(r.subtotal)}.`
-    : `${r.linhas[alvo].p.nome} · ${r.linhas[alvo].it.qtd} un. · ${fmtBRL(r.linhas[alvo].bruto)}`;
+    ? `Sobre ${fmtBRL(r.subtotal)}${r.subtotal<r.bruto ? ', o valor da venda já com os descontos dos itens' : ', o subtotal da venda'}.`
+    : `${r.linhas[alvo].p.nome} · ${r.linhas[alvo].it.qtd} un. · ${fmtBRL(r.linhas[alvo].base)}${r.linhas[alvo].promo ? ` (já com a promoção “${r.linhas[alvo].promo.titulo}”)` : ''}`;
   document.getElementById('dcValor').value = atual ? atual.v : '';
   document.getElementById('dcRemover').style.display = atual ? '' : 'none';
   descontoTipo(dc.tipo);
@@ -605,11 +629,20 @@ function descontoAplicar(){
   if(!c){ toast('Informe o valor do desconto.'); return; }
   if(c.invalido){ toast('O desconto não pode ser maior que o valor.'); return; }
   const novo = { tipo:dc.tipo, v:c.v }, alvo = dc.alvo;
-  pedirSenha(()=>{
+  const r = pdvResumo();
+  const emPromo = alvo==='venda' ? r.linhas.filter(l=>l.promo) : (r.linhas[alvo] && r.linhas[alvo].promo ? [r.linhas[alvo]] : []);
+  const senha = ()=>pedirSenha(()=>{
     if(alvo==='venda') pdv.desconto = novo; else if(pdv.itens[alvo]) pdv.itens[alvo].desc = novo;
     fechar('modalDesconto'); pdvGuardar(); renderPdv(); pdvFocar();
     toast('Desconto aplicado.');
   }, `Desconto de ${fmtBRL(c.d)} ${alvo==='venda'?'na venda':'no item'}. Digite a senha do gerente para confirmar.`);
+  if(!emPromo.length){ senha(); return; }
+  // Desconto por cima de promoção: dupla confirmação antes da senha
+  const nomes = [...new Set(emPromo.map(l=>`“${l.promo.titulo}”`))].join(', ');
+  const qual = alvo==='venda' ? `${emPromo.length} produto(s) desta venda já estão` : `“${emPromo[0].p.nome}” já está`;
+  pedirConfirmacao(`${qual} em promoção (${nomes}). Este desconto de ${fmtBRL(c.d)} vai se somar ao da promoção. Continuar?`, ()=>{
+    pedirConfirmacao(`Confirma o desconto acumulado? A venda fica com ${fmtBRL(cent(r.bruto - r.total + c.d))} de descontos no total.`, senha, 'Confirmar desconto acumulado');
+  }, 'Desconto sobre promoção');
 }
 function descontoRemover(){
   if(dc.alvo==='venda') pdv.desconto = null; else if(pdv.itens[dc.alvo]) delete pdv.itens[dc.alvo].desc;
@@ -657,6 +690,7 @@ function pdvConfirmar(){
     const liquido = liq/100;
     const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, pagamento:finPag, vendaId };
     if(liquido < l.bruto - 0.004){ mov.precoCheio = l.unit; mov.desconto = cent(l.bruto - liquido); }
+    if(l.promo){ mov.promocaoId = l.promo.id; mov.promocaoTitulo = l.promo.titulo; mov.descPromo = l.descPromo; }   // para as Métricas
     l.p.movimentacoes.push(mov);
   });
   const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, pagamento:finPag, nomes:r.linhas.map(l=>l.p.nome) };
@@ -750,6 +784,24 @@ function pdvVisorHtml(){
   if(v.tipo==='produto' && prod(v.pid)){
     const p = prod(v.pid), est = estoqueDe(p), it = pdv.itens.find(x=>x.pid===p.id);
     const consulta = v.modo==='consulta';
+    const pr = promoDoProduto(p);
+    const precoHtml = !(p.preco>0) ? '<div class="pdv-preco">Sem preço</div>'
+      : pr ? `<div class="pdv-preco-de">${fmtBRL(p.preco)}</div><div class="pdv-preco">${fmtBRL(cent(p.preco-pr.descUnit))}</div><div class="pdv-promo-selo">${escapar(pr.promo.titulo)} · ${escapar(rotuloPromoCurto(pr.promo))}</div>`
+      : `<div class="pdv-preco">${fmtBRL(p.preco)}</div>`;
+    if(pdv.ativa){   // faixa: foto | marca, estado, nome, detalhes | preço
+      return `<div class="pdv-visor-in faixa ${consulta?'consulta':'adicionado'}">
+        <div class="pdv-faixa">
+          ${pdvFotoHtml(p)}
+          <div class="pdv-info">
+            <div class="pdv-marca">${p.marca?escapar(p.marca):''}<span class="pdv-estado">${consulta ? 'Consulta de preço · não entrou na venda' : `● Na venda · ${it?it.qtd:1} un.`}</span></div>
+            <div class="pdv-nome">${escapar(p.nome)}</div>
+            <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
+            ${consulta ? `<button class="btn btn-escuro btn-mini pdv-visor-btn" onclick="pdvAdicionar('${p.id}')">Adicionar à venda</button>` : ''}
+          </div>
+          <div class="pdv-precos">${precoHtml}</div>
+        </div>
+      </div>`;
+    }
     return `<div class="pdv-visor-in ${consulta?'consulta':'adicionado'}">
       <div class="pdv-selo">${consulta ? 'Consulta de preço · não entrou na venda' : `Na venda · ${it?it.qtd:1} un.`}</div>
       <div class="pdv-prod">
@@ -757,7 +809,7 @@ function pdvVisorHtml(){
         <div class="pdv-info">
           ${p.marca?`<div class="pdv-marca">${escapar(p.marca)}</div>`:''}
           <div class="pdv-nome">${escapar(p.nome)}</div>
-          <div class="pdv-preco">${p.preco>0 ? fmtBRL(p.preco) : 'Sem preço'}</div>
+          <div class="pdv-precos-grande">${precoHtml}</div>
           <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
           ${consulta ? `<button class="btn btn-escuro pdv-visor-btn" onclick="${pdv.ativa?`pdvAdicionar('${p.id}')`:`pdvIniciarCom('${p.id}')`}">${pdv.ativa?'Adicionar à venda':'Iniciar venda com este produto'}</button>` : ''}
         </div>
@@ -765,7 +817,7 @@ function pdvVisorHtml(){
     </div>`;
   }
   if(v.tipo==='erro'){
-    return `<div class="pdv-visor-in erro">
+    return `<div class="pdv-visor-in erro${pdv.ativa?' faixa':''}">
       <div class="pdv-selo">Atenção</div>
       <div class="pdv-msg"><b>${escapar(v.titulo)}</b><span>${escapar(v.texto||'')}</span></div>
     </div>`;
@@ -783,10 +835,10 @@ function pdvVisorHtml(){
     </div>`;
   }
   if(pdv.ativa){
-    return `<div class="pdv-visor-in livre${pdv.consulta?' consulta':''}">
+    return `<div class="pdv-visor-in livre faixa${pdv.consulta?' consulta':''}">
       <div class="pdv-selo">${pdv.consulta ? 'Consulta de preço' : 'Venda em andamento'}</div>
       <div class="pdv-msg"><b>${pdv.consulta ? 'Leia o código para consultar' : 'Passe os produtos'}</b>
-        <span>${pdv.consulta ? 'O próximo produto lido só mostra o preço: não entra na venda.' : 'Leia o código de barras ou digite o nome no campo abaixo.'}</span></div>
+        <span>${pdv.consulta ? 'O próximo produto lido só mostra o preço: não entra na venda.' : 'Leia o código de barras ou digite o nome no campo de leitura.'}</span></div>
     </div>`;
   }
   return `<div class="pdv-visor-in livre">
@@ -800,12 +852,14 @@ function renderPdv(){
   document.getElementById('pdvVisor').innerHTML = pdvVisorHtml();
   document.querySelector('.pdv').classList.toggle('ativa', pdv.ativa);
 
+  // coluna da direita (PC): botões empilhados, "Finalizar venda" grande no fim
   document.getElementById('pdvAcoes').innerHTML = pdv.ativa ? `
     <button class="pdv-btn${pdv.consulta?' ligado':''}" onclick="pdvConsultar()"><span>${pdv.consulta?'Consultando…':'Consultar preço'}</span><kbd>F4</kbd></button>
     <button class="pdv-btn" onclick="abrirDesconto('venda')"><span>Aplicar desconto</span><kbd>F8</kbd></button>
-    <button class="pdv-btn primario" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>
-    <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>` : `
-    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>`;   // caixa livre: toda leitura já é consulta de preço
+    <button class="pdv-btn perigo" onclick="pdvCancelar()"><span>Cancelar venda</span></button>
+    <button class="pdv-btn primario pdv-finalizar" onclick="pdvFinalizar()"><span>Finalizar venda</span><kbd>F9</kbd></button>` : `
+    <button class="pdv-btn primario" onclick="pdvIniciar()"><span>Iniciar venda</span><kbd>F2</kbd></button>
+    <button type="button" class="pdv-link-cliente so-pc" onclick="abrirTelaCliente()">${telaClienteAberta() ? '✓ Tela do cliente aberta' : 'Abrir tela do cliente (2º monitor)'}</button>`;   // caixa livre: toda leitura já é consulta de preço
 
   // menu ☰ (celular/tablet): mesmas ações dos botões
   const ic = d=>`<i><svg viewBox="0 0 24 24">${d}</svg></i>`;
@@ -822,30 +876,33 @@ function renderPdv(){
       + opc('pdvConsultar', pdv.consulta ? 'Consultando… (toque para sair)' : 'Consultar preço', IC.consultar) + opc('pdvFinalizar','Finalizar venda',IC.finalizar)
     : opc('pdvIniciar','Iniciar venda',IC.iniciar);
 
-  document.getElementById('pdvListaCab').innerHTML = pdv.ativa
-    ? `<b>Venda em andamento</b><span>${r.linhas.length} produto(s) · ${r.unidades} un.</span>`
-    : `<b>Itens da venda</b><span>Caixa livre</span>`;
+  // cabeçalho da tabela (uma linha por item)
+  document.getElementById('pdvListaCab').innerHTML = `<span>Produto</span><span class="c">Qtd</span><span class="r pdv-col-unit">Unit.</span><span class="r">Total</span><span></span><span></span>`;
 
   // o item mais recente fica no topo, sem precisar rolar
   document.getElementById('pdvLista').innerHTML = r.linhas.length ? [...r.linhas].reverse().map(l=>`
-    <div class="pdv-item${pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado' ? ' atual':''}">
-      <div class="pdv-item-nome">${escapar(l.p.nome)}<small>${l.p.marca?escapar(l.p.marca)+' · ':''}${fmtBRL(l.unit)}/un</small></div>
+    <div class="pdv-item${pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado' ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
+      <div class="pdv-item-nome"><span>${escapar(l.p.nome)}</span>${l.promo?`<em class="pdv-promo-tag" title="Promoção: ${escapar(l.promo.titulo)}">${escapar(rotuloPromoCurto(l.promo))}</em>`:''}</div>
       <div class="pdv-qtd">
         <button type="button" onclick="pdvQtd(${l.i},-1)" aria-label="Diminuir">−</button>
         <input type="number" min="1" value="${l.it.qtd}" onchange="pdvDefinirQtd(${l.i},this.value)" onkeydown="if(event.key==='Enter')this.blur()" aria-label="Quantidade">
         <button type="button" onclick="pdvQtd(${l.i},1)" aria-label="Aumentar">+</button>
       </div>
-      <div class="pdv-item-total">${fmtBRL(l.liquido)}${l.desc>0?`<small>−${fmtBRL(l.desc)} (${rotuloDesconto(l.it.desc)})</small>`:''}</div>
-      <button type="button" class="pdv-ico${l.desc>0?' ligado':''}" onclick="abrirDesconto(${l.i})" title="Desconto neste item" aria-label="Desconto neste item">%</button>
+      <div class="pdv-col-unit pdv-item-unit">${l.promo?`<s>${fmtBRL(l.unit)}</s>`:''}${fmtBRL(l.unitPromo)}</div>
+      <div class="pdv-item-total">${fmtBRL(l.liquido)}${l.descManual>0?`<small>−${fmtBRL(l.descManual)}${rotuloDesconto(l.it.desc)}</small>`:''}</div>
+      <button type="button" class="pdv-ico${l.descManual>0?' ligado':''}" onclick="abrirDesconto(${l.i})" title="Desconto neste item" aria-label="Desconto neste item">%</button>
       <button type="button" class="pdv-ico" onclick="pdvRemover(${l.i})" title="Remover da venda" aria-label="Remover da venda">×</button>
     </div>`).join('')
     : `<div class="pdv-lista-vazia">${pdv.ativa ? 'Os produtos lidos aparecem aqui.' : 'Clique em “Iniciar venda” para começar.'}</div>`;
 
+  // Subtotal = preços cheios; "Descontos" soma os dos itens e o da venda toda
+  const descontos = cent(r.bruto - r.total);
   document.getElementById('pdvTotais').innerHTML = `
-    <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.subtotal)}</b></div>
-    ${pdv.desconto ? `<div class="pdv-tl desc"><span>Desconto na venda (${rotuloDesconto(pdv.desconto)})
-        <button type="button" onclick="abrirDesconto('venda')">alterar</button></span><b>−${fmtBRL(r.descVenda)}</b></div>` : ''}
+    <div class="pdv-tl"><span>Itens</span><b>${r.linhas.length} produto(s) · ${r.unidades} un.</b></div>
+    <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.bruto)}</b></div>
+    ${descontos>0 ? `<div class="pdv-tl desc"><span>Descontos</span><b>−${fmtBRL(descontos)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
+  telaClienteEnviar();   // a tela do cliente (2º monitor) acompanha cada mudança
 }
 
 /* ----- Comemoração da venda: chuva de confete nas cores da marca (~2,5 s) -----
@@ -982,6 +1039,7 @@ function blocoEntrada(p){
   </div>`;
 }
 function blocoSaida(p){
+  const pr = promoDoProduto(p);   // promoção valendo hoje: o preço já vem com o desconto
   return `<div class="bloco saida">
     <h4>Registrar saída (baixa)</h4>
     <div class="mini-campo"><label>Data</label><input type="date" id="sData" value="${hoje()}"></div>
@@ -998,7 +1056,8 @@ function blocoSaida(p){
     </div>
     <div class="mini-campo" id="campoPrecoSaida">
       <label>Preço de venda (un.)</label>
-      <input type="number" id="sPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
+      <input type="number" id="sPreco" min="0" step="0.01" value="${pr ? cent(p.preco-pr.descUnit) : (p.preco||'')}" placeholder="0,00">
+      ${pr ? `<small style="color:var(--vermelho);font-size:14px;font-weight:600">Preço da promoção “${escapar(pr.promo.titulo)}” (cheio: ${fmtBRL(p.preco)}).</small>` : ''}
       <small style="color:var(--texto-sec);font-size:14px">Alterar o preço base exige senha do gerente.</small>
     </div>
     <div class="mini-campo" id="campoPagSaida">
@@ -1556,7 +1615,11 @@ function registrarSaida(){
     if(isNaN(precoVenda)||precoVenda<0){ toast('Informe o preço de venda.'); return; }
     mov.precoVenda = precoVenda;
     if(val('sPag')) mov.pagamento = val('sPag');
-    if(base>0 && Math.abs(precoVenda-base)>0.001){
+    // preço da promoção que vale na data da baixa: não pede senha e entra nas Métricas da promoção
+    const pr = promoDoProduto(p, data);
+    if(pr && Math.abs(precoVenda-cent(base-pr.descUnit))<0.001){
+      Object.assign(mov, { precoCheio:base, desconto:cent(pr.descUnit*qtd), promocaoId:pr.promo.id, promocaoTitulo:pr.promo.titulo, descPromo:cent(pr.descUnit*qtd) });
+    } else if(base>0 && Math.abs(precoVenda-base)>0.001){
       pedirSenha(()=>efetivarSaida(p, mov),
         'O preço de venda foi alterado em relação ao preço base. Digite a senha do gerente para confirmar a baixa.');
       return;
@@ -2277,7 +2340,7 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
-  syncRenderConfig(); pushRenderConfig(); sandboxTela();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2500,6 +2563,7 @@ function renderDesempenho(){
       ${dsBlocoProdutos(vendas)}
     </div>
     ${dsBlocoPagamentos(vendas)}
+    ${dsBlocoPromocoes(vendas)}
     ${dsBlocoParados()}`;
   ligarTooltips(cont);
   ligarCrosshair();
@@ -2620,6 +2684,30 @@ function dsBlocoPagamentos(vendas){
       <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
         <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.n} venda(s) · ${fmtPctDs(c.fat/total*100)}</small></div>
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${c.id ? DS_COR.fat : DS_COR.neutro}"></div></div>
+        <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
+      </div>`).join('')}</div>
+  </div>`;
+}
+
+/* ----- Promoções: o que cada promoção vendeu no período e quanto deu de desconto ----- */
+function dsBlocoPromocoes(vendas){
+  const g = {};
+  vendas.forEach(v=>{
+    if(!v.m.promocaoId) return;
+    const k = v.m.promocaoId;
+    g[k] = g[k] || { titulo:v.m.promocaoTitulo||'Promoção', fat:0, desc:0, qtd:0, vendas:new Set() };
+    g[k].fat += v.receita; g[k].desc += v.m.descPromo||0; g[k].qtd += v.qtd; g[k].vendas.add(v.m.vendaId || v.m.id);
+  });
+  const lista = Object.entries(g).map(([id,x])=>{ const pr = (estado.promocoes||[]).find(y=>y.id===id); return { ...x, titulo: pr ? pr.titulo : x.titulo, n:x.vendas.size }; })
+    .sort((a,b)=>b.fat-a.fat);
+  if(!lista.length) return '';
+  const fatTotal = soma(vendas,'receita') || 1, fatPromo = soma(lista,'fat'), descPromo = soma(lista,'desc'), max = Math.max(...lista.map(x=>x.fat)) || 1;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Promoções</h3><small>${fmtBRL(fatPromo)} vendidos em promoção (${fmtPctDs(fatPromo/fatTotal*100)} do faturamento) · ${fmtBRL(descPromo)} em descontos de promoção</small></div></div>
+    <div class="ds-barras">${lista.map(c=>`
+      <div class="ds-barra-linha" data-tip="<b>${escapar(c.titulo)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Desconto dado <em>${fmtBRL(c.desc)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. vendidas</span>">
+        <div class="ds-barra-rot">${escapar(c.titulo)}<small>${c.n} venda(s) · ${c.qtd} un. · −${fmtBRL(c.desc)}</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:var(--vermelho)"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
       </div>`).join('')}</div>
   </div>`;
@@ -2762,6 +2850,7 @@ function garantirFinanceiro(e){
   f.cancelamentos = f.cancelamentos || [];
   f.abertura = f.abertura || '';
   e.avulsas = Array.isArray(e.avulsas) ? e.avulsas : [];   // movimentações avulsas (receitas sem produto em estoque) — 2.3.0
+  e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];   // promoções (Configurações) — 2.4.0
   return e;
 }
 garantirFinanceiro(estado);
@@ -3487,7 +3576,13 @@ async function pushAtivar(){
     const perm = await Notification.requestPermission();
     if(perm!=='granted'){ pushRenderConfig(); return; }
     const reg = await pushRegistrarSW();
-    if(!reg) throw new Error('Não foi possível instalar o serviço de notificações neste navegador.');
+    if(!reg){
+      let faltando = false;
+      try{ const r = await fetch('sw.js', { method:'HEAD', cache:'no-store' }); faltando = !r.ok; }catch(e){}
+      throw new Error(faltando
+        ? 'O arquivo sw.js não foi encontrado no site. Confira se ele está na raiz do repositório, com o nome todo em minúsculas (sw.js).'
+        : 'Não foi possível instalar o serviço de notificações neste navegador. Em janela anônima ou com bloqueio de rastreadores ele não funciona.');
+    }
     await navigator.serviceWorker.ready;
     const { chave } = await syncReq('GET', '/push/chave');
     let sub = await reg.pushManager.getSubscription();
@@ -3581,6 +3676,197 @@ async function pushEnviarFila(){
   }
   Sync.atualizar({ fila:restam });
 }
+
+/* =========================================================
+   PROMOÇÕES (Configurações) — 2.4.0
+   estado.promocoes = [{ id, titulo, alcance:'loja'|'categorias', categorias:[...], tipo:'pct'|'valor', valor,
+                         inicio:'AAAA-MM-DD'|'', fim:'AAAA-MM-DD'|'', ativa }]
+   - Vale quando está ligada e a data de hoje está dentro do período (início/fim opcionais).
+   - No PDV entra sozinha ao ler o produto. Se duas valem para o mesmo produto, vale a de MAIOR desconto
+     (não somam). Desconto manual por cima pede dupla confirmação (modal de desconto).
+   - Ligar uma promoção (ou salvar uma promoção ligada) pede a senha do gerente.
+   ========================================================= */
+function promoVigente(pr, dia){
+  dia = dia || hoje();
+  return !!pr.ativa && (!pr.inicio || pr.inicio<=dia) && (!pr.fim || pr.fim>=dia);
+}
+function promoSituacao(pr){
+  const d = hoje();
+  if(!pr.ativa) return { cls:'off', txt:'Desligada' };
+  if(pr.inicio && pr.inicio>d) return { cls:'agendada', txt:`Começa em ${fmtData(pr.inicio)}` };
+  if(pr.fim && pr.fim<d) return { cls:'encerrada', txt:`Encerrada em ${fmtData(pr.fim)}` };
+  return { cls:'vigente', txt: pr.fim ? `Valendo até ${fmtData(pr.fim)}` : 'Valendo' };
+}
+function promoValeParaProduto(pr, p){ return pr.alcance==='loja' || (pr.categorias||[]).includes(p.categoria); }
+/* Promoção que vale agora para o produto (a de maior desconto) → { promo, descUnit } ou null */
+function promoDoProduto(p, dia){
+  if(!p || !(p.preco>0)) return null;
+  let melhor = null;
+  (estado.promocoes||[]).forEach(pr=>{
+    if(!promoVigente(pr, dia) || !promoValeParaProduto(pr, p)) return;
+    const d = cent(Math.min(p.preco, pr.tipo==='pct' ? p.preco*pr.valor/100 : pr.valor));
+    if(d>0 && (!melhor || d>melhor.descUnit)) melhor = { promo:pr, descUnit:d };
+  });
+  return melhor;
+}
+function periodoPromo(pr){
+  if(pr.inicio && pr.fim) return `${fmtData(pr.inicio)} a ${fmtData(pr.fim)}`;
+  if(pr.inicio) return `a partir de ${fmtData(pr.inicio)}, sem data de fim`;
+  if(pr.fim) return `até ${fmtData(pr.fim)}`;
+  return 'sem período definido';
+}
+function promosVigentes(){ return (estado.promocoes||[]).filter(pr=>promoVigente(pr)); }
+function rotuloPromoCurto(pr){ return pr.tipo==='pct' ? `−${String(pr.valor).replace('.',',')}%` : `−${fmtBRL(pr.valor)}`; }
+function rotuloPromoAlcance(pr){
+  if(pr.alcance==='loja') return 'Loja toda';
+  const c = pr.categorias||[];
+  return c.length ? c.join(', ') : 'Nenhuma categoria';
+}
+/* Frase para o cliente: "10% de desconto em Celulares" */
+function frasePromo(pr){
+  const quanto = pr.tipo==='pct' ? `${String(pr.valor).replace('.',',')}% de desconto` : `${fmtBRL(pr.valor)} de desconto por unidade`;
+  return pr.alcance==='loja' ? `${quanto} na loja toda` : `${quanto} em ${rotuloPromoAlcance(pr)}`;
+}
+
+/* ----- Configurações: lista ----- */
+function renderPromocoes(){
+  const el = document.getElementById('cfgPromoLista'); if(!el) return;
+  const lista = [...(estado.promocoes||[])].sort((a,b)=>(promoVigente(b)-promoVigente(a)) || (b.inicio||'').localeCompare(a.inicio||''));
+  el.innerHTML = lista.length ? lista.map(pr=>{ const st = promoSituacao(pr); return `
+    <li class="pm-item">
+      <label class="sbx-chave pm-chave" title="${pr.ativa?'Desligar':'Ligar (pede a senha do gerente)'}"><input type="checkbox" ${pr.ativa?'checked':''} onchange="promoAlternar('${pr.id}', this.checked, this)"><i></i></label>
+      <div class="pm-info"><b>${escapar(pr.titulo)}</b>
+        <small>${escapar(frasePromo(pr))} · ${periodoPromo(pr)}</small>
+        <span class="pm-st ${st.cls}">${st.txt}</span></div>
+      <button class="btn btn-claro btn-mini" onclick="abrirPromocao('${pr.id}')">Editar</button>
+    </li>`; }).join('') : '<li class="pm-vazia">Nenhuma promoção cadastrada.</li>';
+}
+function promoAlternar(id, ligar, chk){
+  const pr = (estado.promocoes||[]).find(x=>x.id===id); if(!pr) return;
+  if(!ligar){ pr.ativa = false; salvar(); renderPromocoes(); renderViewAtual(); toast(`Promoção “${pr.titulo}” desligada.`); return; }
+  chk.checked = false;   // só liga depois da senha
+  pedirSenha(()=>{ pr.ativa = true; salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
+    `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite a senha do gerente.`);
+}
+
+/* ----- Modal: nova / editar ----- */
+let pmEditando = null, pmTipo = 'pct', pmAlcance = 'loja';
+function abrirPromocao(id){
+  const pr = id ? (estado.promocoes||[]).find(x=>x.id===id) : null;
+  pmEditando = pr ? pr.id : null;
+  document.getElementById('pmTituloModal').textContent = pr ? 'Editar promoção' : 'Nova promoção';
+  document.getElementById('pmTitulo').value = pr ? pr.titulo : '';
+  document.getElementById('pmValor').value = pr ? pr.valor : '';
+  document.getElementById('pmInicio').value = pr ? (pr.inicio||'') : hoje();
+  document.getElementById('pmFim').value = pr ? (pr.fim||'') : '';
+  document.getElementById('pmAtiva').checked = pr ? !!pr.ativa : true;
+  document.getElementById('pmExcluir').style.display = pr ? '' : 'none';
+  const sel = pr ? (pr.categorias||[]) : [];
+  document.getElementById('pmCategorias').innerHTML = estado.categorias.map(c=>`
+    <label class="pm-cat"><input type="checkbox" value="${escapar(c)}" ${sel.includes(c)?'checked':''}> ${escapar(c)}</label>`).join('');
+  promoTipo(pr ? pr.tipo : 'pct'); promoAlcance(pr ? pr.alcance : 'loja');
+  abrir('modalPromocao');
+  setTimeout(()=>document.getElementById('pmTitulo').focus(), 80);
+}
+function promoTipo(t){
+  pmTipo = t;
+  document.getElementById('pmTipoPct').classList.toggle('ativo', t==='pct');
+  document.getElementById('pmTipoValor').classList.toggle('ativo', t==='valor');
+  document.getElementById('pmValorRot').textContent = t==='pct' ? 'Desconto (%)' : 'Desconto por unidade (R$)';
+}
+function promoAlcance(a){
+  pmAlcance = a;
+  document.getElementById('pmAlcLoja').classList.toggle('ativo', a==='loja');
+  document.getElementById('pmAlcCat').classList.toggle('ativo', a==='categorias');
+  document.getElementById('pmCategoriasBloco').style.display = a==='categorias' ? '' : 'none';
+}
+function salvarPromocao(){
+  const titulo = val('pmTitulo').trim(), valor = parseFloat(val('pmValor'));
+  const inicio = val('pmInicio'), fim = val('pmFim'), ativa = document.getElementById('pmAtiva').checked;
+  const categorias = [...document.querySelectorAll('#pmCategorias input:checked')].map(i=>i.value);
+  if(!titulo){ toast('Dê um título à promoção (ex: Black Friday 2026).'); document.getElementById('pmTitulo').focus(); return; }
+  if(isNaN(valor) || valor<=0){ toast('Informe o desconto.'); document.getElementById('pmValor').focus(); return; }
+  if(pmTipo==='pct' && valor>=100){ toast('O desconto em % precisa ser menor que 100.'); return; }
+  if(pmAlcance==='categorias' && !categorias.length){ toast('Escolha ao menos uma categoria.'); return; }
+  if(inicio && fim && fim<inicio){ toast('A data de fim é antes da de início.'); return; }
+  const dados = { titulo:titulo.slice(0,60), alcance:pmAlcance, categorias: pmAlcance==='categorias' ? categorias : [], tipo:pmTipo,
+                  valor:Math.round(valor*100)/100, inicio, fim, ativa };
+  const gravar = ()=>{
+    estado.promocoes = estado.promocoes || [];
+    if(pmEditando){ const pr = estado.promocoes.find(x=>x.id===pmEditando); if(pr) Object.assign(pr, dados); }
+    else estado.promocoes.push({ id:uid(), ...dados });
+    salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual();
+    toast(pmEditando ? 'Promoção atualizada.' : 'Promoção criada.');
+  };
+  // promoção ligada: exige a senha do gerente
+  if(ativa) pedirSenha(gravar, `Salvar a promoção ligada “${dados.titulo}” (${frasePromo(dados)}). Digite a senha do gerente.`);
+  else gravar();
+}
+function excluirPromocao(){
+  const pr = (estado.promocoes||[]).find(x=>x.id===pmEditando); if(!pr) return;
+  pedirConfirmacao(`Excluir a promoção “${pr.titulo}”? As vendas já feitas com ela continuam nas Métricas.`, ()=>{
+    estado.promocoes = estado.promocoes.filter(x=>x.id!==pr.id);
+    salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual(); toast('Promoção excluída.');
+  }, 'Excluir promoção');
+}
+
+/* =========================================================
+   TELA DO CLIENTE (2º monitor) — 2.4.0
+   O PDV abre cliente.html numa janela separada (o caixa arrasta para o monitor do cliente e põe em
+   tela cheia). As duas janelas conversam pelo BroadcastChannel, no próprio computador: sem internet.
+   A tela do cliente só desenha o que recebe: nunca vê custo, estoque ou botões.
+   ========================================================= */
+const canalCliente = ('BroadcastChannel' in window) ? new BroadcastChannel('china-engine-cliente') : null;
+let janelaCliente = null, clienteVistoEm = 0;
+function telaClienteAberta(){ return (janelaCliente && !janelaCliente.closed) || (Date.now()-clienteVistoEm < 8000); }
+async function abrirTelaCliente(){
+  if(!canalCliente){ toast('Este navegador não permite a tela do cliente. Use o Chrome ou o Edge.'); return; }
+  let recursos = 'popup=yes,width=1280,height=800';
+  // Chrome/Edge: com permissão, já abre a janela no outro monitor
+  try{
+    if('getScreenDetails' in window){
+      const tel = await window.getScreenDetails();
+      const outra = tel.screens.find(t=>t!==tel.currentScreen);
+      if(outra) recursos = `popup=yes,left=${outra.availLeft},top=${outra.availTop},width=${outra.availWidth},height=${outra.availHeight}`;
+    }
+  }catch(e){}
+  janelaCliente = window.open('cliente.html', 'china-engine-cliente', recursos);
+  if(!janelaCliente){ toast('O navegador bloqueou a janela. Permita pop-ups para este site e tente de novo.'); return; }
+  setTimeout(()=>{ telaClienteEnviar(); renderPdv(); }, 800);
+}
+function telaClienteDados(){
+  const r = pdvResumo(), v = pdvVisor;
+  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? (()=>{ const p = prod(v.pid), pr = promoDoProduto(p);
+    return { nome:p.nome, marca:p.marca||'', foto:p.foto||'', preco:p.preco||0, precoPromo: pr ? cent(p.preco-pr.descUnit) : null,
+             promo: pr ? `${pr.promo.titulo} · ${rotuloPromoCurto(pr.promo)}` : '', consulta: v.modo==='consulta' }; })() : null;
+  return {
+    tipo:'estado', faz: sandbox.ativo,
+    fase: v.tipo==='concluida' ? 'concluida' : pdv.ativa ? 'venda' : (prodVisor ? 'consulta' : 'livre'),
+    produto: prodVisor,
+    itens: r.linhas.map(l=>({ nome:l.p.nome, qtd:l.it.qtd, unit:l.unitPromo, total:l.liquido, promo:!!l.promo })),
+    subtotal:r.bruto, descontos:cent(r.bruto-r.total), total:r.total, unidades:r.unidades,
+    concluida: v.tipo==='concluida' ? { total:v.total, unidades:v.unidades, pagamento:nomePagamento(v.pagamento) } : null,
+    promocoes: promosVigentes().map(pr=>({ titulo:pr.titulo, frase:frasePromo(pr) }))
+  };
+}
+function telaClienteEnviar(){ if(canalCliente) try{ canalCliente.postMessage(telaClienteDados()); }catch(e){} }
+if(canalCliente) canalCliente.onmessage = e=>{
+  if(e.data && e.data.tipo==='oi'){   // a tela do cliente acabou de abrir (ou recarregou): manda o estado atual
+    const novo = !telaClienteAberta(); clienteVistoEm = Date.now(); telaClienteEnviar();
+    if(novo && viewAtual==='pdv') renderPdv();
+  }
+};
+
+/* =========================================================
+   MENU LATERAL RECOLHIDO (PC) — 2.4.0. A escolha fica salva neste computador.
+   ========================================================= */
+const MENU_CHAVE = 'chinatown_menu_recolhido';
+function menuRecolher(recolher){
+  document.body.classList.toggle('menu-recolhido', recolher);
+  try{ if(recolher) localStorage.setItem(MENU_CHAVE,'1'); else localStorage.removeItem(MENU_CHAVE); }catch(e){}
+  setTimeout(()=>{ if(viewAtual==='desempenho') renderDesempenho(); }, 220);   // gráficos acompanham a nova largura
+}
+try{ if(localStorage.getItem(MENU_CHAVE)==='1') document.body.classList.add('menu-recolhido'); }catch(e){}
 
 /* ===== Início ===== */
 document.getElementById('versao').textContent = VERSAO;   // a versão aparece só em Configurações
