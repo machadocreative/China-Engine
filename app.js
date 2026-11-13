@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.6.0';
+const VERSAO = '2.7.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -744,11 +744,12 @@ function abrirAvulsa(id){
   document.getElementById('avTitulo').textContent = a ? 'Editar movimentação avulsa' : 'Movimentação avulsa';
   document.getElementById('avData').value = a ? a.data : hoje();
   document.getElementById('avDesc').value = a ? a.descricao : '';
-  document.getElementById('avValor').value = a ? a.valor : '';
+  const q = a ? (a.qtd||1) : 1;   // valor e custo ficam gravados como total; no formulário aparecem por unidade
+  document.getElementById('avQtd').value = q;
+  document.getElementById('avValor').value = a ? cent(a.valor/q) : '';
   document.getElementById('avExcluir').style.display = a ? '' : 'none';
-  avServico = null;
   document.getElementById('avTemCusto').checked = !!(a && a.custo>0);
-  document.getElementById('avCusto').value = a && a.custo>0 ? a.custo : '';
+  document.getElementById('avCusto').value = a && a.custo>0 ? cent(a.custo/q) : '';
   avulsaCusto();
   avulsaFecharSugestoes();
   avulsaTipo(a ? a.tipo : 'servico');
@@ -756,7 +757,16 @@ function abrirAvulsa(id){
   avulsaRenderPags();
   abrir('modalAvulsa');
 }
-function avulsaCusto(){ document.getElementById('avCustoCampo').style.display = document.getElementById('avTemCusto').checked ? '' : 'none'; }
+function avulsaCusto(){ document.getElementById('avCustoCampo').style.display = document.getElementById('avTemCusto').checked ? '' : 'none'; avulsaTotais(); }
+/* Total = quantidade × valor por unidade (e o custo também, por unidade) */
+function avulsaTotais(){
+  const el = document.getElementById('avTotal'); if(!el) return;
+  const q = parseInt(val('avQtd'))||0, v = parseFloat(val('avValor')), c = parseFloat(val('avCusto'));
+  const temCusto = document.getElementById('avTemCusto').checked && c>0;
+  el.innerHTML = q>0 && v>0
+    ? `<span>Total: <b>${fmtBRL(cent(q*v))}</b>${q>1 ? ` <small>(${q} × ${fmtBRL(v)})</small>` : ''}</span>${temCusto ? `<span>Custo total: <b>${fmtBRL(cent(q*c))}</b></span>` : ''}`
+    : '';
+}
 /* Busca nos serviços cadastrados (Configurações → Serviços): escolher preenche descrição, valor e custo */
 function avulsaBuscarServico(){
   const el = document.getElementById('avSugestoes'), q = val('avDesc').toLowerCase().trim();
@@ -775,14 +785,7 @@ function avulsaEscolherServico(id){
   document.getElementById('avTemCusto').checked = sv.custo>0;
   document.getElementById('avCusto').value = sv.custo>0 ? sv.custo : '';
   avulsaCusto(); avulsaFecharSugestoes();
-  avServico = sv;   // se mudar o valor (ex.: 20 cópias), o custo acompanha na mesma proporção
-  const v = document.getElementById('avValor'); v.focus(); v.select();
-}
-let avServico = null;
-function avulsaValorMudou(){
-  const sv = avServico, v = parseFloat(val('avValor'));
-  if(!sv || !(sv.custo>0) || !(sv.valor>0) || isNaN(v) || !document.getElementById('avTemCusto').checked) return;
-  document.getElementById('avCusto').value = Math.round(sv.custo * v / sv.valor * 100) / 100;
+  const q = document.getElementById('avQtd'); q.focus(); q.select();   // ex.: 20 cópias → o total e o custo acompanham
 }
 function avulsaTipo(t){
   avTipoSel = t;
@@ -796,16 +799,18 @@ function avulsaRenderPags(){
       <svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
 }
 function salvarAvulsa(){
-  const data = val('avData'), descricao = val('avDesc').trim(), valor = parseFloat(val('avValor'));
+  const data = val('avData'), descricao = val('avDesc').trim(), unit = parseFloat(val('avValor')), qtd = parseInt(val('avQtd'));
   if(!data){ toast('Informe a data.'); return; }
   if(!descricao){ toast('Escreva uma breve descrição.'); document.getElementById('avDesc').focus(); return; }
-  if(isNaN(valor) || valor<=0){ toast('Informe o valor.'); document.getElementById('avValor').focus(); return; }
+  if(!qtd || qtd<1){ toast('Informe a quantidade.'); document.getElementById('avQtd').focus(); return; }
+  if(isNaN(unit) || unit<=0){ toast('Informe o valor por unidade.'); document.getElementById('avValor').focus(); return; }
+  const valor = cent(unit*qtd);
   const temCusto = document.getElementById('avTemCusto').checked, custo = parseFloat(val('avCusto'));
   if(temCusto && (isNaN(custo) || custo<0)){ toast('Informe o custo, ou desmarque “Houve custo?”.'); document.getElementById('avCusto').focus(); return; }
   if(!avPagSel){ toast('Escolha a forma de pagamento.'); return; }
   estado.avulsas = estado.avulsas || [];
-  const dados = { data, descricao, tipo:avTipoSel, valor:Math.round(valor*100)/100, pagamento:avPagSel };
-  if(temCusto && custo>0) dados.custo = Math.round(custo*100)/100;
+  const dados = { data, descricao, tipo:avTipoSel, qtd, valor, pagamento:avPagSel };   // valor e custo gravados como total
+  if(temCusto && custo>0) dados.custo = cent(custo*qtd);
   if(avEditando){
     const a = estado.avulsas.find(x=>x.id===avEditando);
     if(a){ Object.assign(a, dados); if(!dados.custo) delete a.custo; }
@@ -816,7 +821,7 @@ function salvarAvulsa(){
   estado.avulsas.push({ id:uid(), ...dados, hora:new Date().toTimeString().slice(0,5) });
   salvar(); fechar('modalAvulsa'); renderViewAtual();
   toast('Movimentação avulsa registrada.');
-  notificarVenda({ total:dados.valor, unidades:1, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
+  notificarVenda({ total:dados.valor, unidades:qtd, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
 }
 /* Editar ou excluir: como nas outras movimentações, pede a senha do gerente */
 function pedirEdicaoAvulsa(id){
@@ -1748,8 +1753,8 @@ function classeMov(m){
   return 'neu';
 }
 function rotuloMov(m){
-  if(m.tipo==='avulsa') return 'Avulsa';
-  if(m.tipo==='entrada') return m.inicial ? 'Estoque já existente' : 'Aquisição';
+  if(m.tipo==='avulsa') return 'Venda';   // a categoria (Serviço / Produto avulso) já mostra que é avulsa
+  if(m.tipo==='entrada') return m.inicial ? 'Estoque existente' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
   return m.motivo || 'Saída';
@@ -1757,7 +1762,7 @@ function rotuloMov(m){
 /* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
    Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
 function valorMov(m){
-  if(m.tipo==='avulsa') return { unit:m.valor, total:m.valor };
+  if(m.tipo==='avulsa') return { unit:m.valor/(m.qtd||1), total:m.valor };
   if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
   if(m.tipo==='entrada') return { unit:m.custoUnit, total:-(m.qtd*m.custoUnit) };
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
@@ -1780,7 +1785,7 @@ function valorHtml(v, qtd){
   return `<b>${s}${fmtBRL(Math.abs(v.total))}</b>${unit}`;
 }
 function tipoFiltroMov(m){
-  if(m.tipo==='avulsa') return 'avulsa';
+  if(m.tipo==='avulsa') return 'venda';
   if(m.tipo==='entrada') return m.inicial ? 'inicial' : 'aquisicao';
   if(m.motivo==='Venda') return 'venda';
   if(m.motivo==='A receber') return 'areceber';
@@ -1913,7 +1918,7 @@ function renderHistorico(){
   (estado.avulsas||[]).forEach(a=>{
     const m = { ...a, tipo:'avulsa' };
     linhas.push({ pid:'', mid:a.id, m, avulsa:true, nome:a.descricao, marca:'', categoria: rotuloTipoAvulsa(a.tipo),
-                  data:a.data, qtd:1, v:valorMov(m), tipoF:'avulsa', arquivado:false });
+                  data:a.data, qtd:a.qtd||1, v:valorMov(m), tipoF:'venda', arquivado:false });
   });
 
   linhas = linhas.filter(l=>{
@@ -2053,7 +2058,7 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
-    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque já existente: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
+    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque existente: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
       : `<div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>`}
     ` : `
     <div class="campo"><label>Motivo</label>
@@ -2101,11 +2106,11 @@ function excluirMovimentacao(){
   const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
   if(depois < 0){
     mostrarAviso('Não é possível excluir',
-      `<p>Excluir ${m.inicial?'este estoque pré-existente':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+      `<p>Excluir ${m.inicial?'este estoque existente':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
        <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
     return;
   }
-  const desc = `${ent?(m.inicial?'o estoque pré-existente':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  const desc = `${ent?(m.inicial?'o estoque existente':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
@@ -2509,16 +2514,18 @@ function renderAlertas(){
   const totalPend = pend.reduce((s,x)=>s + x.m.qtd*(x.p.preco||0), 0);
   const cont = document.getElementById('alertasConteudo');
 
+  // o número do bloco é de produtos abaixo do mínimo, mesmo com o alerta lido, adiado ou dispensado
+  const silenciados = abaixo.length - baixos.length;
   const blocoBaixo = `<div class="ini-bloco baixo">
-    <div class="ini-cab"><div><h3>Estoque baixo</h3><small>Atenção para reabastecer</small></div>
-      <span class="ini-qtd">${baixos.length}</span></div>
+    <div class="ini-cab"><div><h3>Estoque baixo</h3><small>${abaixo.length} produto(s) abaixo do mínimo${silenciados ? `: ${baixos.length} com alerta ativo, ${silenciados} lido(s), adiado(s) ou dispensado(s)` : ''}</small></div>
+      <span class="ini-qtd">${abaixo.length}</span></div>
     ${baixos.length || lidos.length ? [...baixos, ...lidos].map(p=>{ const est = estoqueDe(p), lido = alertaEstado(p)==='lido'; return `
       <div class="ini-item${lido?' lido':''}">
         <div class="nome">${escapar(p.nome)}${lido?' <span class="ini-tag">Lido</span>':''}<small>${p.marca?escapar(p.marca)+' · ':''}mínimo ${p.minimo||0} un.</small></div>
         <div class="val" style="color:${est<=0?'var(--vermelho)':'inherit'}">${est} un.<small>${est<=0?'sem estoque':'em estoque'}</small></div>
         <button class="btn btn-amarelo btn-mini" onclick="abrirRegistroEntrada('${p.id}')">+ Entrada</button>
         <button class="ini-mais" onclick="abrirOpcoesAlerta('${p.id}')" title="Marcar como lido, lembrar depois ou dispensar" aria-label="Opções do alerta">⋯</button>
-      </div>`; }).join('') : '<div class="ini-vazio">Nenhum produto abaixo do mínimo.</div>'}
+      </div>`; }).join('') : `<div class="ini-vazio">Nenhum alerta ativo agora, mas ${ocultos.length} produto(s) continua(m) abaixo do mínimo, com o alerta adiado ou dispensado (veja abaixo).</div>`}
     ${ocultos.length ? `<details class="ini-ocultos"><summary>${ocultos.length} alerta(s) adiado(s) ou dispensado(s)</summary>
       ${ocultos.map(p=>{ const a = p.alerta; return `
       <div class="ini-item">
@@ -2539,7 +2546,7 @@ function renderAlertas(){
   </div>`;
 
   const temBaixo = abaixo.length>0;
-  const tudoOk = !baixos.length && !pend.length;
+  const tudoOk = !abaixo.length && !pend.length;   // "tudo em dia" só quando nada está abaixo do mínimo (mesmo dispensado)
   // cada bloco só aparece quando tem itens
   cont.innerHTML = (tudoOk ? '<div class="ini-ok">✓ Tudo em dia: nenhum estoque baixo e nenhum pagamento pendente.</div>' : '')
     + `${temBaixo ? blocoBaixo : ''}${pend.length ? blocoPend : ''}`;
@@ -2612,7 +2619,7 @@ function vendasDe(de, ate){
     if(ate && a.data>ate) return;
     const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
     const custo = a.custo || 0;   // "Houve custo?" (2.6.0); antes era sempre 0
-    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:1, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
+    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:a.qtd||1, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
   });
   return lista;
 }
@@ -2668,12 +2675,12 @@ function renderDesempenho(){
     ${notaPend}${notaAvulsa}
     ${dsBlocoEvolucao(vendas, de, ate)}
     <div class="ds-grade">
-      ${dsBlocoCategorias(vendas)}
       ${dsBlocoSemana(vendas, de, ate)}
+      ${dsBlocoMelhoresDatas(vendas)}
     </div>
     <div class="ds-grade">
-      ${dsBlocoMelhoresDatas(vendas)}
       ${dsBlocoProdutos(vendas)}
+      ${dsBlocoCategorias(vendas)}
     </div>
     ${dsBlocoPagamentos(vendas)}
     ${dsBlocoDescontos(vendas)}

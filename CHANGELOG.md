@@ -32,6 +32,37 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.7.0] - 2026-11-13
+
+### Adicionado
+
+- **Quantidade na movimentação avulsa:** a movimentação avulsa (produto ou serviço) ganhou um campo de quantidade, como 10 xerox, 5 impressões ou 2 fichas.
+  - O valor e o custo agora são informados por unidade, e o modal mostra o total.
+  - Ao escolher um serviço cadastrado, o valor e o custo por unidade vêm preenchidos.
+  - No Histórico, a avulsa mostra a quantidade e o valor por unidade.
+  - Nas Métricas, as unidades das avulsas entram na contagem.
+  - Avulsas antigas contam como 1 unidade.
+
+### Alterado
+
+- **Sem selo "Avulsa":** a movimentação avulsa aparece no Histórico com o selo "Venda", e a categoria (Serviço ou Produto avulso) mostra que é avulsa. A opção "Avulsa" saiu do filtro Tipo, e o filtro "Venda" passa a incluir as avulsas.
+- **Pontos de atenção:**
+  - "Tudo em dia" só aparece quando nenhum produto está abaixo do mínimo, mesmo que o alerta tenha sido lido, adiado ou dispensado.
+  - O bloco Estoque baixo mostra quantos produtos estão abaixo do mínimo e quantos têm o alerta silenciado.
+  - Se todos estiverem adiados ou dispensados, o bloco avisa que eles continuam abaixo do mínimo, em vez de dizer "Nenhum produto abaixo do mínimo".
+- **Ordem das Configurações:** Serviços, Categorias de produtos, Promoções e o restante como antes.
+- **Ordem dos gráficos nas Métricas:** Dias da semana (melhor dia), Melhores datas, Produtos mais vendidos, Vendas por categoria e o restante como antes.
+
+---
+
+## [2.6.1] - 2026-11-13
+
+### Alterado
+
+- **"Estoque inicial" passa a se chamar "Estoque existente":** serve só para a mercadoria que já estava na loja quando o app começou a ser usado. O primeiro lote de um produto novo continua sendo uma Aquisição (Registrar entrada ou Compra em lote). Os registros antigos mudam de nome sozinhos.
+
+---
+
 ## [2.6.0] - 2026-11-13
 
 ### Adicionado

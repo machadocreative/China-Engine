@@ -158,7 +158,6 @@
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
         <option value="inicial">Estoque existente</option>
-        <option value="avulsa">Avulsa</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
@@ -271,6 +270,13 @@
 <!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Serviços</h3>
+      <small>Serviços que a loja cobra (xerox, impressão, fichas, reparos…), com o valor e, se quiser, o custo. Na movimentação avulsa, é só começar a digitar o nome para preencher.</small></div>
+    <ul class="sv-lista" id="cfgServicos"></ul>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirServico()">+ Novo serviço</button></div>
+  </div>
+
+  <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Categorias de produtos</h3>
       <small>Crie, renomeie ou remova as categorias dos produtos. <span id="cfgCatTotal"></span></small></div>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCategorias()">Gerenciar categorias</button></div>
@@ -281,13 +287,6 @@
       <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede a senha do gerente.</small></div>
     <ul class="pm-lista" id="cfgPromoLista"></ul>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirPromocao()">+ Nova promoção</button></div>
-  </div>
-
-  <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Serviços</h3>
-      <small>Serviços que a loja cobra (xerox, impressão, fichas, reparos…), com o valor e, se quiser, o custo. Na movimentação avulsa, é só começar a digitar o nome para preencher.</small></div>
-    <ul class="sv-lista" id="cfgServicos"></ul>
-    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirServico()">+ Novo serviço</button></div>
   </div>
 
   <div class="cfg-bloco">
@@ -470,19 +469,21 @@
       </div>
       <div class="campo av-desc-campo"><label>Breve descrição</label>
         <input type="text" id="avDesc" maxlength="80" placeholder="Ex: 20 cópias em xerox, reparo de controle…" autocomplete="off"
-          oninput="avServico=null;avulsaBuscarServico()" onfocus="avulsaBuscarServico()" onblur="setTimeout(avulsaFecharSugestoes,150)"
+          oninput="avulsaBuscarServico()" onfocus="avulsaBuscarServico()" onblur="setTimeout(avulsaFecharSugestoes,150)"
           onkeydown="if(event.key==='Escape')avulsaFecharSugestoes()">
         <div class="av-sugestoes" id="avSugestoes"></div>
       </div>
       <div class="linha-campos">
-        <div class="campo"><label>Data</label><input type="date" id="avData"></div>
-        <div class="campo"><label>Valor (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaValorMudou()"></div>
+        <div class="campo" style="flex:.7"><label>Quantidade</label><input type="number" id="avQtd" min="1" step="1" value="1" inputmode="numeric" oninput="avulsaTotais()"></div>
+        <div class="campo"><label>Valor por unidade (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaTotais()"></div>
       </div>
       <label class="av-custo-chk"><input type="checkbox" id="avTemCusto" onchange="avulsaCusto()"> Houve custo?</label>
-      <div class="campo" id="avCustoCampo" style="display:none"><label>Custo (R$)</label>
-        <input type="number" id="avCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+      <div class="campo" id="avCustoCampo" style="display:none"><label>Custo por unidade (R$)</label>
+        <input type="number" id="avCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaTotais()">
         <div class="dica">Ex.: papel e tinta da impressão, peça usada no reparo. Entra nas Métricas como custo, para o lucro ficar certo.</div>
       </div>
+      <div class="av-total" id="avTotal"></div>
+      <div class="campo"><label>Data</label><input type="date" id="avData"></div>
       <label class="pdv-fin-rot">Forma de pagamento</label>
       <div class="pdv-pags" id="avPags"></div>
       <div class="rodape-modal" style="margin-top:16px">
@@ -691,7 +692,7 @@
       <div id="pWrapInicial">
         <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Estoque existente?</label>
         <div class="pi-bloco" id="pBlocoInicial" style="display:none">
-          <div class="pi-tit">Mercadoria já em loja</div>
+          <div class="pi-tit">Mercadoria que já estava na loja antes do app</div>
           <div class="linha-campos">
             <div class="campo">
               <label>Custo por unidade (R$)</label>
@@ -702,7 +703,7 @@
               <input type="number" id="pQtdInicial" min="1" step="1" placeholder="0" inputmode="numeric">
             </div>
           </div>
-          <div class="dica">Use só para produtos que já estavam na loja quando o app começou a ser usado. Conta no estoque, no custo e no lucro, mas afeta suas métricas nem o saldo do dia. O primeiro lote de um produto novo é uma compra: registre em Registrar entrada ou Compra em lote.</div>
+          <div class="dica">Use só para produtos que já estavam na loja quando o app começou a ser usado. Conta no estoque, no custo e no lucro, mas não como compra no saldo do dia. O primeiro lote de um produto novo é uma compra: registre em Registrar entrada ou Compra em lote.</div>
         </div>
       </div>
       <div class="rodape-modal">

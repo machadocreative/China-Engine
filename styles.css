@@ -1367,3 +1367,10 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
   .ini-item:has(.ini-mais) .nome{flex:1 1 100%}
   .ini-item:has(.ini-mais) .val{margin-right:auto;text-align:left}
 }
+
+/* ===== 2.7.0 ===== */
+/* Movimentação avulsa: total (quantidade × valor) */
+.av-total{display:flex;flex-wrap:wrap;gap:4px 18px;margin:-4px 0 14px;font-size:15px;color:var(--texto-sec)}
+.av-total:empty{display:none}
+.av-total b{color:var(--texto);font-size:17px}
+.av-total small{font-size:14px}
