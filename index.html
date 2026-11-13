@@ -27,10 +27,6 @@
 <body>
 
 <header>
-  <!-- PC com o menu lateral recolhido: ☰ traz o menu de volta -->
-  <button class="menu-abrir so-pc" onclick="menuRecolher(false)" title="Mostrar o menu" aria-label="Mostrar o menu">
-    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-  </button>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
   <!-- Logo + título: tocar volta para o PDV (tela inicial) -->
   <a class="marca-app" href="#" onclick="mostrarView('pdv');return false" title="Voltar ao PDV">
@@ -161,12 +157,20 @@
         <option value="">Tipo</option>
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
-        <option value="inicial">Estoque inicial</option>
+        <option value="inicial">Estoque existente</option>
         <option value="avulsa">Avulsa</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
       <label class="hx-chip"><select id="fhCategoria" onchange="renderHistorico()"></select></label>
+      <label class="hx-chip"><select id="fhPagamento" onchange="renderHistorico()" title="Forma de pagamento">
+        <option value="">Pagamento</option>
+        <option value="especie">Espécie</option>
+        <option value="pix">Pix</option>
+        <option value="credito">Cartão de crédito</option>
+        <option value="outros">Outros</option>
+        <option value="-">Não informada</option>
+      </select></label>
       <div class="hx-chip-wrap">
         <button class="hx-chip hx-chip-btn" id="hxValorBtn" onclick="alternarPop('hxPopValor',event)">Valor</button>
         <div class="hx-pop hx-pop-valor" id="hxPopValor" onclick="event.stopPropagation()">
@@ -280,6 +284,13 @@
   </div>
 
   <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Serviços</h3>
+      <small>Serviços que a loja cobra (xerox, impressão, fichas, reparos…), com o valor e, se quiser, o custo. Na movimentação avulsa, é só começar a digitar o nome para preencher.</small></div>
+    <ul class="sv-lista" id="cfgServicos"></ul>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirServico()">+ Novo serviço</button></div>
+  </div>
+
+  <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Notificações de venda</h3>
       <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
     <div class="sy-status" id="cfgPushStatus"></div>
@@ -354,6 +365,34 @@
 </section>
 </main>
 
+<!-- ===== Modal: opções do alerta de estoque baixo (2.6.0) ===== -->
+<div class="overlay" id="modalAlerta">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-cabecalho">
+      <h2 id="alTitulo">Produto</h2>
+      <button class="fechar" onclick="fechar('modalAlerta')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p id="alSobre" style="color:var(--texto-sec);margin-bottom:14px"></p>
+      <div class="acoes-rapidas">
+        <button class="btn btn-escuro" onclick="alertaMarcar('lido')">Marcar como lido</button>
+      </div>
+      <p class="al-rot">Me lembre em</p>
+      <div class="al-dias">
+        <button class="btn btn-claro" onclick="alertaMarcar('adiado',1)">1 dia</button>
+        <button class="btn btn-claro" onclick="alertaMarcar('adiado',3)">3 dias</button>
+        <button class="btn btn-claro" onclick="alertaMarcar('adiado',7)">7 dias</button>
+        <button class="btn btn-claro" onclick="alertaMarcar('adiado',15)">15 dias</button>
+        <button class="btn btn-claro" onclick="alertaMarcar('adiado',30)">30 dias</button>
+      </div>
+      <div class="acoes-rapidas" style="margin-top:14px">
+        <button class="btn btn-claro" style="color:var(--vermelho)" onclick="alertaMarcar('dispensado')">Dispensar</button>
+      </div>
+      <p class="dica" style="margin-top:12px">Lido: sai do contador do sininho e volta se o estoque zerar. Dispensar: some até o produto ser reposto (use quando não vai repor ou vai arquivar). Qualquer escolha é desfeita sozinha quando entra estoque.</p>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Modal: ações rápidas (toque e segure) ===== -->
 <div class="overlay" id="modalAcoes">
   <div class="modal" style="max-width:380px">
@@ -424,15 +463,25 @@
     </div>
     <div class="modal-corpo">
       <p class="dica" style="margin:0 0 14px">Para receitas que não passam pelo estoque, como xerox, impressão, fichas de jogo, reparos ou um produto sem cadastro. Entra no Histórico e nas Métricas, sem mexer no estoque.</p>
-      <div class="linha-campos">
-        <div class="campo"><label>Data</label><input type="date" id="avData"></div>
-        <div class="campo"><label>Valor (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
-      </div>
-      <div class="campo"><label>Breve descrição</label><input type="text" id="avDesc" maxlength="80" placeholder="Ex: 20 cópias em xerox, reparo de controle…"></div>
       <label class="pdv-fin-rot">Tipo</label>
       <div class="pdv-alterna" role="group" aria-label="Tipo">
         <button type="button" id="avTipoServico" onclick="avulsaTipo('servico')">Serviço</button>
         <button type="button" id="avTipoProduto" onclick="avulsaTipo('produto')">Produto</button>
+      </div>
+      <div class="campo av-desc-campo"><label>Breve descrição</label>
+        <input type="text" id="avDesc" maxlength="80" placeholder="Ex: 20 cópias em xerox, reparo de controle…" autocomplete="off"
+          oninput="avServico=null;avulsaBuscarServico()" onfocus="avulsaBuscarServico()" onblur="setTimeout(avulsaFecharSugestoes,150)"
+          onkeydown="if(event.key==='Escape')avulsaFecharSugestoes()">
+        <div class="av-sugestoes" id="avSugestoes"></div>
+      </div>
+      <div class="linha-campos">
+        <div class="campo"><label>Data</label><input type="date" id="avData"></div>
+        <div class="campo"><label>Valor (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaValorMudou()"></div>
+      </div>
+      <label class="av-custo-chk"><input type="checkbox" id="avTemCusto" onchange="avulsaCusto()"> Houve custo?</label>
+      <div class="campo" id="avCustoCampo" style="display:none"><label>Custo (R$)</label>
+        <input type="number" id="avCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal">
+        <div class="dica">Ex.: papel e tinta da impressão, peça usada no reparo. Entra nas Métricas como custo, para o lucro ficar certo.</div>
       </div>
       <label class="pdv-fin-rot">Forma de pagamento</label>
       <div class="pdv-pags" id="avPags"></div>
@@ -440,6 +489,28 @@
         <button class="btn btn-vermelho" id="avExcluir" style="margin-right:auto;display:none" onclick="excluirAvulsa()">Excluir</button>
         <button class="btn btn-claro" onclick="fechar('modalAvulsa')">Cancelar</button>
         <button class="btn btn-amarelo" onclick="salvarAvulsa()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: novo / editar serviço (2.6.0) ===== -->
+<div class="overlay" id="modalServico">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-cabecalho">
+      <h2 id="svTituloModal">Novo serviço</h2>
+      <button class="fechar" onclick="fechar('modalServico')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="campo"><label>Nome do serviço</label><input type="text" id="svNome" maxlength="60" placeholder="Ex: Impressão colorida (folha)"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Valor (R$)</label><input type="number" id="svValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
+        <div class="campo"><label>Custo (R$, opcional)</label><input type="number" id="svCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
+      </div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" id="svExcluir" style="margin-right:auto;color:var(--vermelho)" onclick="excluirServico()">Excluir</button>
+        <button class="btn btn-claro" onclick="fechar('modalServico')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarServico()">Salvar</button>
       </div>
     </div>
   </div>
@@ -579,20 +650,18 @@
         <label>Código de barras (opcional)</label>
         <div style="display:flex;gap:8px">
           <input type="text" id="pCodigoBarras" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pMarca').focus();}">
+            onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pNome').focus();}">
           <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner()">Escanear</button>
         </div>
         <div class="dica">Use a câmera ou um leitor USB com este campo focado.</div>
       </div>
-      <div class="linha-campos">
-        <div class="campo" style="flex:.8">
-          <label>Marca</label>
-          <input type="text" id="pMarca" placeholder="Ex: Baseus">
-        </div>
-        <div class="campo" style="flex:1.4">
-          <label>Nome do produto</label>
-          <input type="text" id="pNome" placeholder="Ex: Cabo USB-C 1m">
-        </div>
+      <div class="campo">
+        <label>Nome do produto</label>
+        <input type="text" id="pNome" placeholder="Ex: Cabo USB-C 1m">
+      </div>
+      <div class="campo">
+        <label>Marca</label>
+        <input type="text" id="pMarca" placeholder="Ex: Baseus">
       </div>
       <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
       <div class="campo">
@@ -620,9 +689,9 @@
       </div>
       <!-- Estoque inicial: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
       <div id="pWrapInicial">
-        <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Estoque inicial?</label>
+        <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Estoque existente?</label>
         <div class="pi-bloco" id="pBlocoInicial" style="display:none">
-          <div class="pi-tit">Estoque que já está na loja</div>
+          <div class="pi-tit">Mercadoria já em loja</div>
           <div class="linha-campos">
             <div class="campo">
               <label>Custo por unidade (R$)</label>
@@ -633,7 +702,7 @@
               <input type="number" id="pQtdInicial" min="1" step="1" placeholder="0" inputmode="numeric">
             </div>
           </div>
-          <div class="dica">Conta no estoque, no custo e no lucro, mas não como compra no saldo do dia. Para mercadoria comprada daqui em diante, use Registrar entrada ou Compra em lote.</div>
+          <div class="dica">Use só para produtos que já estavam na loja quando o app começou a ser usado. Conta no estoque, no custo e no lucro, mas afeta suas métricas nem o saldo do dia. O primeiro lote de um produto novo é uma compra: registre em Registrar entrada ou Compra em lote.</div>
         </div>
       </div>
       <div class="rodape-modal">
@@ -823,7 +892,7 @@
     <img src="imagens/Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
     <span><b>China Engine</b><small>Chinatown Imports</small></span>
   </a>
-  <button class="nav-recolher so-pc" onclick="menuRecolher(true)" title="Recolher o menu" aria-label="Recolher o menu">
+  <button class="nav-recolher so-pc" onclick="menuRecolher(!document.body.classList.contains('menu-recolhido'))" title="Recolher ou expandir o menu" aria-label="Recolher ou expandir o menu">
     <svg viewBox="0 0 24 24"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
   </button>
   <button class="nav-item" data-nav="pdv" onclick="mostrarView('pdv')" title="Ponto de venda">

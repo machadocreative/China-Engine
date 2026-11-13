@@ -1263,23 +1263,15 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 .ds-promo small.r{text-align:right;color:var(--verde);font-weight:600}
 
 /* ----- Menu lateral recolhido (PC) ----- */
-.menu-abrir,.nav-recolher{display:none}
+.nav-recolher{display:none}
 @media(min-width:901px){
   .nav-recolher{
     display:flex;position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:10px;align-items:center;justify-content:center;
     border:1px solid rgba(255,255,255,.18);background:transparent;color:#C9C7BE;
   }
   .nav-recolher:hover{background:rgba(255,255,255,.08);color:#fff}
-  .nav-recolher svg,.menu-abrir svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .nav-recolher svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .nav-logo{padding-right:60px}
-  body.menu-recolhido{padding-left:0}
-  body.menu-recolhido .barra-inferior{display:none}
-  body.menu-recolhido .menu-abrir{
-    display:flex;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0;
-    border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;
-  }
-  body.menu-recolhido .menu-abrir:hover{background:rgba(255,255,255,.08)}
-  body.menu-recolhido header .logo{display:block}   /* sem o menu, o logo volta para o cabeçalho */
 }
 /* aviso rápido no PDV: embaixo, sobre a área da tabela (no alto cobriria o visor) */
 @media(min-width:901px){ body.modo-pdv:has(.pdv.ativa) #toast{top:auto;bottom:28px} }
@@ -1299,3 +1291,79 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 .pdv-cliente-btn.ligado{background:var(--amarelo);border-color:var(--preto)}
 .pdv.ativa .pdv-cliente-btn{top:4px;width:30px;height:30px}   /* faixa: título de 36px */
 @media(min-width:901px){ .pdv-faixa{padding-right:52px} }
+
+/* ===== 2.6.0 ===== */
+/* ----- Histórico: forma de pagamento numa coluna à direita do selo (mesma coluna "Movimentação") ----- */
+@media(min-width:621px){
+  .hx-cab,.hx-linha:not(.pp-linha){grid-template-columns:210px minmax(0,2.4fr) minmax(0,1.1fr) .45fr minmax(0,1.2fr)}
+  .hx-linha:not(.pp-linha) .hx-mov{flex-wrap:nowrap;column-gap:8px}
+  .hx-linha:not(.pp-linha) .hx-mov .hx-tag{width:112px;min-width:112px}
+  .hx-linha:not(.pp-linha) .hx-mov .hx-pag{flex:1 1 auto;flex-basis:auto;margin:0;padding:0;min-width:0}
+}
+/* ----- PDV: produto sem estoque suficiente na lista da busca (cinza hachurado, não pode ser escolhido) ----- */
+.pdv-res.esgotado{
+  pointer-events:none;cursor:default;color:var(--texto-sec);
+  background:repeating-linear-gradient(135deg,#F3F1EA 0 8px,#E9E6DC 8px 16px);
+}
+.pdv-res.esgotado .pdv-res-nome,.pdv-res.esgotado b{opacity:.6}
+.pdv-res.esgotado .pdv-res-est.zero{color:var(--texto-sec)}
+/* ----- Modal de desconto: aviso de margem de lucro baixa ----- */
+.dc-alerta{
+  margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--vermelho-claro);color:#9E1A13;
+  font-size:14px;font-weight:600;line-height:1.4;border-left:4px solid var(--vermelho);
+}
+/* ----- Métricas: bloco de descontos ----- */
+.ds-desc-tiles{margin:12px 0 6px}
+.ds-desc-tiles .ds-tile{background:var(--bg)}
+.ds-desc-comp{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.ds-sub{font-size:15px;font-weight:700;margin:14px 0 6px}
+/* ----- Pontos de atenção: opções do alerta de estoque baixo ----- */
+.ini-mais{width:36px;height:34px;flex-shrink:0;border-radius:10px;border:1px solid var(--borda-forte);background:#fff;font-size:20px;font-weight:700;line-height:1;color:var(--texto)}
+.ini-mais:hover{background:var(--bg)}
+.ini-item.lido{opacity:.62}
+.ini-tag{display:inline-block;margin-left:6px;padding:0 7px;border-radius:6px;background:#ECEAE3;color:var(--texto-sec);font-size:14px;font-weight:600}
+.ini-ocultos{border-top:1px solid var(--borda)}
+.ini-ocultos summary{padding:11px 16px;font-size:14px;font-weight:600;color:var(--texto-sec);cursor:pointer}
+.ini-ocultos .ini-item{opacity:.75}
+.al-rot{font-size:14px;font-weight:600;margin:14px 0 6px}
+.al-dias{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.al-dias .btn{padding:10px 4px;font-size:14px}
+/* ----- Movimentação avulsa: busca de serviços e custo ----- */
+.av-desc-campo{position:relative}
+.av-sugestoes{
+  position:absolute;left:0;right:0;top:100%;z-index:5;margin-top:4px;background:#fff;border:1px solid var(--borda-forte);
+  border-radius:12px;box-shadow:0 6px 22px rgba(26,26,23,.18);max-height:260px;overflow-y:auto;
+}
+.av-sugestoes:empty{display:none}
+.av-sug{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;font-size:15px;cursor:pointer;border-bottom:1px solid var(--borda)}
+.av-sug:last-child{border-bottom:none}
+.av-sug:hover{background:var(--amarelo-claro)}
+.av-sug b{white-space:nowrap}
+.av-custo-chk{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;margin:-4px 0 12px;cursor:pointer}
+.av-custo-chk input{width:18px;height:18px;accent-color:var(--preto)}
+/* ----- Configurações: serviços (sv-) ----- */
+.sv-lista{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+.sv-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border:1px solid var(--borda);border-radius:12px;background:#fff;cursor:pointer;font-size:15px}
+.sv-item:hover{background:var(--amarelo-claro)}
+.sv-item span{min-width:0;font-weight:600}
+.sv-item small{display:block;font-weight:400;font-size:14px;color:var(--texto-sec)}
+.sv-item b{white-space:nowrap}
+/* ----- Menu lateral recolhido (PC): barra estreita só com o logo e os ícones (2.6.0) ----- */
+@media(min-width:901px){
+  body.menu-recolhido{padding-left:76px}
+  body.menu-recolhido .barra-inferior{width:76px;align-items:stretch}
+  body.menu-recolhido .nav-logo{justify-content:center;padding:0;margin-bottom:0}
+  body.menu-recolhido .nav-logo img{width:42px;height:42px}
+  body.menu-recolhido .nav-logo span{display:none}
+  body.menu-recolhido .nav-recolher{position:static;margin:10px auto 8px;flex-shrink:0}
+  body.menu-recolhido .nav-recolher svg{transform:rotate(180deg)}
+  body.menu-recolhido .nav-item{justify-content:center;margin:0 10px;padding:12px 0}
+  body.menu-recolhido .nav-item > span{display:none}
+  body.menu-recolhido .nav-sbx{margin:auto 10px 0;padding:10px 0;justify-content:center}
+  body.menu-recolhido .nav-sbx > span:first-child{display:none}
+}
+@media(max-width:620px){   /* celular: nome em cima; estoque e botões embaixo */
+  .ini-item:has(.ini-mais){flex-wrap:wrap;row-gap:6px}
+  .ini-item:has(.ini-mais) .nome{flex:1 1 100%}
+  .ini-item:has(.ini-mais) .val{margin-right:auto;text-align:left}
+}

@@ -32,6 +32,42 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.6.0] - 2026-11-13
+
+### Adicionado
+
+- **Filtro por forma de pagamento no Histórico:** opções Espécie, Pix, Cartão de crédito, Outros e "Não informada". Mostra só as movimentações com dinheiro entrando: vendas, recebidos e avulsas.
+- **Aviso de margem no desconto do PDV:** se o desconto deixar a margem de lucro abaixo de 40%, o próprio modal avisa, com a margem que fica e o custo. Se a venda ficar abaixo do custo, mostra o prejuízo. Não pede confirmação extra, porque a senha do gerente já confirma.
+  - No desconto de um item, vale a margem do item, já com a promoção.
+  - No desconto da venda toda, vale a margem da venda.
+  - O custo usado é o custo médio das entradas do produto.
+- **Métricas → Descontos:** novo bloco com:
+  - o total dado em descontos e quanto isso representa do valor cheio;
+  - a divisão entre promoções e descontos manuais;
+  - quantas vendas tiveram desconto;
+  - o lucro com e sem os descontos (e a margem de cada um);
+  - os produtos que mais receberam desconto.
+- **Opções do alerta de estoque baixo (Pontos de atenção):** no botão ⋯ de cada produto:
+  - **Marcar como lido:** sai do contador do sininho e fica esmaecido na lista. Volta a contar se o estoque zerar.
+  - **Me lembre em 1, 3, 7, 15 ou 30 dias:** o alerta some até a data.
+  - **Dispensar:** some até o produto ser reposto. Os adiados e dispensados ficam numa lista recolhida, com o botão "Mostrar de novo".
+  - Qualquer uma dessas escolhas é desfeita sozinha quando entra estoque do produto.
+- **Custo na movimentação avulsa:** caixa "Houve custo?" que mostra o campo de custo. As Métricas passam a descontar esse custo do lucro.
+- **Configurações → Serviços:** cadastro de serviços com nome, valor e custo opcional.
+  - Na movimentação avulsa, ao digitar a descrição de um Serviço, aparecem os serviços cadastrados. Ao escolher um, a descrição, o valor e o custo são preenchidos.
+  - Se o valor mudar (por exemplo, 20 cópias), o custo acompanha na mesma proporção.
+  - Os serviços entram no backup e na sincronização.
+
+### Alterado
+
+- **Cadastro e edição de produto:** "Nome do produto" vem primeiro e "Marca" logo abaixo, os dois na largura toda. Vale também para o produto novo da compra em lote.
+- **Histórico:** no PC e no tablet, a forma de pagamento fica numa coluna à direita do selo do tipo, dentro de "Movimentação".
+- **Busca do PDV:** produto sem estoque suficiente aparece cinza e hachurado e não pode ser escolhido. Isso já desconta o que está na venda.
+- **Movimentação avulsa:** o Tipo (Serviço/Produto) é o primeiro campo.
+- **Menu lateral recolhido (PC):** em vez de sumir, vira uma barra estreita com o logo, os ícones dos módulos (o nome aparece ao passar o mouse) e a chave do Modo Faz-de-Conta. O botão do topo expande de novo. O ☰ do cabeçalho saiu.
+
+---
+
 ## [2.5.0] - 2026-11-12
 
 ### Adicionado

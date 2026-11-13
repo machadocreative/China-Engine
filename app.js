@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.5.0';
+const VERSAO = '2.6.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -370,13 +370,13 @@ function salvarProduto(){
     const temIni = document.getElementById('pTemInicial').checked;
     const qIni = temIni ? (parseInt(val('pQtdInicial'))||0) : 0;
     const cTxt = val('pCustoInicial').trim(), cIni = parseFloat(cTxt);
-    if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque inicial.'); document.getElementById('pCustoInicial').focus(); return; }
-    if(temIni && qIni<1){ toast('Informe a quantidade do estoque inicial.'); document.getElementById('pQtdInicial').focus(); return; }
+    if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque existente.'); document.getElementById('pCustoInicial').focus(); return; }
+    if(temIni && qIni<1){ toast('Informe a quantidade do estoque existente.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
     estado.produtos.push({ id:uid(), ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
     produtoFotoDuplicada = '';
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
-    toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque inicial.` : 'Produto salvo.');
+    toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque existente.` : 'Produto salvo.');
   }
 }
 function excluirProduto(){ excluirProdutoId(document.getElementById('produtoId').value); }
@@ -513,10 +513,14 @@ function pdvFiltrar(){
   const q = val('pdvBusca');
   const lista = pdvBuscar(q);
   if(!q.trim()){ res.innerHTML = ''; return; }
-  res.innerHTML = lista.length ? lista.map(p=>{ const est = estoqueDe(p); return `
-    <div class="pdv-res" onmousedown="event.preventDefault();pdvEscolher('${p.id}')">
+  res.innerHTML = lista.length ? lista.map(p=>{
+    // disponível = estoque − o que já está nesta venda; sem unidade disponível, a linha fica cinza e não pode ser escolhida
+    const est = estoqueDe(p), naVenda = pdv.ativa ? ((pdv.itens.find(x=>x.pid===p.id)||{}).qtd||0) : 0, disp = est - naVenda;
+    const esgotado = disp<=0;
+    return `
+    <div class="pdv-res${esgotado?' esgotado':''}"${esgotado?' aria-disabled="true"':''} onmousedown="event.preventDefault();pdvEscolher('${p.id}')">
       <span class="pdv-res-nome">${escapar(p.nome)}${p.marca?`<small>${escapar(p.marca)}</small>`:''}</span>
-      <span class="pdv-res-est${est<=0?' zero':''}">${est<=0?'sem estoque':est+' un.'}</span>
+      <span class="pdv-res-est${esgotado?' zero':''}">${est<=0 ? 'sem estoque' : esgotado ? `todas as ${est} un. já na venda` : (naVenda ? `${disp} de ${est} un.` : est+' un.')}</span>
       <b>${fmtBRL(p.preco||null)}</b>
     </div>`; }).join('') : '<div class="pdv-res vazio">Nenhum produto encontrado.</div>';
 }
@@ -622,7 +626,26 @@ function descontoPrevia(){
   const c = descontoCalculado(), el = document.getElementById('dcPrevia');
   if(!c){ el.innerHTML = '<span>Informe o valor do desconto.</span>'; return; }
   if(c.invalido){ el.innerHTML = '<span style="color:var(--vermelho)">O desconto não pode ser maior que o valor.</span>'; return; }
-  el.innerHTML = `<span>De ${fmtBRL(c.base)} por</span><b>${fmtBRL(cent(c.base-c.d))}</b><small>desconto de ${fmtBRL(c.d)}</small>`;
+  el.innerHTML = `<span>De ${fmtBRL(c.base)} por</span><b>${fmtBRL(cent(c.base-c.d))}</b><small>desconto de ${fmtBRL(c.d)}</small>` + descontoAvisoMargem(c);
+}
+/* Aviso de margem: se o desconto deixa a margem de lucro abaixo de 40%, avisa no próprio modal (só texto;
+   a senha do gerente já é a confirmação). Custo = custo médio das entradas do produto.
+   Item: margem do item depois da promoção e deste desconto. Venda: margem da venda toda depois do desconto. */
+const MARGEM_MINIMA = 40;
+function descontoAvisoMargem(c){
+  const r = pdvResumo();
+  const linhas = dc.alvo==='venda' ? r.linhas : [r.linhas[dc.alvo]].filter(Boolean);
+  if(!linhas.length) return '';
+  let custo = 0;
+  for(const l of linhas){ const cm = custoMedioDe(l.p); if(cm==null) return ''; custo += cm*l.it.qtd; }   // sem custo cadastrado: não dá para calcular
+  const receita = dc.alvo==='venda' ? cent(r.subtotal - c.d) : cent(c.base - c.d);
+  if(receita<=0) return `<div class="dc-alerta">Com este desconto a venda fica sem valor e dá prejuízo de ${fmtBRL(custo)} (custo dos produtos).</div>`;
+  const margem = (receita - custo) / receita * 100;
+  if(margem >= MARGEM_MINIMA) return '';
+  const pct = margem.toLocaleString('pt-BR',{maximumFractionDigits:1});
+  return margem < 0
+    ? `<div class="dc-alerta">Atenção: com este desconto ${dc.alvo==='venda'?'a venda fica':'o item fica'} abaixo do custo, com prejuízo de ${fmtBRL(cent(custo-receita))} (custo de ${fmtBRL(custo)}).</div>`
+    : `<div class="dc-alerta">Atenção: com este desconto a margem de lucro ${dc.alvo==='venda'?'da venda':'do item'} cai para ${pct}%, abaixo do mínimo de ${MARGEM_MINIMA}%. Custo de ${fmtBRL(custo)} para ${fmtBRL(receita)} de venda.</div>`;
 }
 function descontoAplicar(){
   const c = descontoCalculado();
@@ -723,14 +746,47 @@ function abrirAvulsa(id){
   document.getElementById('avDesc').value = a ? a.descricao : '';
   document.getElementById('avValor').value = a ? a.valor : '';
   document.getElementById('avExcluir').style.display = a ? '' : 'none';
+  avServico = null;
+  document.getElementById('avTemCusto').checked = !!(a && a.custo>0);
+  document.getElementById('avCusto').value = a && a.custo>0 ? a.custo : '';
+  avulsaCusto();
+  avulsaFecharSugestoes();
   avulsaTipo(a ? a.tipo : 'servico');
   avPagSel = a ? (a.pagamento||null) : null;
   avulsaRenderPags();
   abrir('modalAvulsa');
-  setTimeout(()=>document.getElementById('avDesc').focus(), 80);
+}
+function avulsaCusto(){ document.getElementById('avCustoCampo').style.display = document.getElementById('avTemCusto').checked ? '' : 'none'; }
+/* Busca nos serviços cadastrados (Configurações → Serviços): escolher preenche descrição, valor e custo */
+function avulsaBuscarServico(){
+  const el = document.getElementById('avSugestoes'), q = val('avDesc').toLowerCase().trim();
+  const lista = (estado.servicos||[]).filter(sv=>!q || sv.nome.toLowerCase().includes(q))
+    .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,8);
+  if(avTipoSel!=='servico' || !lista.length || (lista.length===1 && lista[0].nome.toLowerCase()===q)){ el.innerHTML = ''; return; }
+  el.innerHTML = lista.map(sv=>`<div class="av-sug" onmousedown="event.preventDefault();avulsaEscolherServico('${sv.id}')">
+    <span>${escapar(sv.nome)}</span><b>${fmtBRL(sv.valor)}</b></div>`).join('');
+}
+function avulsaFecharSugestoes(){ const el = document.getElementById('avSugestoes'); if(el) el.innerHTML = ''; }
+function avulsaEscolherServico(id){
+  const sv = (estado.servicos||[]).find(x=>x.id===id); if(!sv) return;
+  avulsaTipo('servico');
+  document.getElementById('avDesc').value = sv.nome;
+  document.getElementById('avValor').value = sv.valor;
+  document.getElementById('avTemCusto').checked = sv.custo>0;
+  document.getElementById('avCusto').value = sv.custo>0 ? sv.custo : '';
+  avulsaCusto(); avulsaFecharSugestoes();
+  avServico = sv;   // se mudar o valor (ex.: 20 cópias), o custo acompanha na mesma proporção
+  const v = document.getElementById('avValor'); v.focus(); v.select();
+}
+let avServico = null;
+function avulsaValorMudou(){
+  const sv = avServico, v = parseFloat(val('avValor'));
+  if(!sv || !(sv.custo>0) || !(sv.valor>0) || isNaN(v) || !document.getElementById('avTemCusto').checked) return;
+  document.getElementById('avCusto').value = Math.round(sv.custo * v / sv.valor * 100) / 100;
 }
 function avulsaTipo(t){
   avTipoSel = t;
+  if(t!=='servico') avulsaFecharSugestoes();
   document.getElementById('avTipoServico').classList.toggle('ativo', t==='servico');
   document.getElementById('avTipoProduto').classList.toggle('ativo', t==='produto');
 }
@@ -744,12 +800,15 @@ function salvarAvulsa(){
   if(!data){ toast('Informe a data.'); return; }
   if(!descricao){ toast('Escreva uma breve descrição.'); document.getElementById('avDesc').focus(); return; }
   if(isNaN(valor) || valor<=0){ toast('Informe o valor.'); document.getElementById('avValor').focus(); return; }
+  const temCusto = document.getElementById('avTemCusto').checked, custo = parseFloat(val('avCusto'));
+  if(temCusto && (isNaN(custo) || custo<0)){ toast('Informe o custo, ou desmarque “Houve custo?”.'); document.getElementById('avCusto').focus(); return; }
   if(!avPagSel){ toast('Escolha a forma de pagamento.'); return; }
   estado.avulsas = estado.avulsas || [];
   const dados = { data, descricao, tipo:avTipoSel, valor:Math.round(valor*100)/100, pagamento:avPagSel };
+  if(temCusto && custo>0) dados.custo = Math.round(custo*100)/100;
   if(avEditando){
     const a = estado.avulsas.find(x=>x.id===avEditando);
-    if(a) Object.assign(a, dados);
+    if(a){ Object.assign(a, dados); if(!dados.custo) delete a.custo; }
     salvar(); fechar('modalAvulsa'); renderViewAtual();
     toast('Movimentação avulsa atualizada.');
     return;
@@ -1129,10 +1188,8 @@ function linhaCompraHTML(idx){
    </div>
    <button type="button" class="lc-remover" title="Remover item" aria-label="Remover item" onclick="removerLinhaCompra(this)">×</button>
    <div id="lc_novo_${idx}" class="lc-novo" style="display:none">
-     <div class="linha-campos">
-       <div class="mini-campo" style="flex:.8"><label>Marca</label><input type="text" id="lc_marca_${idx}" placeholder="Marca"></div>
-       <div class="mini-campo" style="flex:1.6"><label>Nome do novo produto</label><input type="text" id="lc_nome_${idx}" placeholder="Nome"></div>
-     </div>
+     <div class="mini-campo"><label>Nome do novo produto</label><input type="text" id="lc_nome_${idx}" placeholder="Nome"></div>
+     <div class="mini-campo"><label>Marca</label><input type="text" id="lc_marca_${idx}" placeholder="Marca"></div>
      <div class="linha-campos">
        <div class="mini-campo"><label>Categoria</label><select id="lc_cat_${idx}">${cats}</select></div>
      </div>
@@ -1393,7 +1450,7 @@ function ppEstoque(p){
           </div>
           ${g.lotes.map((l,li)=>`<div class="cp-lote">
             <span class="cp-data">${fmtData(l.data)}</span>
-            <span class="cp-forn">${l.inicial?'<i>Estoque inicial</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
+            <span class="cp-forn">${l.inicial?'<i>Estoque existente</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
             <span class="cp-resta">${l.resta===l.qtdCompra ? l.resta+' un.' : `${l.resta} <small>de ${l.qtdCompra}</small> un.`}</span>
           </div>`).join('')}
         </div>`).join('')}</div>`
@@ -1442,10 +1499,8 @@ function ppMovimentacoes(p){
 function ppDados(p){
   const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   return `
-    <div class="linha-campos">
-      <div class="campo" style="flex:.8"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
-      <div class="campo" style="flex:1.4"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
-    </div>
+    <div class="campo"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
+    <div class="campo"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
     <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
     <div class="campo"><label>Código (SKU)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Gerado automaticamente se vazio" style="flex:1">
@@ -1694,7 +1749,7 @@ function classeMov(m){
 }
 function rotuloMov(m){
   if(m.tipo==='avulsa') return 'Avulsa';
-  if(m.tipo==='entrada') return m.inicial ? 'Estoque inicial' : 'Aquisição';
+  if(m.tipo==='entrada') return m.inicial ? 'Estoque já existente' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
   return m.motivo || 'Saída';
@@ -1711,7 +1766,7 @@ function valorMov(m){
 /* Selo do tipo; no celular, "Estoque inicial" vira "Inicial" para caber na coluna */
 function tagMov(m){
   const r = rotuloMov(m), c = classeMov(m);
-  const curto = m.inicial ? 'Inicial' : r;
+  const curto = m.inicial ? 'Existente' : r;
   const pag = ehVendaMov(m) && m.pagamento ? `<small class="hx-pag" title="Forma de pagamento: ${escapar(nomePagamento(m.pagamento))}">${escapar(nomePagamento(m.pagamento, true))}</small>` : '';
   return (curto===r ? `<span class="hx-tag ${c}" title="${escapar(r)}">${escapar(r)}</span>`
     : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`) + pag;
@@ -1836,6 +1891,7 @@ function renderHistorico(){
   document.querySelectorAll('.hx-seta').forEach(b=>b.disabled = hxPeriodo.tipo==='tudo');
   const fTipo = val('fhTipo');
   const fCat  = val('fhCategoria');
+  const fPag  = val('fhPagamento');   // '' = todas; '-' = vendas sem forma de pagamento registrada
   const fProd = val('fhProduto').toLowerCase().trim();
   const { de:fDe, ate:fAte } = intervaloPeriodo();
   const fMin  = parseFloat(val('fhValMin'));
@@ -1843,7 +1899,7 @@ function renderHistorico(){
   const temValor = !isNaN(fMin) || !isNaN(fMax);
   document.getElementById('hxValorBtn').textContent = temValor
     ? `Valor: ${isNaN(fMin)?'…':fMin}–${isNaN(fMax)?'…':fMax}` : 'Valor';
-  ['fhTipo','fhCategoria','histOrdenar'].forEach(id=>document.getElementById(id).parentElement.classList.toggle('ativo', !!val(id) && val(id)!=='data'));
+  ['fhTipo','fhCategoria','fhPagamento','histOrdenar'].forEach(id=>document.getElementById(id).parentElement.classList.toggle('ativo', !!val(id) && val(id)!=='data'));
   document.getElementById('hxValorBtn').classList.toggle('ativo', temValor);
 
   let linhas = [];
@@ -1863,6 +1919,10 @@ function renderHistorico(){
   linhas = linhas.filter(l=>{
     if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // estoque inicial só aparece filtrando por ele
     if(fCat && l.categoria!==fCat) return false;
+    if(fPag){   // só movimentações com dinheiro entrando (vendas, recebidos e avulsas)
+      if(!ehVendaMov(l.m)) return false;
+      if(fPag==='-' ? !!l.m.pagamento : l.m.pagamento!==fPag) return false;
+    }
     if(fProd && !`${l.nome} ${l.marca||''}`.toLowerCase().includes(fProd)) return false;
     if(fDe && l.data < fDe) return false;
     if(fAte && l.data > fAte) return false;
@@ -1894,7 +1954,7 @@ function renderHistorico(){
 
   const cont = document.getElementById('histConteudo');
   if(linhas.length===0){
-    cont.innerHTML = `<div class="hx-vazio">Nenhuma movimentação em <b>${escapar(rotuloPeriodo())}</b>${(fTipo||fCat||fProd||temValor)?' com esses filtros':''}.</div>`;
+    cont.innerHTML = `<div class="hx-vazio">Nenhuma movimentação em <b>${escapar(rotuloPeriodo())}</b>${(fTipo||fCat||fPag||fProd||temValor)?' com esses filtros':''}.</div>`;
     return;
   }
 
@@ -1993,7 +2053,7 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
-    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque inicial: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
+    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque já existente: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
       : `<div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>`}
     ` : `
     <div class="campo"><label>Motivo</label>
@@ -2041,11 +2101,11 @@ function excluirMovimentacao(){
   const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
   if(depois < 0){
     mostrarAviso('Não é possível excluir',
-      `<p>Excluir ${m.inicial?'este estoque inicial':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+      `<p>Excluir ${m.inicial?'este estoque pré-existente':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
        <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
     return;
   }
-  const desc = `${ent?(m.inicial?'o estoque inicial':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  const desc = `${ent?(m.inicial?'o estoque pré-existente':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
@@ -2344,7 +2404,7 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
-  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); renderServicos();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2380,10 +2440,47 @@ function normalizarUrlWorker(u){
    PONTOS DE ATENÇÃO — tela aberta pelo sininho do cabeçalho
    (estoque baixo e pagamentos pendentes; não fica na barra inferior)
    ========================================================= */
-function produtosEstoqueBaixo(){
+/* Todos os produtos abaixo do mínimo (inclui os lidos, adiados e dispensados) */
+function produtosAbaixoMinimo(){
   return estado.produtos.filter(p=>!p.arquivado && estoqueDe(p) <= (p.minimo||0))
     .sort((a,b)=>(estoqueDe(a)-(a.minimo||0))-(estoqueDe(b)-(b.minimo||0)) || a.nome.localeCompare(b.nome,'pt-BR'));
 }
+/* Situação do alerta de estoque baixo de um produto (2.6.0). p.alerta = { estado:'lido'|'adiado'|'dispensado', est, ate? }
+   - Qualquer escolha perde o efeito quando o estoque sobe desde que foi marcada (houve entrada / reposição).
+   - Lido: sai do contador do sininho e fica esmaecido na lista; volta a contar se o estoque zerar.
+   - Me lembre em X dias: some da lista até a data.  - Dispensar: some até o estoque subir de novo. */
+function alertaEstado(p){
+  const a = p.alerta; if(!a) return 'ativo';
+  const est = estoqueDe(p);
+  if(est > (a.est ?? -Infinity)) return 'ativo';
+  if(a.estado==='lido') return (est<=0 && a.est>0) ? 'ativo' : 'lido';
+  if(a.estado==='adiado') return a.ate && hoje() >= a.ate ? 'ativo' : 'adiado';
+  if(a.estado==='dispensado') return 'dispensado';
+  return 'ativo';
+}
+/* Só os que pedem atenção agora (contam no sininho) */
+function produtosEstoqueBaixo(){ return produtosAbaixoMinimo().filter(p=>alertaEstado(p)==='ativo'); }
+
+let alertaPid = null;
+function abrirOpcoesAlerta(pid){
+  const p = prod(pid); if(!p) return;
+  alertaPid = pid;
+  document.getElementById('alTitulo').textContent = p.nome;
+  document.getElementById('alSobre').textContent = `${estoqueDe(p)} un. em estoque · mínimo de ${p.minimo||0} un.`;
+  abrir('modalAlerta');
+}
+function alertaMarcar(estadoNovo, dias){
+  const p = prod(alertaPid); if(!p) return;
+  if(!estadoNovo) delete p.alerta;
+  else{
+    p.alerta = { estado:estadoNovo, est:estoqueDe(p) };
+    if(dias){ const d = dataDe(hoje()); d.setDate(d.getDate()+dias); p.alerta.ate = isoDe(d); }
+  }
+  salvar(); fechar('modalAlerta'); atualizarAlertas();
+  toast(!estadoNovo ? 'O alerta voltou para a lista.' : estadoNovo==='lido' ? 'Marcado como lido.'
+    : estadoNovo==='adiado' ? `Vamos lembrar em ${dias} dia(s).` : 'Alerta dispensado até o estoque ser reposto.');
+}
+function alertaRestaurar(pid){ alertaPid = pid; alertaMarcar(null); }
 function recebimentosPendentes(){
   const lista = [];
   estado.produtos.forEach(p=>saidas(p).forEach(m=>{
@@ -2404,7 +2501,10 @@ function atualizarAlertas(){
   if(viewAtual==='alertas') renderAlertas();
 }
 function renderAlertas(){
-  const baixos = produtosEstoqueBaixo();
+  const abaixo = produtosAbaixoMinimo();
+  const baixos = abaixo.filter(p=>alertaEstado(p)==='ativo');
+  const lidos = abaixo.filter(p=>alertaEstado(p)==='lido');
+  const ocultos = abaixo.filter(p=>['adiado','dispensado'].includes(alertaEstado(p)));
   const pend = recebimentosPendentes();
   const totalPend = pend.reduce((s,x)=>s + x.m.qtd*(x.p.preco||0), 0);
   const cont = document.getElementById('alertasConteudo');
@@ -2412,12 +2512,19 @@ function renderAlertas(){
   const blocoBaixo = `<div class="ini-bloco baixo">
     <div class="ini-cab"><div><h3>Estoque baixo</h3><small>Atenção para reabastecer</small></div>
       <span class="ini-qtd">${baixos.length}</span></div>
-    ${baixos.length ? baixos.map(p=>{ const est = estoqueDe(p); return `
-      <div class="ini-item">
-        <div class="nome">${escapar(p.nome)}<small>${p.marca?escapar(p.marca)+' · ':''}mínimo ${p.minimo||0} un.</small></div>
+    ${baixos.length || lidos.length ? [...baixos, ...lidos].map(p=>{ const est = estoqueDe(p), lido = alertaEstado(p)==='lido'; return `
+      <div class="ini-item${lido?' lido':''}">
+        <div class="nome">${escapar(p.nome)}${lido?' <span class="ini-tag">Lido</span>':''}<small>${p.marca?escapar(p.marca)+' · ':''}mínimo ${p.minimo||0} un.</small></div>
         <div class="val" style="color:${est<=0?'var(--vermelho)':'inherit'}">${est} un.<small>${est<=0?'sem estoque':'em estoque'}</small></div>
         <button class="btn btn-amarelo btn-mini" onclick="abrirRegistroEntrada('${p.id}')">+ Entrada</button>
+        <button class="ini-mais" onclick="abrirOpcoesAlerta('${p.id}')" title="Marcar como lido, lembrar depois ou dispensar" aria-label="Opções do alerta">⋯</button>
       </div>`; }).join('') : '<div class="ini-vazio">Nenhum produto abaixo do mínimo.</div>'}
+    ${ocultos.length ? `<details class="ini-ocultos"><summary>${ocultos.length} alerta(s) adiado(s) ou dispensado(s)</summary>
+      ${ocultos.map(p=>{ const a = p.alerta; return `
+      <div class="ini-item">
+        <div class="nome">${escapar(p.nome)}<small>${a.estado==='adiado' ? `lembrete em ${fmtData(a.ate)}` : 'dispensado até o estoque ser reposto'} · ${estoqueDe(p)} un.</small></div>
+        <button class="btn btn-claro btn-mini" onclick="alertaRestaurar('${p.id}')">Mostrar de novo</button>
+      </div>`; }).join('')}</details>` : ''}
   </div>`;
 
   const blocoPend = `<div class="ini-bloco receber">
@@ -2431,11 +2538,11 @@ function renderAlertas(){
       </div>`; }).join('') : '<div class="ini-vazio">Nenhum pagamento pendente.</div>'}
   </div>`;
 
+  const temBaixo = abaixo.length>0;
   const tudoOk = !baixos.length && !pend.length;
   // cada bloco só aparece quando tem itens
-  cont.innerHTML = tudoOk
-    ? '<div class="ini-ok">✓ Tudo em dia: nenhum estoque baixo e nenhum pagamento pendente.</div>'
-    : `${baixos.length ? blocoBaixo : ''}${pend.length ? blocoPend : ''}`;
+  cont.innerHTML = (tudoOk ? '<div class="ini-ok">✓ Tudo em dia: nenhum estoque baixo e nenhum pagamento pendente.</div>' : '')
+    + `${temBaixo ? blocoBaixo : ''}${pend.length ? blocoPend : ''}`;
 }
 
 /* ===== Botão de ação flutuante (⊕) ===== */
@@ -2504,7 +2611,8 @@ function vendasDe(de, ate){
     if(de && a.data<de) return;
     if(ate && a.data>ate) return;
     const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
-    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:1, receita:a.valor, custo:0, lucro:a.valor, pagamento:a.pagamento||'' });
+    const custo = a.custo || 0;   // "Houve custo?" (2.6.0); antes era sempre 0
+    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:1, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
   });
   return lista;
 }
@@ -2537,7 +2645,8 @@ function renderDesempenho(){
   }));
   const avs = vendas.filter(v=>v.avulsa);
   const notaAvulsa = avs.length
-    ? `<p class="dica ds-nota">Inclui ${fmtBRL(soma(avs,'receita'))} em ${avs.length} movimentação(ões) avulsa(s) (serviços e produtos sem cadastro). Elas não têm custo informado, então entram inteiras no lucro.</p>` : '';
+    ? (()=>{ const semCusto = avs.filter(v=>!v.custo).length;
+        return `<p class="dica ds-nota">Inclui ${fmtBRL(soma(avs,'receita'))} em ${avs.length} movimentação(ões) avulsa(s) (serviços e produtos sem cadastro)${soma(avs,'custo')>0 ? `, com ${fmtBRL(soma(avs,'custo'))} de custo informado` : ''}.${semCusto ? ` ${semCusto===avs.length?'Elas':`${semCusto} delas`} não têm custo informado, então entram inteiras no lucro.` : ''}</p>`; })() : '';
   const notaPend = pendentes.length
     ? `<p class="dica ds-nota">${soma(pendentes,'qtd')} un. em vendas “a receber” ainda pendentes neste período não entram nos números até o recebimento.</p>` : '';
 
@@ -2567,6 +2676,7 @@ function renderDesempenho(){
       ${dsBlocoProdutos(vendas)}
     </div>
     ${dsBlocoPagamentos(vendas)}
+    ${dsBlocoDescontos(vendas)}
     ${dsBlocoPromocoes(vendas)}
     ${dsBlocoParados()}`;
   ligarTooltips(cont);
@@ -2690,6 +2800,59 @@ function dsBlocoPagamentos(vendas){
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${c.id ? DS_COR.fat : DS_COR.neutro}"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
       </div>`).join('')}</div>
+  </div>`;
+}
+
+/* ----- Descontos: quanto foi dado (promoções + manuais) e quanto isso tirou do lucro -----
+   Cada saída de venda com desconto guarda o preço cheio (precoCheio) e o desconto total da linha (desconto),
+   que já inclui a promoção (descPromo) e a parte do desconto da venda toda. */
+function dsBlocoDescontos(vendas){
+  let cheio = 0, desc = 0, promo = 0;
+  const porProd = {}, vendasCom = new Set(), vendasTodas = new Set();
+  vendas.forEach(v=>{
+    if(v.avulsa) return;
+    const d = v.m.desconto || 0;
+    cheio += v.m.precoCheio ? v.m.precoCheio*v.qtd : v.receita;
+    vendasTodas.add(v.m.vendaId || v.m.id);
+    if(d<=0) return;
+    desc += d; promo += v.m.descPromo || 0; vendasCom.add(v.m.vendaId || v.m.id);
+    const k = v.p.id; porProd[k] = porProd[k] || { nome:v.p.nome, d:0, qtd:0 }; porProd[k].d += d; porProd[k].qtd += v.qtd;
+  });
+  if(desc<=0.004) return '';
+  const manual = Math.max(0, desc - promo);
+  const prod = vendas.filter(v=>!v.avulsa);
+  const fat = soma(prod,'receita'), custo = soma(prod,'custo');
+  const lucro = fat - custo, lucroSem = cheio - custo;
+  const margem = fat>0 ? lucro/fat*100 : NaN, margemSem = cheio>0 ? lucroSem/cheio*100 : NaN;
+  const top = Object.values(porProd).sort((a,b)=>b.d-a.d).slice(0,5), maxTop = top[0] ? top[0].d : 1;
+  const maxL = Math.max(lucroSem, lucro, 1);
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Descontos</h3><small>Quanto foi dado em descontos no período e quanto isso tirou do lucro (produtos do estoque; avulsas não entram)</small></div></div>
+    <div class="ds-tiles ds-desc-tiles">
+      <div class="ds-tile"><span>Descontos dados</span><b>${fmtBRL(desc)}</b><small>${fmtPctDs(desc/cheio*100)} do valor cheio</small></div>
+      <div class="ds-tile"><span>Em promoções</span><b>${fmtBRL(promo)}</b><small>automáticos</small></div>
+      <div class="ds-tile"><span>Manuais (no caixa)</span><b>${fmtBRL(manual)}</b><small>itens e venda toda</small></div>
+      <div class="ds-tile"><span>Vendas com desconto</span><b>${vendasCom.size} de ${vendasTodas.size}</b><small>${fmtPctDs(vendasCom.size/(vendasTodas.size||1)*100)} das vendas</small></div>
+    </div>
+    <div class="ds-desc-comp">
+      <div class="ds-barra-linha" data-tip="<b>Sem os descontos</b><span>Lucro <em>${fmtBRL(lucroSem)}</em></span><span>Margem <em>${fmtPctDs(margemSem)}</em></span>">
+        <div class="ds-barra-rot">Lucro sem os descontos<small>margem de ${fmtPctDs(margemSem)}</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, lucroSem/maxL*100)}%;background:${DS_COR.neutro}"></div></div>
+        <div class="ds-barra-val">${fmtBRL(lucroSem)}</div>
+      </div>
+      <div class="ds-barra-linha" data-tip="<b>Com os descontos (real)</b><span>Lucro <em>${fmtBRL(lucro)}</em></span><span>Margem <em>${fmtPctDs(margem)}</em></span>">
+        <div class="ds-barra-rot">Lucro real<small>margem de ${fmtPctDs(margem)} · ${fmtBRL(lucroSem-lucro)} a menos (${fmtPctDs((lucroSem-lucro)/(Math.abs(lucroSem)||1)*100)})</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, Math.max(lucro,0)/maxL*100)}%;background:${DS_COR.lucro}"></div></div>
+        <div class="ds-barra-val">${fmtBRL(lucro)}</div>
+      </div>
+    </div>
+    ${top.length ? `<h4 class="ds-sub">Produtos com mais desconto</h4>
+    <div class="ds-barras">${top.map(t=>`
+      <div class="ds-barra-linha" data-tip="<b>${escapar(t.nome)}</b><span>Desconto <em>${fmtBRL(t.d)}</em></span><span class='ds-tip-sec'>${t.qtd} un. vendidas com desconto</span>">
+        <div class="ds-barra-rot">${escapar(t.nome)}<small>${t.qtd} un.</small></div>
+        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, t.d/maxTop*100)}%;background:var(--vermelho)"></div></div>
+        <div class="ds-barra-val">−${fmtBRL(t.d)}</div>
+      </div>`).join('')}</div>` : ''}
   </div>`;
 }
 
@@ -2854,7 +3017,8 @@ function garantirFinanceiro(e){
   f.cancelamentos = f.cancelamentos || [];
   f.abertura = f.abertura || '';
   e.avulsas = Array.isArray(e.avulsas) ? e.avulsas : [];   // movimentações avulsas (receitas sem produto em estoque) — 2.3.0
-  e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];   // promoções (Configurações) — 2.4.0
+  e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];
+  e.servicos = Array.isArray(e.servicos) ? e.servicos : [];   // cadastro de serviços (2.6.0)   // promoções (Configurações) — 2.4.0
   return e;
 }
 garantirFinanceiro(estado);
@@ -3812,6 +3976,52 @@ function excluirPromocao(){
     estado.promocoes = estado.promocoes.filter(x=>x.id!==pr.id);
     salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual(); toast('Promoção excluída.');
   }, 'Excluir promoção');
+}
+
+/* =========================================================
+   SERVIÇOS (Configurações) — 2.6.0
+   estado.servicos = [{ id, nome, valor, custo? }]. Usados na busca da movimentação avulsa.
+   ========================================================= */
+function renderServicos(){
+  const el = document.getElementById('cfgServicos'); if(!el) return;
+  const lista = [...(estado.servicos||[])].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  el.innerHTML = lista.length ? lista.map(sv=>`
+    <li class="sv-item" onclick="abrirServico('${sv.id}')" title="Editar">
+      <span>${escapar(sv.nome)}${sv.custo>0?`<small>custo ${fmtBRL(sv.custo)}</small>`:''}</span><b>${fmtBRL(sv.valor)}</b>
+    </li>`).join('') : '<li class="pm-vazia">Nenhum serviço cadastrado.</li>';
+}
+let svEditando = null;
+function abrirServico(id){
+  const sv = id ? (estado.servicos||[]).find(x=>x.id===id) : null;
+  svEditando = sv ? sv.id : null;
+  document.getElementById('svTituloModal').textContent = sv ? 'Editar serviço' : 'Novo serviço';
+  document.getElementById('svNome').value = sv ? sv.nome : '';
+  document.getElementById('svValor').value = sv ? sv.valor : '';
+  document.getElementById('svCusto').value = sv && sv.custo>0 ? sv.custo : '';
+  document.getElementById('svExcluir').style.display = sv ? '' : 'none';
+  abrir('modalServico');
+  setTimeout(()=>document.getElementById('svNome').focus(), 80);
+}
+function salvarServico(){
+  const nome = val('svNome').trim(), valor = parseFloat(val('svValor')), custo = parseFloat(val('svCusto'));
+  if(!nome){ toast('Informe o nome do serviço.'); document.getElementById('svNome').focus(); return; }
+  if(isNaN(valor) || valor<=0){ toast('Informe o valor.'); document.getElementById('svValor').focus(); return; }
+  if(!isNaN(custo) && custo<0){ toast('O custo não pode ser negativo.'); return; }
+  estado.servicos = estado.servicos || [];
+  if(estado.servicos.some(x=>x.id!==svEditando && x.nome.toLowerCase()===nome.toLowerCase())){ toast('Já existe um serviço com esse nome.'); return; }
+  const dados = { nome:nome.slice(0,60), valor:Math.round(valor*100)/100 };
+  if(!isNaN(custo) && custo>0) dados.custo = Math.round(custo*100)/100;
+  if(svEditando){ const sv = estado.servicos.find(x=>x.id===svEditando); if(sv){ Object.assign(sv, dados); if(!dados.custo) delete sv.custo; } }
+  else estado.servicos.push({ id:uid(), ...dados });
+  salvar(); fechar('modalServico'); renderServicos();
+  toast(svEditando ? 'Serviço atualizado.' : 'Serviço cadastrado.');
+}
+function excluirServico(){
+  const sv = (estado.servicos||[]).find(x=>x.id===svEditando); if(!sv) return;
+  pedirConfirmacao(`Excluir o serviço “${sv.nome}”? As movimentações avulsas já registradas não mudam.`, ()=>{
+    estado.servicos = estado.servicos.filter(x=>x.id!==sv.id);
+    salvar(); fechar('modalServico'); renderServicos(); toast('Serviço excluído.');
+  }, 'Excluir serviço');
 }
 
 /* =========================================================
