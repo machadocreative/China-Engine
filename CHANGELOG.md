@@ -32,6 +32,78 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.10.0] - 2026-11-18
+
+### Adicionado
+
+- **Pagar com duas formas de pagamento (PDV):** em "Finalizar venda", o botão "Pagar com duas formas de pagamento" troca os botões por duas linhas. Na primeira, o caixa escolhe a forma e o valor; a segunda forma fica com o restante, que aparece calculado (ex.: R$ 20,00 em Espécie e o restante em Pix).
+  - "Pagar com uma forma só" volta ao normal.
+  - Enter confirma a venda. Os atalhos 1 a 4 valem só no modo de uma forma.
+- **Histórico:** a venda paga com duas formas aparece como "Vários". Ao passar o mouse, aparecem as duas formas com os valores.
+  - O filtro de Pagamento mostra a venda em cada uma das formas usadas.
+  - Na edição da movimentação, a opção "Vários" é mantida até que se escolha outra forma.
+- **Métricas → Formas de pagamento:** cada forma recebe a sua parte do valor. Numa venda de R$ 50 com R$ 20 em Espécie e R$ 30 em Pix, entram R$ 20 em Espécie e R$ 30 em Pix, e a venda conta nas duas.
+- **Avisos:** a comemoração do PDV, a tela do cliente e a notificação de venda mostram as duas formas com os valores.
+
+---
+
+## [2.9.0] - 2026-11-18
+
+### Adicionado
+
+- **Serviços no PDV:** o campo de leitura do PDV também encontra os serviços cadastrados (Configurações → Serviços), para vender produtos e serviços juntos na mesma venda.
+  - O serviço entra na tabela com o selo "Serviço", aceita quantidade e desconto, e não mexe no estoque.
+  - Ao finalizar, o serviço vira uma movimentação avulsa ligada à venda. No Histórico, ele aparece no mesmo bloco dos produtos, e o custo cadastrado do serviço entra nas Métricas.
+  - As promoções continuam valendo só para produtos.
+- **Desempenho de cada promoção (Configurações → Promoções):** novo botão "Desempenho" ao lado de "Editar". Mostra:
+  - quanto foi vendido com a promoção e o desconto dado;
+  - o número de vendas e as datas com venda;
+  - os produtos mais vendidos na promoção.
+
+### Alterado
+
+- **Métricas:**
+  - **Melhores datas:** o dia da semana aparece por extenso (ex.: "Quinta-feira").
+  - **Produtos mais vendidos:** mostra o top 5, com o botão "Ver top 10" que abre os 10 primeiros.
+  - **Vendas por categoria:** o card virou "Categorias mais vendidas", com as 5 primeiras. O botão "Ver tudo" abre todas as categorias do período.
+  - **Formas de pagamento:** em ordem da mais usada para a menos usada.
+  - **Descontos:** ficaram só dois números, "Total de descontos dados" e "Vendas com desconto". Saíram a comparação de lucro com e sem descontos e o ranking de produtos com mais desconto.
+  - **Promoções:** o bloco saiu das Métricas e foi para o botão "Desempenho" de cada promoção.
+- **Estoque:** produto em promoção mostra o preço cheio riscado e, abaixo, o preço com desconto, além do selo com o desconto.
+- **Histórico:** um bloco de venda com serviço diz "itens" em vez de "produtos".
+
+---
+
+## [2.8.0] - 2026-11-17
+
+### Adicionado
+
+- **App Android (TWA):** pasta `android/` com o projeto do app, que abre o China Engine do GitHub Pages em tela cheia, sem a barra do navegador.
+  - As atualizações do site aparecem no app sem reinstalar.
+  - As notificações de venda chegam como notificações do app.
+  - O workflow `.github/workflows/app-android.yml` gera o arquivo de instalação (APK) assinado e publica na aba Releases, junto com o `assetlinks.json` de verificação do site.
+  - A chave de assinatura fica só nos Secrets do GitHub, e o `.gitignore` bloqueia arquivos de chave.
+  - O leitor de notificações (InfinitePay e banco) já está no projeto, mas desligado. Ele entra numa próxima versão.
+
+### Alterado
+
+- **"Código (SKU)" passa a se chamar "Modelo (opcional)":** o campo fica logo depois de Marca no cadastro de produto novo, na edição dos dados e no produto novo da compra em lote, onde ele não aparecia antes.
+  - O campo serve para o código do modelo na marca, o que ajuda a diferenciar produtos parecidos.
+  - Saiu o botão "Gerar" e o código automático: o campo fica vazio quando não for informado.
+  - "Duplicar registro" passa a copiar o modelo do produto original.
+  - Os códigos que já estavam cadastrados não mudam.
+  - A busca do PDV e do Estoque continua encontrando o produto pelo modelo.
+
+---
+
+## [2.7.1] - 2026-11-17
+
+### Alterado
+
+- **Menu lateral (PC):** o botão de recolher o menu fica à esquerda do logo, na mesma coluna dos ícones dos módulos. Nos PCs com tela menor, o logo ficou um pouco menor para "Chinatown Imports" caber numa linha.
+
+---
+
 ## [2.7.0] - 2026-11-13
 
 ### Adicionado

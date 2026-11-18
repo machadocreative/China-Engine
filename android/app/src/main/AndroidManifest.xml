@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- China Engine — app Android (Trusted Web Activity).
+     O app não tem telas próprias: abre o China Engine do GitHub Pages em tela cheia, pelo Chrome.
+     Atualizações do site (index.html, app.js, styles.css) aparecem no app sem reinstalar. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 13+: permissão para mostrar as notificações de venda (push) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 11+: deixa o app encontrar o Chrome (ou outro navegador compatível) -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/appName"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+        <!-- Liga o app ao site (a outra metade fica em https://machadocreative.github.io/.well-known/assetlinks.json) -->
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/assetStatements" />
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:exported="true"
+            android:label="@string/appName">
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="@string/launchUrl" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+                android:resource="@color/corBarra" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+                android:resource="@color/corBarra" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
+                android:value="customtabs" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Links do China Engine abrem no app -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="@string/siteHost" android:pathPrefix="/China-Engine" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.NotificationPermissionRequestActivity"
+            android:exported="false" />
+
+        <!-- Faz as notificações push do site aparecerem como notificações do app -->
+        <service
+            android:name=".DelegationService"
+            android:enabled="true"
+            android:exported="true">
+            <meta-data
+                android:name="android.support.customtabs.trusted.SMALL_ICON"
+                android:resource="@drawable/ic_notificacao" />
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- Leitor de notificações (InfinitePay, banco): PREPARADO E DESLIGADO (enabled="false").
+             Entra em uso numa próxima versão, quando soubermos o formato das notificações. -->
+        <service
+            android:name=".LeitorNotificacoes"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/appName"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

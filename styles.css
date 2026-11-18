@@ -1374,3 +1374,48 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
 .av-total:empty{display:none}
 .av-total b{color:var(--texto);font-size:17px}
 .av-total small{font-size:14px}
+
+/* ===== 2.7.1 ===== */
+/* Menu lateral (PC): botão de recolher à esquerda do logo, na mesma coluna dos ícones dos módulos
+   (centro do ícone = 14px de margem + 16px de recuo + 11px = 41px) */
+@media(min-width:901px){
+  body:not(.menu-recolhido) .nav-recolher{top:14px;right:auto;left:23px;border-color:transparent}
+  body:not(.menu-recolhido) .nav-logo{padding-left:71px;padding-right:22px}
+}
+@media(min-width:901px) and (max-width:1279px){   /* menu de 270px: logo um pouco menor para o nome da loja caber numa linha */
+  body:not(.menu-recolhido) .nav-logo{padding-right:12px;gap:10px}
+  body:not(.menu-recolhido) .nav-logo img{width:40px;height:40px}
+  .nav-logo span{white-space:nowrap}
+}
+
+/* ===== 2.9.0 ===== */
+/* Estoque: produto em promoção mostra o preço cheio riscado e o preço com desconto */
+.es-preco-de{display:block;font-weight:500;font-size:14px;color:var(--texto-sec)}
+.es-preco-promo{display:block;color:var(--vermelho)}
+/* Métricas: botão "ver mais" no pé do card */
+.ds-mais{display:block;margin:10px 0 0 auto;border:none;background:none;color:var(--texto);font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:6px 8px;border-radius:8px}
+.ds-mais:hover{background:var(--bg)}
+#modalInfo .ds-tiles{grid-template-columns:repeat(2,1fr)}
+#modalInfo .ds-tile{background:var(--bg)}
+.pm-datas{font-size:16px !important}
+.pm-botoes{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:620px){ .pm-item{flex-wrap:wrap} .pm-botoes{width:100%;justify-content:flex-start;padding-left:66px} }
+/* PDV: serviços na busca e na venda */
+.pdv-res-serv .pdv-res-est{color:var(--texto-sec)}
+.pdv-serv-tag{flex-shrink:0;font-style:normal;font-size:14px;font-weight:700;color:var(--preto);background:var(--amarelo-claro);border:1px solid rgba(26,26,23,.15);border-radius:6px;padding:0 6px;line-height:1.3}
+.pdv-foto-serv svg{stroke:var(--texto-sec)}
+
+/* ===== 2.10.0 ===== */
+/* Finalizar venda: pagar com duas formas */
+.pdv-fin-dividir{display:block;margin:12px auto 0;border:none;background:none;color:var(--texto);font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;border-radius:8px}
+.pdv-fin-dividir:hover{background:var(--bg)}
+.pdv-dividir{display:flex;flex-direction:column;gap:10px}
+.pdv-dividir[hidden]{display:none}
+.pdv-div-linha{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;align-items:center}
+.pdv-div-linha select,.pdv-div-linha input{height:48px;font-size:16px;padding:0 12px;border:1px solid var(--borda-forte);border-radius:12px;background:#fff;width:100%}
+.pdv-div-resto{height:48px;display:flex;flex-direction:column;justify-content:center;padding:0 12px;border-radius:12px;background:var(--bg);text-align:right}
+.pdv-div-resto small{font-size:14px;color:var(--texto-sec);line-height:1.1}
+.pdv-div-resto b{font-size:17px;line-height:1.2}
+.pdv-div-resto b.erro{color:var(--vermelho);font-size:14px}
+.av-varios{grid-column:1 / -1;padding:10px 12px;border-radius:10px;background:var(--amarelo-claro);font-size:14px;font-weight:600}
+.pdv-pags[hidden]{display:none}

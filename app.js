@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.7.0';
+const VERSAO = '2.10.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -38,14 +38,6 @@ function aberto(id){ return document.getElementById(id).classList.contains('aber
 function val(id){ const el=document.getElementById(id); return el ? el.value : ''; }
 function sanitizarCategoria(v){
   return v.replace(/[^A-Za-zÀ-ÿ0-9 \-\/&]/g,'').replace(/\s{2,}/g,' ');
-}
-/* SKU automático: prefixo da categoria + sufixo aleatório único */
-function gerarSku(categoria){
-  const base = (categoria||'').replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'SKU';
-  let sku;
-  do{ sku = base + '-' + Math.random().toString(36).slice(2,6).toUpperCase(); }
-  while(estado.produtos.some(p=>p.codigo===sku));
-  return sku;
 }
 
 /* =========================================================
@@ -192,7 +184,8 @@ function render(){
       </div>
       <div class="col-cat"><span class="cat">${escapar(p.categoria)}</span></div>
       <div class="num" style="color:${baixo?'var(--vermelho)':'inherit'}">${est}${baixo?'<span class="badge-baixo"><span class="rot-l">estoque baixo</span><span class="rot-c">baixo</span></span>':''}</div>
-      <div class="num">${fmtBRL(p.preco||null)}</div>
+      <div class="num">${(()=>{ const pr = !p.arquivado && promoDoProduto(p);   // em promoção: preço cheio riscado + preço com desconto
+        return pr ? `<s class="es-preco-de">${fmtBRL(p.preco)}</s><span class="es-preco-promo">${fmtBRL(cent(p.preco-pr.descUnit))}</span>` : fmtBRL(p.preco||null); })()}</div>
     </div>`;
     const sub = ar>0 ? `<div class="subrow">
         <span>${ar} unidade(s) a receber</span>
@@ -252,19 +245,20 @@ function acaoEntrada(){ const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroE
 function acaoSaida(){   const id=acaoAtivo; fechar('modalAcoes'); abrirRegistroSaida(id); }
 function acaoEditar(){  const id=acaoAtivo; fechar('modalAcoes'); abrirMov(id, 'dados'); }
 /* Duplicar registro: abre o cadastro de Novo produto já preenchido com os dados deste (sem estoque,
-   sem código de barras e com SKU novo), para agilizar o cadastro de itens parecidos */
+   sem código de barras; o modelo é copiado), para agilizar o cadastro de itens parecidos */
 function acaoDuplicar(){
   const p = prod(acaoAtivo); fechar('modalAcoes'); if(!p) return;
   abrirProduto();
   document.getElementById('tituloProduto').textContent = 'Duplicar produto';
   document.getElementById('pMarca').value = p.marca||'';
+  document.getElementById('pCodigo').value = p.codigo||'';   // modelo: copia (pode ser o mesmo modelo em outra cor/capacidade)
   document.getElementById('pNome').value = p.nome + ' (cópia)';
   document.getElementById('pCategoria').value = p.categoria;
   document.getElementById('pPreco').value = p.preco||'';
   document.getElementById('pMinimo').value = p.minimo||0;
   produtoFotoDuplicada = p.foto || '';
   setTimeout(()=>{ const n = document.getElementById('pNome'); n.focus(); n.select(); }, 100);
-  toast('Confira o nome e o código de barras antes de salvar.');
+  toast('Confira o nome, o modelo e o código de barras antes de salvar.');
 }
 let produtoFotoDuplicada = '';
 function acaoArquivar(){ const id=acaoAtivo; fechar('modalAcoes'); arquivarProduto(id, !prod(id).arquivado); }
@@ -354,7 +348,6 @@ function salvarProduto(){
     preco: isNaN(precoVal) ? 0 : precoVal,
     minimo: parseInt(document.getElementById('pMinimo').value)||0
   };
-  if(!dados.codigo) dados.codigo = gerarSku(dados.categoria);   // SKU automático se vazio
 
   if(id){
     const p = prod(id);
@@ -432,9 +425,27 @@ const PAGAMENTOS = [
   { id:'credito', nome:'Cartão de crédito', curto:'Crédito', icone:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>' },
   { id:'outros',  nome:'Outros',            curto:'Outros',  icone:'<circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/>' }
 ];
-function nomePagamento(id, curto){ const p = PAGAMENTOS.find(x=>x.id===id); return p ? (curto ? p.curto : p.nome) : ''; }
-function opcoesPagamento(sel){
-  return `<option value="">Não informada</option>` + PAGAMENTOS.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${p.nome}</option>`).join('');
+function nomePagamento(id, curto){
+  if(id==='varios') return 'Vários';   // venda paga com duas formas (2.10.0)
+  const p = PAGAMENTOS.find(x=>x.id===id); return p ? (curto ? p.curto : p.nome) : '';
+}
+/* Texto completo: "Espécie R$ 20,00 + Pix R$ 30,00" quando a venda foi dividida */
+function textoPagamentos(m){
+  if(m && m.pagamento==='varios' && Array.isArray(m.pagamentos) && m.pagamentos.length)
+    return m.pagamentos.map(x=>`${nomePagamento(x.id)} ${fmtBRL(x.valor)}`).join(' + ');
+  return nomePagamento(m && m.pagamento);
+}
+/* Partes de uma receita por forma de pagamento: [{id, frac}]. Venda dividida → proporcional ao valor de cada forma. */
+function partesPagamento(m){
+  if(m.pagamento==='varios' && Array.isArray(m.pagamentos) && m.pagamentos.length){
+    const t = m.pagamentos.reduce((s,x)=>s+(x.valor||0),0) || 1;
+    return m.pagamentos.map(x=>({ id:x.id, frac:(x.valor||0)/t }));
+  }
+  return [{ id:m.pagamento||'', frac:1 }];
+}
+function opcoesPagamento(sel, m){
+  const varios = sel==='varios' ? `<option value="varios" selected>Vários (${escapar(textoPagamentos(m||{pagamento:'varios'}))})</option>` : '';
+  return `<option value="">Não informada</option>` + varios + PAGAMENTOS.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${p.nome}</option>`).join('');
 }
 function ehVendaMov(m){ return m.tipo==='avulsa' || (m.tipo==='saida' && (m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido))); }
 
@@ -460,11 +471,19 @@ let pdvVisor = { tipo:'livre' };
 let pdvFimFesta = null;   // livre | produto {pid, modo} | erro {titulo, texto} | concluida {...}
 const cent = v => Math.round(v*100)/100;
 
+/* Serviço cadastrado (Configurações → Serviços) visto como um "produto" da venda: sem estoque e sem promoção */
+function servicoDe(sid){ return (estado.servicos||[]).find(x=>x.id===sid); }
+function servicoComoProduto(sid){
+  const sv = servicoDe(sid); if(!sv) return null;
+  return { id:'sv:'+sv.id, sid:sv.id, servico:true, nome:sv.nome, marca:'', preco:sv.valor, categoria:'Serviços', custo:sv.custo||0 };
+}
+function itemDaVenda(it){ return it.sid ? servicoComoProduto(it.sid) : prod(it.pid); }
+
 /* Contas da venda em andamento */
 function pdvResumo(){
-  pdv.itens = pdv.itens.filter(it=>prod(it.pid));   // produto excluído em outro aparelho sai da lista
+  pdv.itens = pdv.itens.filter(it=>itemDaVenda(it));   // produto/serviço excluído em outro aparelho sai da lista
   const linhas = pdv.itens.map((it,i)=>{
-    const p = prod(it.pid), unit = p.preco||0, bruto = cent(unit*it.qtd);
+    const p = itemDaVenda(it), unit = p.preco||0, bruto = cent(unit*it.qtd);
     // 1º a promoção vigente (automática), 2º o desconto manual do item, sobre o que sobrou
     const pr = promoDoProduto(p);
     const descPromo = pr ? cent(pr.descUnit*it.qtd) : 0;
@@ -508,12 +527,23 @@ function pdvBuscar(q){
   if(!q) return [];
   return estado.produtos.filter(p=>!p.arquivado && `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase().includes(q)).slice(0,8);
 }
+function pdvBuscarServicos(q){
+  q = q.toLowerCase().trim();
+  if(!q) return [];
+  return (estado.servicos||[]).filter(sv=>sv.nome.toLowerCase().includes(q)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,5);
+}
 function pdvFiltrar(){
   const res = document.getElementById('pdvResultados');
   const q = val('pdvBusca');
-  const lista = pdvBuscar(q);
+  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q);
   if(!q.trim()){ res.innerHTML = ''; return; }
-  res.innerHTML = lista.length ? lista.map(p=>{
+  const htmlServ = servs.map(sv=>`
+    <div class="pdv-res pdv-res-serv" onmousedown="event.preventDefault();pdvAdicionarServico('${sv.id}')">
+      <span class="pdv-res-nome">${escapar(sv.nome)}<small>Serviço</small></span>
+      <span class="pdv-res-est">serviço</span>
+      <b>${fmtBRL(sv.valor)}</b>
+    </div>`).join('');
+  res.innerHTML = (lista.length || servs.length) ? lista.map(p=>{
     // disponível = estoque − o que já está nesta venda; sem unidade disponível, a linha fica cinza e não pode ser escolhida
     const est = estoqueDe(p), naVenda = pdv.ativa ? ((pdv.itens.find(x=>x.pid===p.id)||{}).qtd||0) : 0, disp = est - naVenda;
     const esgotado = disp<=0;
@@ -522,7 +552,7 @@ function pdvFiltrar(){
       <span class="pdv-res-nome">${escapar(p.nome)}${p.marca?`<small>${escapar(p.marca)}</small>`:''}</span>
       <span class="pdv-res-est${esgotado?' zero':''}">${est<=0 ? 'sem estoque' : esgotado ? `todas as ${est} un. já na venda` : (naVenda ? `${disp} de ${est} un.` : est+' un.')}</span>
       <b>${fmtBRL(p.preco||null)}</b>
-    </div>`; }).join('') : '<div class="pdv-res vazio">Nenhum produto encontrado.</div>';
+    </div>`; }).join('') + htmlServ : '<div class="pdv-res vazio">Nenhum produto ou serviço encontrado.</div>';
 }
 function pdvEscolher(id){ const p = prod(id); if(p) pdvProdutoLido(p); }
 function pdvLimparBusca(){ document.getElementById('pdvBusca').value = ''; document.getElementById('pdvResultados').innerHTML = ''; }
@@ -534,9 +564,10 @@ function pdvEnter(){
   const ql = q.toLowerCase();
   const exato = estado.produtos.find(p=>!p.arquivado && ((p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql)));
   if(exato){ pdvProdutoLido(exato); return; }
-  const lista = pdvBuscar(q);
-  if(lista.length===1){ pdvProdutoLido(lista[0]); return; }
-  if(lista.length>1){ toast('Mais de um resultado: escolha na lista.'); return; }
+  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q);
+  if(lista.length===1 && !servs.length){ pdvProdutoLido(lista[0]); return; }
+  if(!lista.length && servs.length===1){ pdvLimparBusca(); pdvAdicionarServico(servs[0].id); return; }
+  if(lista.length + servs.length > 1){ toast('Mais de um resultado: escolha na lista.'); return; }
   pdvLimparBusca();
   pdvVisor = { tipo:'erro', titulo:'Código não encontrado', texto:q };
   renderPdv();
@@ -569,17 +600,30 @@ function pdvAdicionar(pid){
   pdvVisor = { tipo:'produto', pid, modo:'adicionado' };
   pdvGuardar(); renderPdv(); pdvFocar();
 }
+/* Serviço na venda (ex.: produto + impressão juntos). Escolher um serviço já inicia a venda, se preciso. */
+function pdvAdicionarServico(sid){
+  const sv = servicoDe(sid); if(!sv) return;
+  pdvLimparBusca();
+  if(!pdv.ativa) pdv = { ...pdvVazio(), ativa:true };
+  pdv.consulta = false;
+  const it = pdv.itens.find(x=>x.sid===sid);
+  if(it) it.qtd += 1; else pdv.itens.push({ sid, qtd:1 });
+  pdvVisor = { tipo:'servico', sid, modo:'adicionado' };
+  pdvGuardar(); renderPdv(); pdvFocar();
+}
 function pdvIniciarCom(pid){ pdv = { ...pdvVazio(), ativa:true }; pdvAdicionar(pid); }
 
 /* ----- Lista da venda ----- */
 function pdvDefinirQtd(i, q){
   const it = pdv.itens[i]; if(!it) return;
-  const est = estoqueDe(prod(it.pid));
   q = parseInt(q);
   if(!q || q<1) q = 1;
-  if(q>est){ q = est; toast(`Estoque máximo: ${est} un.`); }
+  if(!it.sid){   // serviço não tem estoque
+    const est = estoqueDe(prod(it.pid));
+    if(q>est){ q = est; toast(`Estoque máximo: ${est} un.`); }
+  }
   it.qtd = q;
-  pdvVisor = { tipo:'produto', pid:it.pid, modo:'adicionado' };
+  pdvVisor = it.sid ? { tipo:'servico', sid:it.sid, modo:'adicionado' } : { tipo:'produto', pid:it.pid, modo:'adicionado' };
   pdvGuardar(); renderPdv();
 }
 function pdvQtd(i, delta){ const it = pdv.itens[i]; if(it) pdvDefinirQtd(i, it.qtd + delta); }
@@ -637,7 +681,11 @@ function descontoAvisoMargem(c){
   const linhas = dc.alvo==='venda' ? r.linhas : [r.linhas[dc.alvo]].filter(Boolean);
   if(!linhas.length) return '';
   let custo = 0;
-  for(const l of linhas){ const cm = custoMedioDe(l.p); if(cm==null) return ''; custo += cm*l.it.qtd; }   // sem custo cadastrado: não dá para calcular
+  for(const l of linhas){
+    const cm = l.p.servico ? (l.p.custo||0) : custoMedioDe(l.p);   // serviço sem custo cadastrado conta como custo 0
+    if(cm==null) return '';   // produto sem custo cadastrado: não dá para calcular
+    custo += cm*l.it.qtd;
+  }
   const receita = dc.alvo==='venda' ? cent(r.subtotal - c.d) : cent(c.base - c.d);
   if(receita<=0) return `<div class="dc-alerta">Com este desconto a venda fica sem valor e dá prejuízo de ${fmtBRL(custo)} (custo dos produtos).</div>`;
   const margem = (receita - custo) / receita * 100;
@@ -674,21 +722,52 @@ function descontoRemover(){
 }
 
 /* ----- Finalizar ----- */
-let finPag = null;
+let finPag = null, finDividido = false;
 function pdvFinalizar(){
   if(!pdv.ativa || !pdv.itens.length){ toast('Adicione ao menos um produto à venda.'); return; }
   const r = pdvResumo();
   for(const l of r.linhas){
-    if(l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
+    if(!l.p.servico && l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
   }
   const desc = cent(r.bruto - r.total);
   document.getElementById('finResumo').innerHTML = `
-    <div><span>${r.linhas.length} produto(s) · ${r.unidades} un.</span><b>${fmtBRL(r.bruto)}</b></div>
+    <div><span>${r.linhas.length} ${r.linhas.some(l=>l.p.servico)?"item(ns)":"produto(s)"} · ${r.unidades} un.</span><b>${fmtBRL(r.bruto)}</b></div>
     ${desc>0 ? `<div><span>Descontos</span><b>−${fmtBRL(desc)}</b></div>` : ''}
     <div class="pdv-fin-total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
   finPag = null; pdvRenderPags();
+  finDividido = false; pdvDividirTela();
   document.getElementById('finData').value = hoje();
   abrir('modalFinalizar');
+}
+/* Pagar com duas formas (ex.: parte em Pix, parte em espécie): o caixa informa quanto vai na 1ª forma; a 2ª fica com o resto */
+function pdvDividir(){ finDividido = !finDividido; pdvDividirTela(); if(finDividido) setTimeout(()=>document.getElementById('finValor1').focus(), 50); }
+function pdvDividirTela(){
+  document.getElementById('finPags').hidden = finDividido;
+  document.getElementById('finDividir').hidden = !finDividido;
+  document.getElementById('finDividirBtn').textContent = finDividido ? 'Pagar com uma forma só' : 'Pagar com duas formas de pagamento';
+  if(finDividido){
+    const op = PAGAMENTOS.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+    const s1 = document.getElementById('finPag1'), s2 = document.getElementById('finPag2');
+    if(!s1.options.length){ s1.innerHTML = op; s2.innerHTML = op; s1.value = 'pix'; s2.value = 'especie'; }
+    pdvDividirResto();
+  }
+}
+function pdvDividirResto(){
+  const total = pdvResumo().total, v1 = parseFloat(val('finValor1'));
+  const el = document.getElementById('finValor2');
+  el.textContent = isNaN(v1) ? '—' : (v1>0 && v1<total ? fmtBRL(cent(total-v1)) : 'valor inválido');
+  el.classList.toggle('erro', !isNaN(v1) && !(v1>0 && v1<total));
+}
+/* Forma(s) de pagamento escolhidas → { pagamento, pagamentos? } ou null (com aviso) */
+function pdvPagamentoEscolhido(total){
+  if(!finDividido){
+    if(!finPag){ toast('Escolha a forma de pagamento.'); return null; }
+    return { pagamento:finPag };
+  }
+  const f1 = val('finPag1'), f2 = val('finPag2'), v1 = cent(parseFloat(val('finValor1')));
+  if(f1===f2){ toast('Escolha duas formas de pagamento diferentes.'); return null; }
+  if(isNaN(v1) || v1<=0 || v1>=total){ toast(`Informe quanto foi pago em ${nomePagamento(f1)} (entre R$ 0,01 e ${fmtBRL(cent(total-0.01))}).`); document.getElementById('finValor1').focus(); return null; }
+  return { pagamento:'varios', pagamentos:[{ id:f1, valor:v1 }, { id:f2, valor:cent(total-v1) }] };
 }
 function pdvRenderPags(){
   document.getElementById('finPags').innerHTML = PAGAMENTOS.map((p,i)=>`
@@ -697,11 +776,11 @@ function pdvRenderPags(){
 }
 function pdvEscolherPag(id){ finPag = id; pdvRenderPags(); }
 function pdvConfirmar(){
-  if(!finPag){ toast('Escolha a forma de pagamento.'); return; }
   const r = pdvResumo();
+  const pg = pdvPagamentoEscolhido(r.total); if(!pg) return;
   if(!r.linhas.length){ fechar('modalFinalizar'); return; }
   for(const l of r.linhas){
-    if(l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
+    if(!l.p.servico && l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
   }
   const data = val('finData') || hoje(), hora = new Date().toTimeString().slice(0,5), vendaId = uid();
   // Desconto da venda repartido entre as linhas na proporção de cada uma (a última leva o resto dos centavos).
@@ -711,12 +790,20 @@ function pdvConfirmar(){
     let liq = i===r.linhas.length-1 ? resto : Math.min(resto, Math.round((r.subtotal>0 ? l.liquido/r.subtotal : 0)*r.total*100));
     resto -= liq;
     const liquido = liq/100;
-    const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, pagamento:finPag, vendaId };
+    if(l.p.servico){   // serviço: vira uma movimentação avulsa ligada a esta venda (aparece junto no Histórico)
+      const a = { id:uid(), data, hora, descricao:l.p.nome, tipo:'servico', qtd:l.it.qtd, valor:liquido, ...pg, vendaId, servicoId:l.p.sid };
+      if(l.p.custo>0) a.custo = cent(l.p.custo*l.it.qtd);
+      if(liquido < l.bruto - 0.004){ a.precoCheio = l.unit; a.desconto = cent(l.bruto - liquido); }
+      estado.avulsas = estado.avulsas || []; estado.avulsas.push(a);
+      return;
+    }
+    // venda dividida: cada linha guarda as duas formas com os valores da venda toda (as Métricas repartem na proporção)
+    const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, ...pg, vendaId };
     if(liquido < l.bruto - 0.004){ mov.precoCheio = l.unit; mov.desconto = cent(l.bruto - liquido); }
     if(l.promo){ mov.promocaoId = l.promo.id; mov.promocaoTitulo = l.promo.titulo; mov.descPromo = l.descPromo; }   // para as Métricas
     l.p.movimentacoes.push(mov);
   });
-  const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, pagamento:finPag, nomes:r.linhas.map(l=>l.p.nome) };
+  const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, ...pg, nomes:r.linhas.map(l=>l.p.nome) };
   pdv = pdvVazio();
   pdvVisor = { tipo:'concluida', ...feita };
   // a comemoração some sozinha depois de 15 s (se ninguém mexeu no caixa antes)
@@ -793,8 +880,10 @@ function avulsaTipo(t){
   document.getElementById('avTipoServico').classList.toggle('ativo', t==='servico');
   document.getElementById('avTipoProduto').classList.toggle('ativo', t==='produto');
 }
+let avEditandoPags = null;   // venda dividida (feita no PDV): mostra as duas formas até o usuário escolher outra
 function avulsaRenderPags(){
-  document.getElementById('avPags').innerHTML = PAGAMENTOS.map(p=>`
+  const a = avEditando && (estado.avulsas||[]).find(x=>x.id===avEditando);
+  document.getElementById('avPags').innerHTML = (avPagSel==='varios' && a ? `<div class="av-varios">Paga com duas formas: ${escapar(textoPagamentos(a))}. Escolha abaixo só se quiser trocar por uma forma só.</div>` : '') + PAGAMENTOS.map(p=>`
     <button type="button" class="pdv-pag${avPagSel===p.id?' ativo':''}" onclick="avPagSel='${p.id}';avulsaRenderPags()">
       <svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
 }
@@ -813,7 +902,7 @@ function salvarAvulsa(){
   if(temCusto && custo>0) dados.custo = cent(custo*qtd);
   if(avEditando){
     const a = estado.avulsas.find(x=>x.id===avEditando);
-    if(a){ Object.assign(a, dados); if(!dados.custo) delete a.custo; }
+    if(a){ Object.assign(a, dados); if(!dados.custo) delete a.custo; if(a.pagamento!=='varios') delete a.pagamentos; }
     salvar(); fechar('modalAvulsa'); renderViewAtual();
     toast('Movimentação avulsa atualizada.');
     return;
@@ -845,6 +934,20 @@ function pdvFotoHtml(p){
 }
 function pdvVisorHtml(){
   const v = pdvVisor;
+  if(v.tipo==='servico' && servicoDe(v.sid)){   // serviço lançado na venda
+    const sv = servicoDe(v.sid), it = pdv.itens.find(x=>x.sid===sv.id);
+    return `<div class="pdv-visor-in adicionado${pdv.ativa?' faixa':''}">
+      <div class="pdv-faixa">
+        <div class="pdv-foto pdv-foto-serv"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
+        <div class="pdv-info">
+          <div class="pdv-marca">Serviço<span class="pdv-estado">● Na venda · ${it?it.qtd:1} un.</span></div>
+          <div class="pdv-nome">${escapar(sv.nome)}</div>
+          <div class="pdv-sub">Não mexe no estoque</div>
+        </div>
+        <div class="pdv-precos"><div class="pdv-preco">${fmtBRL(sv.valor)}</div></div>
+      </div>
+    </div>`;
+  }
   if(v.tipo==='produto' && prod(v.pid)){
     const p = prod(v.pid), est = estoqueDe(p), it = pdv.itens.find(x=>x.pid===p.id);
     const consulta = v.modo==='consulta';
@@ -893,7 +996,7 @@ function pdvVisorHtml(){
         <img class="pdv-mascote" src="imagens/icones/mascote-cabeca.png" alt="" onerror="this.remove()">
         <em>Parabéns pela venda!</em>
         <b>${fmtBRL(v.total)}</b>
-        <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(nomePagamento(v.pagamento))}</span>
+        <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(textoPagamentos(v))}</span>
         <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas nas Métricas →</button>
       </div>
     </div>`;
@@ -949,8 +1052,8 @@ function renderPdv(){
 
   // o item mais recente fica no topo, sem precisar rolar
   document.getElementById('pdvLista').innerHTML = r.linhas.length ? [...r.linhas].reverse().map(l=>`
-    <div class="pdv-item${pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado' ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
-      <div class="pdv-item-nome"><span>${escapar(l.p.nome)}</span>${l.promo?`<em class="pdv-promo-tag" title="Promoção: ${escapar(l.promo.titulo)}">${escapar(rotuloPromoCurto(l.promo))}</em>`:''}</div>
+    <div class="pdv-item${(pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado') || (pdvVisor.tipo==='servico' && l.p.sid===pdvVisor.sid) ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
+      <div class="pdv-item-nome"><span>${escapar(l.p.nome)}</span>${l.p.servico?'<em class="pdv-serv-tag">Serviço</em>':''}${l.promo?`<em class="pdv-promo-tag" title="Promoção: ${escapar(l.promo.titulo)}">${escapar(rotuloPromoCurto(l.promo))}</em>`:''}</div>
       <div class="pdv-qtd">
         <button type="button" onclick="pdvQtd(${l.i},-1)" aria-label="Diminuir">−</button>
         <input type="number" min="1" value="${l.it.qtd}" onchange="pdvDefinirQtd(${l.i},this.value)" onkeydown="if(event.key==='Enter')this.blur()" aria-label="Quantidade">
@@ -1021,7 +1124,7 @@ document.addEventListener('keydown', e=>{
   if(aberto('modalFinalizar')){
     if(emCampo) return;
     const n = parseInt(e.key);
-    if(n>=1 && n<=PAGAMENTOS.length){ e.preventDefault(); pdvEscolherPag(PAGAMENTOS[n-1].id); }
+    if(!finDividido && n>=1 && n<=PAGAMENTOS.length){ e.preventDefault(); pdvEscolherPag(PAGAMENTOS[n-1].id); }
     else if(e.key==='Enter'){ e.preventDefault(); pdvConfirmar(); }
     return;
   }
@@ -1195,6 +1298,7 @@ function linhaCompraHTML(idx){
    <div id="lc_novo_${idx}" class="lc-novo" style="display:none">
      <div class="mini-campo"><label>Nome do novo produto</label><input type="text" id="lc_nome_${idx}" placeholder="Nome"></div>
      <div class="mini-campo"><label>Marca</label><input type="text" id="lc_marca_${idx}" placeholder="Marca"></div>
+     <div class="mini-campo"><label>Modelo (opcional)</label><input type="text" id="lc_modelo_${idx}" placeholder="Código do modelo"></div>
      <div class="linha-campos">
        <div class="mini-campo"><label>Categoria</label><select id="lc_cat_${idx}">${cats}</select></div>
      </div>
@@ -1293,7 +1397,7 @@ function selecionarLinhaProduto(idx, id){
     const ult = ultimoCustoDe(p);
     if(ult){ const custoEl=document.getElementById('lc_custo_'+idx); if(custoEl && !custoEl.value) custoEl.value=ult; }
     novoDiv.style.display = 'none';
-    selDiv.innerHTML = p.codigo ? `SKU: ${escapar(p.codigo)}` : '';
+    selDiv.innerHTML = p.codigo ? `Modelo: ${escapar(p.codigo)}` : '';
     selDiv.style.display = p.codigo ? 'block' : 'none';
   }
 }
@@ -1313,7 +1417,7 @@ function registrarCompraLote(){
     if(sel==='__novo__'){
       const nome = val('lc_nome_'+idx).trim();
       if(!nome){ toast('Dê um nome ao novo produto.'); return; }
-      itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(), codigoBarras:val('lc_cb_'+idx),
+      itens.push({ novo:true, nome, marca:val('lc_marca_'+idx).trim(), codigo:val('lc_modelo_'+idx).trim(), codigoBarras:val('lc_cb_'+idx),
                    categoria:val('lc_cat_'+idx),
                    preco:parseFloat(val('lc_preco_'+idx))||0, qtd, custo });
     } else {
@@ -1326,7 +1430,7 @@ function registrarCompraLote(){
     let p;
     if(it.novo){
       p = { id:uid(), marca:it.marca, nome:it.nome, categoria:it.categoria,
-            codigo:gerarSku(it.categoria), codigoBarras:it.codigoBarras||'', preco:it.preco, minimo:0, movimentacoes:[] };
+            codigo:it.codigo||'', codigoBarras:it.codigoBarras||'', preco:it.preco, minimo:0, movimentacoes:[] };
       estado.produtos.push(p);
     } else {
       p = prod(it.id);
@@ -1506,11 +1610,8 @@ function ppDados(p){
   return `
     <div class="campo"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
     <div class="campo"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
+    <div class="campo"><label>Modelo (opcional)</label><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Código do modelo na marca"></div>
     <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
-    <div class="campo"><label>Código (SKU)</label>
-      <div style="display:flex;gap:8px"><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Gerado automaticamente se vazio" style="flex:1">
-        <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('dpCodigo').value=gerarSku(document.getElementById('dpCategoria').value)">Gerar</button></div>
-    </div>
     <div class="campo"><label>Código de barras (opcional)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
         <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
@@ -1542,7 +1643,6 @@ function salvarDadosPainel(){
   };
   const foto = val('dpFoto').trim();
   if(foto && !/^https?:\/\//i.test(foto)){ toast('O link da foto precisa começar com http:// ou https://'); return; }
-  if(!dados.codigo) dados.codigo = gerarSku(dados.categoria);
   const aplicar = ()=>{ Object.assign(p, dados); if(foto) p.foto = foto; else delete p.foto; salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
   if(Math.abs((dados.preco||0)-(p.preco||0)) > 0.001)
     pedirSenha(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
@@ -1772,7 +1872,7 @@ function valorMov(m){
 function tagMov(m){
   const r = rotuloMov(m), c = classeMov(m);
   const curto = m.inicial ? 'Existente' : r;
-  const pag = ehVendaMov(m) && m.pagamento ? `<small class="hx-pag" title="Forma de pagamento: ${escapar(nomePagamento(m.pagamento))}">${escapar(nomePagamento(m.pagamento, true))}</small>` : '';
+  const pag = ehVendaMov(m) && m.pagamento ? `<small class="hx-pag" title="Forma de pagamento: ${escapar(textoPagamentos(m))}">${escapar(nomePagamento(m.pagamento, true))}</small>` : '';
   return (curto===r ? `<span class="hx-tag ${c}" title="${escapar(r)}">${escapar(r)}</span>`
     : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`) + pag;
 }
@@ -1926,7 +2026,8 @@ function renderHistorico(){
     if(fCat && l.categoria!==fCat) return false;
     if(fPag){   // só movimentações com dinheiro entrando (vendas, recebidos e avulsas)
       if(!ehVendaMov(l.m)) return false;
-      if(fPag==='-' ? !!l.m.pagamento : l.m.pagamento!==fPag) return false;
+      const usou = l.m.pagamento===fPag || (l.m.pagamento==='varios' && (l.m.pagamentos||[]).some(x=>x.id===fPag));
+      if(fPag==='-' ? !!l.m.pagamento : !usou) return false;
     }
     if(fProd && !`${l.nome} ${l.marca||''}`.toLowerCase().includes(fProd)) return false;
     if(fDe && l.data < fDe) return false;
@@ -1995,7 +2096,7 @@ function renderHistorico(){
     return `<div class="hx-grupo">
       <div class="hx-linha hx-grupo-cab">
         <div class="hx-mov">${tagMov(m0)}</div>
-        <div class="hx-prod">${b.itens.length} produtos${sub?`<small>${sub}</small>`:''}</div>
+        <div class="hx-prod">${b.itens.length} ${b.itens.some(l=>l.avulsa)?'itens':'produtos'}${sub?`<small>${sub}</small>`:''}</div>
         <div class="col-cat"></div>
         <div class="num col-qtd">${qtd}</div>
         <div class="num hx-valor ${temValor?c:''}">${temValor ? `<b>${total>0?'+':total<0?'−':''}${fmtSem(total)}</b>` : '<span class="hx-sem">—</span>'}<span class="hx-qtd-m">${qtd} un.</span></div>
@@ -2066,7 +2167,7 @@ function abrirEdicaoMov(pid, mid){
     <div class="campo" id="emCampoValor"><label id="emValorLabel">Preço de venda (un.)</label>
       <input type="number" id="emValor" min="0" step="0.01" value="${valorSaida}"></div>
     <div class="campo" id="emCampoPag"><label>Forma de pagamento</label>
-      <select id="emPag">${opcoesPagamento(m.pagamento||'')}</select></div>
+      <select id="emPag">${opcoesPagamento(m.pagamento||'', m)}</select></div>
     <div class="campo" id="emCampoOutros"><label>Descreva o motivo</label>
       <input type="text" id="emMotivoTexto" value="${escapar(m.motivoTexto||'')}"></div>
     <div class="campo" id="emCampoRecebido"><label style="display:flex;align-items:center;gap:8px;font-weight:600">
@@ -2177,6 +2278,7 @@ function salvarEdicaoMov(){
     if(!('precoVenda' in novo) || Math.abs((novo.precoVenda||0)-(m.precoVenda||0))>0.004){ delete m.precoCheio; delete m.desconto; }
     ['precoVenda','motivoTexto','recebido','dataRecebimento','pagamento'].forEach(k=>{ if(!(k in novo)) delete m[k]; });
     Object.assign(m, novo);
+    if(m.pagamento!=='varios') delete m.pagamentos;   // trocou para uma forma só
     if(m.recebido && !m.dataRecebimento) m.dataRecebimento = hoje();
     if(m.recebido===false) delete m.recebido;
   }
@@ -2576,6 +2678,7 @@ const DS_COR = { fat:'#2a78d6', lucro:'#eda100', neutro:'#D6D3CA' };   // paleta
 const DS_DIAS_PARADO = 30;
 const SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 const SEMANA_CURTA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const SEMANA_EXTENSO = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 
 function dsPeriodoPasso(dir){ passoDe(dsPeriodo, dir); renderDesempenho(); }
 function dsDefinirPeriodo(tipo){ dsPeriodo = { tipo, ref:hoje() }; fecharPops(); renderDesempenho(); }
@@ -2644,6 +2747,7 @@ function renderDesempenho(){
   document.querySelectorAll('.ds-seta').forEach(b=>b.disabled = dsPeriodo.tipo==='tudo');
   const { de, ate } = intervaloDe(dsPeriodo);
   const vendas = vendasDe(de, ate);
+  dsVendasAtuais = vendas;
   const cont = document.getElementById('dsConteudo');
 
   const pendentes = [];
@@ -2684,7 +2788,6 @@ function renderDesempenho(){
     </div>
     ${dsBlocoPagamentos(vendas)}
     ${dsBlocoDescontos(vendas)}
-    ${dsBlocoPromocoes(vendas)}
     ${dsBlocoParados()}`;
   ligarTooltips(cont);
   ligarCrosshair();
@@ -2775,32 +2878,50 @@ function ligarCrosshair(){
 }
 
 /* ----- Vendas por categoria (barras horizontais, uma cor) ----- */
-function dsBlocoCategorias(vendas){
+function dsCategoriasLista(vendas){
   const g = {};
   vendas.forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; });
-  const lista = Object.values(g).sort((a,b)=>b.fat-a.fat);
-  const max = lista[0].fat || 1, total = soma(lista,'fat') || 1;
+  return Object.values(g).sort((a,b)=>b.fat-a.fat);
+}
+function dsBlocoCategorias(vendas){
+  const todas = dsCategoriasLista(vendas);
+  if(!todas.length) return '';
   return `<div class="ds-card">
-    <div class="ds-cab"><div><h3>Vendas por categoria</h3><small>Faturamento no período</small></div></div>
-    <div class="ds-barras">${lista.map(c=>`
+    <div class="ds-cab"><div><h3>Categorias mais vendidas</h3><small>Top ${Math.min(5,todas.length)} por faturamento no período</small></div></div>
+    ${dsBarrasCategoriasHtml(todas.slice(0,5), todas)}
+    ${todas.length>5 ? `<button class="ds-mais" onclick="dsVerCategorias()">Ver tudo (${todas.length} categorias) →</button>` : ''}
+  </div>`;
+}
+function dsVerCategorias(){
+  const todas = dsCategoriasLista(dsVendasAtuais);
+  abrirInfo('Vendas por categoria', `<p class="dica" style="margin:0 0 10px">${escapar(rotuloDe(dsPeriodo))} · faturamento de cada categoria</p>` + dsBarrasCategoriasHtml(todas, todas));
+}
+function dsBarrasCategoriasHtml(lista, todas){
+  const max = todas[0].fat || 1, total = soma(todas,'fat') || 1;
+  return `<div class="ds-barras">${lista.map(c=>`
       <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Lucro <em>${fmtBRL(c.lucro)}</em></span><span>Margem <em>${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
         <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.qtd} un. · margem ${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</small></div>
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${DS_COR.fat}"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
-      </div>`).join('')}</div>
-  </div>`;
+      </div>`).join('')}</div>`;
 }
 
 /* ----- Formas de pagamento (só registro: o app não processa pagamentos) ----- */
 function dsBlocoPagamentos(vendas){
   const g = {};
-  vendas.forEach(v=>{ const k = v.pagamento || ''; g[k] = g[k] || { id:k, fat:0, qtd:0, vendas:new Set() }; g[k].fat += v.receita; g[k].qtd += v.qtd; g[k].vendas.add(v.m.vendaId || v.m.id); });
-  const ordem = [...PAGAMENTOS.map(p=>p.id), ''];
-  const lista = ordem.filter(k=>g[k]).map(k=>({ ...g[k], nome: k ? nomePagamento(k) : 'Não informada', n:g[k].vendas.size }));
+  // venda paga com duas formas: cada forma recebe a sua parte do valor (ex.: R$ 20 em Espécie e R$ 30 em Pix)
+  vendas.forEach(v=>partesPagamento(v.m).forEach(({id:k, frac})=>{
+    g[k] = g[k] || { id:k, fat:0, qtd:0, vendas:new Set() };
+    g[k].fat += v.receita*frac; g[k].qtd += v.qtd*frac; g[k].vendas.add(v.m.vendaId || v.m.id);
+  }));
+  Object.values(g).forEach(x=>x.qtd = Math.round(x.qtd));
+  // da forma mais usada (nº de vendas) para a menos usada; empate: maior faturamento
+  const lista = Object.keys(g).map(k=>({ ...g[k], nome: k ? nomePagamento(k) : 'Não informada', n:g[k].vendas.size }))
+    .sort((a,b)=>b.n-a.n || b.fat-a.fat);
   if(!lista.length) return '';
   const max = Math.max(...lista.map(x=>x.fat)) || 1, total = soma(lista,'fat') || 1;
   return `<div class="ds-card">
-    <div class="ds-cab"><div><h3>Formas de pagamento</h3><small>Faturamento no período, pela forma registrada em cada venda</small></div></div>
+    <div class="ds-cab"><div><h3>Formas de pagamento</h3><small>Faturamento no período, pela forma registrada em cada venda. Venda paga com duas formas entra em cada uma com a sua parte.</small></div></div>
     <div class="ds-barras">${lista.map(c=>`
       <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
         <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.n} venda(s) · ${fmtPctDs(c.fat/total*100)}</small></div>
@@ -2814,77 +2935,30 @@ function dsBlocoPagamentos(vendas){
    Cada saída de venda com desconto guarda o preço cheio (precoCheio) e o desconto total da linha (desconto),
    que já inclui a promoção (descPromo) e a parte do desconto da venda toda. */
 function dsBlocoDescontos(vendas){
-  let cheio = 0, desc = 0, promo = 0;
-  const porProd = {}, vendasCom = new Set(), vendasTodas = new Set();
+  let cheio = 0, desc = 0;
+  const vendasCom = new Set(), vendasTodas = new Set();
   vendas.forEach(v=>{
     if(v.avulsa) return;
     const d = v.m.desconto || 0;
     cheio += v.m.precoCheio ? v.m.precoCheio*v.qtd : v.receita;
     vendasTodas.add(v.m.vendaId || v.m.id);
-    if(d<=0) return;
-    desc += d; promo += v.m.descPromo || 0; vendasCom.add(v.m.vendaId || v.m.id);
-    const k = v.p.id; porProd[k] = porProd[k] || { nome:v.p.nome, d:0, qtd:0 }; porProd[k].d += d; porProd[k].qtd += v.qtd;
+    if(d>0){ desc += d; vendasCom.add(v.m.vendaId || v.m.id); }
   });
   if(desc<=0.004) return '';
-  const manual = Math.max(0, desc - promo);
-  const prod = vendas.filter(v=>!v.avulsa);
-  const fat = soma(prod,'receita'), custo = soma(prod,'custo');
-  const lucro = fat - custo, lucroSem = cheio - custo;
-  const margem = fat>0 ? lucro/fat*100 : NaN, margemSem = cheio>0 ? lucroSem/cheio*100 : NaN;
-  const top = Object.values(porProd).sort((a,b)=>b.d-a.d).slice(0,5), maxTop = top[0] ? top[0].d : 1;
-  const maxL = Math.max(lucroSem, lucro, 1);
   return `<div class="ds-card">
-    <div class="ds-cab"><div><h3>Descontos</h3><small>Quanto foi dado em descontos no período e quanto isso tirou do lucro (produtos do estoque; avulsas não entram)</small></div></div>
+    <div class="ds-cab"><div><h3>Descontos</h3><small>Descontos dados no período (promoções e descontos no caixa). O desempenho de cada promoção fica em Configurações → Promoções.</small></div></div>
     <div class="ds-tiles ds-desc-tiles">
-      <div class="ds-tile"><span>Descontos dados</span><b>${fmtBRL(desc)}</b><small>${fmtPctDs(desc/cheio*100)} do valor cheio</small></div>
-      <div class="ds-tile"><span>Em promoções</span><b>${fmtBRL(promo)}</b><small>automáticos</small></div>
-      <div class="ds-tile"><span>Manuais (no caixa)</span><b>${fmtBRL(manual)}</b><small>itens e venda toda</small></div>
+      <div class="ds-tile"><span>Total de descontos dados</span><b>${fmtBRL(desc)}</b><small>${fmtPctDs(desc/(cheio||1)*100)} do valor cheio dos produtos</small></div>
       <div class="ds-tile"><span>Vendas com desconto</span><b>${vendasCom.size} de ${vendasTodas.size}</b><small>${fmtPctDs(vendasCom.size/(vendasTodas.size||1)*100)} das vendas</small></div>
     </div>
-    <div class="ds-desc-comp">
-      <div class="ds-barra-linha" data-tip="<b>Sem os descontos</b><span>Lucro <em>${fmtBRL(lucroSem)}</em></span><span>Margem <em>${fmtPctDs(margemSem)}</em></span>">
-        <div class="ds-barra-rot">Lucro sem os descontos<small>margem de ${fmtPctDs(margemSem)}</small></div>
-        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, lucroSem/maxL*100)}%;background:${DS_COR.neutro}"></div></div>
-        <div class="ds-barra-val">${fmtBRL(lucroSem)}</div>
-      </div>
-      <div class="ds-barra-linha" data-tip="<b>Com os descontos (real)</b><span>Lucro <em>${fmtBRL(lucro)}</em></span><span>Margem <em>${fmtPctDs(margem)}</em></span>">
-        <div class="ds-barra-rot">Lucro real<small>margem de ${fmtPctDs(margem)} · ${fmtBRL(lucroSem-lucro)} a menos (${fmtPctDs((lucroSem-lucro)/(Math.abs(lucroSem)||1)*100)})</small></div>
-        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, Math.max(lucro,0)/maxL*100)}%;background:${DS_COR.lucro}"></div></div>
-        <div class="ds-barra-val">${fmtBRL(lucro)}</div>
-      </div>
-    </div>
-    ${top.length ? `<h4 class="ds-sub">Produtos com mais desconto</h4>
-    <div class="ds-barras">${top.map(t=>`
-      <div class="ds-barra-linha" data-tip="<b>${escapar(t.nome)}</b><span>Desconto <em>${fmtBRL(t.d)}</em></span><span class='ds-tip-sec'>${t.qtd} un. vendidas com desconto</span>">
-        <div class="ds-barra-rot">${escapar(t.nome)}<small>${t.qtd} un.</small></div>
-        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, t.d/maxTop*100)}%;background:var(--vermelho)"></div></div>
-        <div class="ds-barra-val">−${fmtBRL(t.d)}</div>
-      </div>`).join('')}</div>` : ''}
   </div>`;
 }
 
-/* ----- Promoções: o que cada promoção vendeu no período e quanto deu de desconto ----- */
-function dsBlocoPromocoes(vendas){
-  const g = {};
-  vendas.forEach(v=>{
-    if(!v.m.promocaoId) return;
-    const k = v.m.promocaoId;
-    g[k] = g[k] || { titulo:v.m.promocaoTitulo||'Promoção', fat:0, desc:0, qtd:0, vendas:new Set() };
-    g[k].fat += v.receita; g[k].desc += v.m.descPromo||0; g[k].qtd += v.qtd; g[k].vendas.add(v.m.vendaId || v.m.id);
-  });
-  const lista = Object.entries(g).map(([id,x])=>{ const pr = (estado.promocoes||[]).find(y=>y.id===id); return { ...x, titulo: pr ? pr.titulo : x.titulo, n:x.vendas.size }; })
-    .sort((a,b)=>b.fat-a.fat);
-  if(!lista.length) return '';
-  const fatTotal = soma(vendas,'receita') || 1, fatPromo = soma(lista,'fat'), descPromo = soma(lista,'desc'), max = Math.max(...lista.map(x=>x.fat)) || 1;
-  return `<div class="ds-card">
-    <div class="ds-cab"><div><h3>Promoções</h3><small>${fmtBRL(fatPromo)} vendidos em promoção (${fmtPctDs(fatPromo/fatTotal*100)} do faturamento) · ${fmtBRL(descPromo)} em descontos de promoção</small></div></div>
-    <div class="ds-barras">${lista.map(c=>`
-      <div class="ds-barra-linha" data-tip="<b>${escapar(c.titulo)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Desconto dado <em>${fmtBRL(c.desc)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. vendidas</span>">
-        <div class="ds-barra-rot">${escapar(c.titulo)}<small>${c.n} venda(s) · ${c.qtd} un. · −${fmtBRL(c.desc)}</small></div>
-        <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:var(--vermelho)"></div></div>
-        <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
-      </div>`).join('')}</div>
-  </div>`;
+/* ----- Modal genérico de informações (Métricas "ver mais", desempenho da promoção) ----- */
+function abrirInfo(titulo, html){
+  document.getElementById('infoTitulo').textContent = titulo;
+  const c = document.getElementById('infoCorpo'); c.innerHTML = html; c.scrollTop = 0;
+  abrir('modalInfo'); ligarTooltips(c);
 }
 
 /* ----- Dias da semana (colunas; destaque no melhor dia) ----- */
@@ -2919,9 +2993,9 @@ function dsBlocoMelhoresDatas(vendas){
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Melhores datas</h3><small>Os 5 dias com maior faturamento</small></div></div>
     <ol class="ds-rank">${lista.map((d,i)=>`
-      <li data-tip="<b>${fmtData(d.data)} · ${SEMANA[dataDe(d.data).getDay()]}</b><span>Faturamento <em>${fmtBRL(d.fat)}</em></span><span>Lucro <em>${fmtBRL(d.lucro)}</em></span><span class='ds-tip-sec'>${d.qtd} un. vendidas</span>">
+      <li data-tip="<b>${fmtData(d.data)} · ${SEMANA_EXTENSO[dataDe(d.data).getDay()]}</b><span>Faturamento <em>${fmtBRL(d.fat)}</em></span><span>Lucro <em>${fmtBRL(d.lucro)}</em></span><span class='ds-tip-sec'>${d.qtd} un. vendidas</span>">
         <span class="ds-rank-n">${i+1}</span>
-        <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${fmtData(d.data)} <small>${SEMANA_CURTA[dataDe(d.data).getDay()]}</small></span><b>${fmtBRL(d.fat)}</b></div>
+        <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${fmtData(d.data)} <small>${SEMANA_EXTENSO[dataDe(d.data).getDay()]}</small></span><b>${fmtBRL(d.fat)}</b></div>
           <div class="ds-mini"><div style="width:${d.fat/max*100}%;background:${DS_COR.fat}"></div></div>
           <small>${d.qtd} un. · lucro ${fmtBRL(d.lucro)}</small></div>
       </li>`).join('')}</ol>
@@ -2929,28 +3003,41 @@ function dsBlocoMelhoresDatas(vendas){
 }
 
 /* ----- Produtos mais vendidos ----- */
-function dsBlocoProdutos(vendas){
+function dsRankingProdutos(vendas){
   vendas = vendas.filter(v=>!v.avulsa);   // ranking só de produtos do estoque
-  if(!vendas.length) return '';
   const g = {};
   vendas.forEach(v=>{ const id = v.p.id; g[id] = g[id] || { p:v.p, qtd:0, fat:0, lucro:0 }; g[id].qtd+=v.qtd; g[id].fat+=v.receita; g[id].lucro+=v.lucro; });
   const k = dsRanking==='unidades' ? 'qtd' : 'fat';
-  const lista = Object.values(g).sort((a,b)=>b[k]-a[k] || b.fat-a.fat).slice(0,10);
-  const max = lista[0][k] || 1;
+  return { k, lista: Object.values(g).sort((a,b)=>b[k]-a[k] || b.fat-a.fat) };
+}
+let dsVendasAtuais = [];   // vendas do período na tela (para os modais "ver mais")
+function dsBlocoProdutos(vendas){
+  const { k, lista:todos } = dsRankingProdutos(vendas);
+  if(!todos.length) return '';
+  const lista = todos.slice(0,5);
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Produtos mais vendidos</h3><small>Top ${lista.length} no período</small></div>
       <div class="ds-alterna" role="group">
         <button class="${dsRanking==='unidades'?'ativo':''}" onclick="dsTrocarRanking('unidades')">Unidades</button>
         <button class="${dsRanking==='faturamento'?'ativo':''}" onclick="dsTrocarRanking('faturamento')">Faturamento</button>
       </div></div>
-    <ol class="ds-rank">${lista.map((x,i)=>`
+    ${dsListaProdutosHtml(lista, k, todos[0][k])}
+    ${todos.length>5 ? `<button class="ds-mais" onclick="dsVerProdutos()">Ver top ${Math.min(10,todos.length)} →</button>` : ''}
+  </div>`;
+}
+function dsVerProdutos(){
+  const { k, lista:todos } = dsRankingProdutos(dsVendasAtuais), lista = todos.slice(0,10);
+  abrirInfo(`Top ${lista.length} produtos mais vendidos`, `<p class="dica" style="margin:0 0 10px">${escapar(rotuloDe(dsPeriodo))} · por ${k==='qtd'?'unidades':'faturamento'}</p>` + dsListaProdutosHtml(lista, k, lista[0][k]));
+}
+function dsListaProdutosHtml(lista, k, maxV){
+  const max = maxV || 1;
+  return `<ol class="ds-rank">${lista.map((x,i)=>`
       <li data-tip="<b>${escapar(x.p.nome)}</b><span>Unidades <em>${x.qtd}</em></span><span>Faturamento <em>${fmtBRL(x.fat)}</em></span><span>Lucro <em>${fmtBRL(x.lucro)}</em></span><span>Margem <em>${fmtPctDs(x.fat?x.lucro/x.fat*100:NaN)}</em></span>">
         <span class="ds-rank-n">${i+1}</span>
         <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${escapar(x.p.nome)}${x.p.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}</span><b>${k==='qtd'?x.qtd+' un.':fmtBRL(x.fat)}</b></div>
           <div class="ds-mini"><div style="width:${x[k]/max*100}%;background:${DS_COR.fat}"></div></div>
           <small>${k==='qtd'?fmtBRL(x.fat):x.qtd+' un.'} · lucro ${fmtBRL(x.lucro)}</small></div>
-      </li>`).join('')}</ol>
-  </div>`;
+      </li>`).join('')}</ol>`;
 }
 
 /* ----- Produtos parados (independe do período) ----- */
@@ -3834,7 +3921,7 @@ function notificarVenda(v){
   if(sandbox.ativo || !Sync.conectado()) return;
   const d = Sync.ler();
   const nomes = (v.nomes||[]).slice(0,3).join(', ') + ((v.nomes||[]).length>3 ? '…' : '');
-  const linha1 = [v.titulo ? '' : `${v.unidades} un.`, nomePagamento(v.pagamento), d.aparelho].filter(Boolean).join(' · ');   // avulsa: sem "1 un."
+  const linha1 = [v.titulo ? '' : `${v.unidades} un.`, textoPagamentos(v), d.aparelho].filter(Boolean).join(' · ');   // avulsa: sem "1 un."
   const fila = (d.fila||[]).filter(n=>Date.now()-n.em < PUSH_VALIDADE);
   fila.push({ em:Date.now(), titulo:`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
   Sync.atualizar({ fila });
@@ -3875,7 +3962,7 @@ function promoSituacao(pr){
 function promoValeParaProduto(pr, p){ return pr.alcance==='loja' || (pr.categorias||[]).includes(p.categoria); }
 /* Promoção que vale agora para o produto (a de maior desconto) → { promo, descUnit } ou null */
 function promoDoProduto(p, dia){
-  if(!p || !(p.preco>0)) return null;
+  if(!p || p.servico || !(p.preco>0)) return null;   // promoções valem só para produtos do estoque
   let melhor = null;
   (estado.promocoes||[]).forEach(pr=>{
     if(!promoVigente(pr, dia) || !promoValeParaProduto(pr, p)) return;
@@ -3913,7 +4000,10 @@ function renderPromocoes(){
       <div class="pm-info"><b>${escapar(pr.titulo)}</b>
         <small>${escapar(frasePromo(pr))} · ${periodoPromo(pr)}</small>
         <span class="pm-st ${st.cls}">${st.txt}</span></div>
-      <button class="btn btn-claro btn-mini" onclick="abrirPromocao('${pr.id}')">Editar</button>
+      <div class="pm-botoes">
+        <button class="btn btn-claro btn-mini" onclick="promoDesempenho('${pr.id}')" title="Vendas e descontos desta promoção">Desempenho</button>
+        <button class="btn btn-claro btn-mini" onclick="abrirPromocao('${pr.id}')">Editar</button>
+      </div>
     </li>`; }).join('') : '<li class="pm-vazia">Nenhuma promoção cadastrada.</li>';
 }
 function promoAlternar(id, ligar, chk){
@@ -3922,6 +4012,30 @@ function promoAlternar(id, ligar, chk){
   chk.checked = false;   // só liga depois da senha
   pedirSenha(()=>{ pr.ativa = true; salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
     `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite a senha do gerente.`);
+}
+
+/* ----- Desempenho de uma promoção: tudo o que foi vendido com ela (desde o início) ----- */
+function promoDesempenho(id){
+  const pr = (estado.promocoes||[]).find(x=>x.id===id); if(!pr) return;
+  const vendas = vendasDe('', '').filter(v=>v.m.promocaoId===id);
+  const st = promoSituacao(pr);
+  const topo = `<p class="dica" style="margin:0 0 12px">${escapar(frasePromo(pr))} · ${periodoPromo(pr)} · <b>${st.txt}</b></p>`;
+  if(!vendas.length){ abrirInfo(pr.titulo, topo + '<div class="ds-vazio" style="padding:20px 6px">Nenhuma venda com esta promoção ainda.</div>'); return; }
+  const fat = soma(vendas,'receita'), desc = vendas.reduce((t,v)=>t+(v.m.descPromo||0),0), qtd = soma(vendas,'qtd');
+  const nVendas = new Set(vendas.map(v=>v.m.vendaId || v.m.id)).size;
+  const dias = [...new Set(vendas.map(v=>v.data))].sort();
+  const g = {};
+  vendas.forEach(v=>{ const k = v.p.id; g[k] = g[k] || { p:v.p, qtd:0, fat:0, lucro:0 }; g[k].qtd += v.qtd; g[k].fat += v.receita; g[k].lucro += v.lucro; });
+  const top = Object.values(g).sort((a,b)=>b.qtd-a.qtd || b.fat-a.fat).slice(0,5);
+  abrirInfo(pr.titulo, topo + `
+    <div class="ds-tiles pm-tiles">
+      <div class="ds-tile"><span>Vendido com a promoção</span><b>${fmtBRL(fat)}</b><small>${qtd} un.</small></div>
+      <div class="ds-tile"><span>Desconto dado</span><b>${fmtBRL(desc)}</b><small>pela promoção</small></div>
+      <div class="ds-tile"><span>Vendas</span><b>${nVendas}</b><small>em ${dias.length} dia(s)</small></div>
+      <div class="ds-tile"><span>Primeira e última</span><b class="pm-datas">${fmtData(dias[0])}${dias.length>1?` a ${fmtData(dias.at(-1))}`:''}</b><small>datas com venda</small></div>
+    </div>
+    <h4 class="ds-sub">Produtos mais vendidos na promoção</h4>
+    ${dsListaProdutosHtml(top, 'qtd', top[0].qtd)}`);
 }
 
 /* ----- Modal: nova / editar ----- */
@@ -4064,14 +4178,15 @@ function produtoParaCliente(p){
 }
 function telaClienteDados(){
   const r = pdvResumo(), v = pdvVisor;
-  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? { ...produtoParaCliente(prod(v.pid)), consulta: v.modo==='consulta' } : null;
+  const prodVisor = (v.tipo==='produto' && prod(v.pid)) ? { ...produtoParaCliente(prod(v.pid)), consulta: v.modo==='consulta' }
+    : (v.tipo==='servico' && servicoComoProduto(v.sid)) ? { ...produtoParaCliente(servicoComoProduto(v.sid)), marca:'Serviço', consulta:false } : null;
   return {
     tipo:'estado', faz: sandbox.ativo,
     fase: v.tipo==='concluida' ? 'concluida' : pdv.ativa ? 'venda' : (prodVisor ? 'consulta' : 'livre'),
     produto: prodVisor,
     itens: r.linhas.map(l=>({ nome:l.p.nome, qtd:l.it.qtd, unit:l.unitPromo, total:l.liquido, promo:!!l.promo })),
     subtotal:r.bruto, descontos:cent(r.bruto-r.total), total:r.total, unidades:r.unidades,
-    concluida: v.tipo==='concluida' ? { total:v.total, unidades:v.unidades, pagamento:nomePagamento(v.pagamento) } : null,
+    concluida: v.tipo==='concluida' ? { total:v.total, unidades:v.unidades, pagamento:textoPagamentos(v) } : null,
     promocoes: promosVigentes().map(pr=>({ titulo:pr.titulo, frase:frasePromo(pr) }))
   };
 }

@@ -495,6 +495,17 @@
   </div>
 </div>
 
+<!-- ===== Modal: informações (Métricas "ver mais", desempenho da promoção) ===== -->
+<div class="overlay" id="modalInfo">
+  <div class="modal modal-rola" style="max-width:620px">
+    <div class="modal-cabecalho">
+      <h2 id="infoTitulo">Detalhes</h2>
+      <button class="fechar" onclick="fechar('modalInfo')">&times;</button>
+    </div>
+    <div class="modal-corpo" id="infoCorpo"></div>
+  </div>
+</div>
+
 <!-- ===== Modal: novo / editar serviço (2.6.0) ===== -->
 <div class="overlay" id="modalServico">
   <div class="modal" style="max-width:420px">
@@ -598,6 +609,19 @@
       <div class="pdv-fin-resumo" id="finResumo"></div>
       <label class="pdv-fin-rot">Forma de pagamento</label>
       <div class="pdv-pags" id="finPags"></div>
+      <!-- Pagar com duas formas: valor da 1ª forma; a 2ª fica com o restante -->
+      <div class="pdv-dividir" id="finDividir" hidden>
+        <div class="pdv-div-linha">
+          <select id="finPag1" aria-label="Primeira forma de pagamento"></select>
+          <input type="number" id="finValor1" min="0" step="0.01" placeholder="Valor (R$)" inputmode="decimal" oninput="pdvDividirResto()"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();pdvConfirmar();}">
+        </div>
+        <div class="pdv-div-linha">
+          <select id="finPag2" aria-label="Segunda forma de pagamento"></select>
+          <div class="pdv-div-resto"><small>Restante</small><b id="finValor2">—</b></div>
+        </div>
+      </div>
+      <button type="button" class="pdv-fin-dividir" id="finDividirBtn" onclick="pdvDividir()">Pagar com duas formas de pagamento</button>
       <div class="campo" style="margin-top:14px"><label>Data da venda</label><input type="date" id="finData"></div>
       <div class="rodape-modal">
         <button class="btn btn-claro" onclick="fechar('modalFinalizar')">Voltar</button>
@@ -664,17 +688,14 @@
         <label>Marca</label>
         <input type="text" id="pMarca" placeholder="Ex: Baseus">
       </div>
+      <div class="campo">
+        <label>Modelo (opcional)</label>
+        <input type="text" id="pCodigo" placeholder="Ex: CA-UC1M (código do modelo na marca)">
+      </div>
       <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
       <div class="campo">
         <label>Categoria</label>
         <select id="pCategoria"></select>
-      </div>
-      <div class="campo">
-        <label>Código (SKU)</label>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="pCodigo" placeholder="Gerado automaticamente se vazio" style="flex:1">
-          <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('pCodigo').value=gerarSku(document.getElementById('pCategoria').value)">Gerar</button>
-        </div>
       </div>
       <div class="linha-campos">
         <div class="campo">

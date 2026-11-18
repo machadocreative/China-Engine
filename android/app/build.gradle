@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Endereço do China Engine publicado no GitHub Pages (o app só abre este site)
+def siteHost = 'machadocreative.github.io'
+def launchUrl = 'https://machadocreative.github.io/China-Engine/'
+
+// Versão: o número sobe sozinho a cada build no GitHub (o Android só atualiza um app instalado
+// se o versionCode novo for maior); o nome vem da versão digitada ao rodar o workflow.
+def codigoVersao = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def nomeVersao = System.getenv('APP_VERSAO') ?: '1.0.0'
+
+android {
+    namespace 'io.github.machadocreative.chinaengine'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.machadocreative.chinaengine'
+        minSdk 24
+        targetSdk 34
+        versionCode codigoVersao
+        versionName nomeVersao
+        resValue 'string', 'siteHost', siteHost
+        resValue 'string', 'launchUrl', launchUrl
+        resValue 'string', 'assetStatements',
+            '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], ' +
+            '\\"target\\": {\\"namespace\\": \\"web\\", \\"site\\": \\"https://' + siteHost + '\\"}}]'
+    }
+
+    // Assinatura: a chave fica só nos "Secrets" do GitHub (nunca no repositório)
+    signingConfigs {
+        release {
+            def chave = System.getenv('ANDROID_KEYSTORE')
+            if (chave) {
+                storeFile file(chave)
+                storePassword System.getenv('ANDROID_KEYSTORE_SENHA')
+                keyAlias 'chinaengine'
+                keyPassword System.getenv('ANDROID_KEYSTORE_SENHA')
+                storeType 'pkcs12'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

@@ -1,0 +1,11 @@
+# Arquivos gerados no build (o GitHub gera de novo a cada versão)
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+# Chave de assinatura: NUNCA vai para o repositório (fica só nos Secrets do GitHub)
+*.keystore
+*.jks
+*.p12
