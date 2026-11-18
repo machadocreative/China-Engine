@@ -20,13 +20,13 @@ permissions:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       APP_VERSAO: ${{ github.event.inputs.versao }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -38,10 +38,23 @@ jobs:
       - name: Preparar a chave de assinatura
         env:
           CHAVE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
         run: |
+          CHAVE="$RUNNER_TEMP/chave.keystore"
           if [ -z "$CHAVE_B64" ]; then echo "::error::Falta o Secret ANDROID_KEYSTORE_BASE64 (veja o topo deste arquivo)."; exit 1; fi
-          echo "$CHAVE_B64" | base64 -d > "$RUNNER_TEMP/chave.keystore"
-          echo "ANDROID_KEYSTORE=$RUNNER_TEMP/chave.keystore" >> "$GITHUB_ENV"
+          if [ -z "$ANDROID_KEYSTORE_SENHA" ]; then echo "::error::Falta o Secret ANDROID_KEYSTORE_SENHA (veja o topo deste arquivo)."; exit 1; fi
+          # tira espaços e quebras de linha que às vezes vêm junto ao colar
+          if ! printf '%s' "$CHAVE_B64" | tr -d ' \r\n\t' | base64 -d > "$CHAVE" 2>/dev/null; then
+            echo "::error::O Secret ANDROID_KEYSTORE_BASE64 não é o texto da chave (base64). Rode de novo o comando do PowerShell que copia a chave e cole no Secret sem mudar nada."; exit 1
+          fi
+          TAM=$(stat -c%s "$CHAVE")
+          echo "Chave recebida: $TAM bytes, $(printf '%s' "$CHAVE_B64" | tr -d ' \r\n\t' | wc -c) caracteres no Secret."
+          if [ "$TAM" -lt 1000 ]; then echo "::error::A chave no Secret ANDROID_KEYSTORE_BASE64 parece incompleta ($TAM bytes). Copie de novo pelo PowerShell e cole o texto inteiro."; exit 1; fi
+          if ! keytool -list -keystore "$CHAVE" -storetype pkcs12 -storepass "$ANDROID_KEYSTORE_SENHA" -alias chinaengine > /dev/null 2>&1; then
+            echo "::error::A senha do Secret ANDROID_KEYSTORE_SENHA não abre a chave (ou a chave não é a chave-china-engine.keystore). Confira a senha digitada no Secret."; exit 1
+          fi
+          echo "Chave e senha conferidas."
+          echo "ANDROID_KEYSTORE=$CHAVE" >> "$GITHUB_ENV"
 
       - name: Gerar o APK assinado
         env:
