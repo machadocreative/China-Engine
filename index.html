@@ -104,6 +104,10 @@
 <section class="view" id="viewEstoque" hidden>
   <!-- Topo fixo (filtros + cabeçalho da tabela); só a lista de produtos rola -->
   <div class="es-topo">
+    <div class="sv-abas so-movel" role="tablist">
+      <button class="ativo" role="tab" aria-selected="true">Produtos</button>
+      <button role="tab" onclick="mostrarView('servicos')">Serviços</button>
+    </div>
     <div class="hx-filtros">
       <label class="hx-chip"><select id="filtroCategoria" onchange="render()" title="Categoria"><option value="">Categoria</option></select></label>
       <label class="hx-chip"><select id="ordenarPor" onchange="render()" title="Ordenar por">
@@ -119,6 +123,7 @@
         <input type="text" id="busca" placeholder="Nome, marca ou código" oninput="render()">
       </div>
     </div>
+    <div class="inv-aviso" id="esInventario" hidden></div>
     <p class="dica es-dica">Toque e segure um produto para abrir as ações rápidas. Produtos arquivados só aparecem na busca.</p>
     <div class="linha-cabecalho" id="esCab">
       <div>Produto</div>
@@ -128,6 +133,31 @@
     </div>
   </div>
   <div class="es-lista" id="conteudo"></div>
+</section>
+
+<!-- ===================== TELA: SERVIÇOS (2.11.0) ===================== -->
+<!-- Serviços não têm estoque (quantidade infinita); custo e foto são opcionais. No celular, é uma aba do Estoque. -->
+<section class="view" id="viewServicos" hidden>
+  <div class="es-topo">
+    <div class="sv-abas so-movel" role="tablist">
+      <button role="tab" onclick="mostrarView('estoque')">Produtos</button>
+      <button class="ativo" role="tab" aria-selected="true">Serviços</button>
+    </div>
+    <div class="hx-filtros">
+      <div class="hx-busca">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="svBusca" placeholder="Nome do serviço" oninput="renderServicos()">
+      </div>
+    </div>
+    <p class="dica es-dica">Toque num serviço para editar. Serviços não têm estoque: podem ser vendidos sem limite.</p>
+    <div class="linha-cabecalho sv-cab">
+      <div>Serviço</div>
+      <div class="col-cat">Custo</div>
+      <div class="num">Estoque</div>
+      <div class="num">Preço</div>
+    </div>
+  </div>
+  <div class="es-lista" id="svConteudo"></div>
 </section>
 
 <!-- ===================== TELA: HISTÓRICO ===================== -->
@@ -270,10 +300,9 @@
 <!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Serviços</h3>
-      <small>Serviços que a loja cobra (xerox, impressão, fichas, reparos…), com o valor e, se quiser, o custo. Na movimentação avulsa, é só começar a digitar o nome para preencher.</small></div>
-    <ul class="sv-lista" id="cfgServicos"></ul>
-    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirServico()">+ Novo serviço</button></div>
+    <div class="cfg-cab"><h3>Módulo Serviços</h3>
+      <small>Para lojas que também cobram serviços (xerox, impressão, fichas, reparos…). Ligado, aparece o módulo Serviços (no celular, como aba dentro do Estoque) e os serviços podem ser vendidos no PDV junto com os produtos.</small></div>
+    <label class="sbx-chave"><input type="checkbox" id="cfgServicosAtivo" onchange="servicosAtivar(this.checked)"><i></i><span id="cfgServicosRotulo">Ligado</span></label>
   </div>
 
   <div class="cfg-bloco">
@@ -287,6 +316,13 @@
       <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede a senha do gerente.</small></div>
     <ul class="pm-lista" id="cfgPromoLista"></ul>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirPromocao()">+ Nova promoção</button></div>
+  </div>
+
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Inventário</h3>
+      <small>Lista rápida de tudo o que já está na loja no dia em que o app começa a ser usado: produto, quantidade, preço de venda e custo. Depois, o Estoque sugere cadastrar cada item da lista como produto, já com o estoque existente.</small></div>
+    <div class="sy-status" id="cfgInventarioResumo"></div>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirInventario()">Abrir inventário</button></div>
   </div>
 
   <div class="cfg-bloco">
@@ -322,6 +358,13 @@
       </div>
       <div id="cfgSyncCopias"></div>
     </div>
+  </div>
+
+  <div class="cfg-bloco" id="cfgAparelhosBloco" hidden>
+    <div class="cfg-cab"><h3>Aparelhos conectados</h3>
+      <small>Aparelhos que usam a sincronização desta loja, com o último acesso. Remover desconecta o aparelho e pede a senha do gerente.</small></div>
+    <ul class="ap-lista" id="cfgAparelhos"></ul>
+    <div class="cfg-acoes"><button class="btn btn-claro" onclick="dispositivosRender(true)">Atualizar lista</button></div>
   </div>
 
   <div class="cfg-bloco">
@@ -445,7 +488,8 @@
         <input type="text" id="cfgNovaCat" placeholder="Nova categoria (ex: Áudio)" oninput="this.value=sanitizarCategoria(this.value)" onkeydown="if(event.key==='Enter')adicionarCategoria()">
         <button class="btn btn-amarelo" onclick="adicionarCategoria()">Adicionar</button>
       </div>
-      <div class="dica">Renomear move os produtos para o novo nome. Só é possível remover categorias sem produtos.</div>
+      <div class="dica">Renomear move os produtos para o novo nome. Só é possível remover categorias sem produtos. Arraste pela alça ⠿ para mudar a ordem.
+        <button type="button" class="cat-alf" id="catAlfabetica" hidden onclick="categoriasAlfabetica()">Voltar à ordem alfabética</button></div>
     </div>
     <div class="modal-corpo">
       <ul class="lista-cat" id="cfgListaCat"></ul>
@@ -506,6 +550,27 @@
   </div>
 </div>
 
+<!-- ===== Modal: inventário (2.11.0) ===== -->
+<div class="overlay" id="modalInventario">
+  <div class="modal modal-rola" style="max-width:760px">
+    <div class="modal-cabecalho">
+      <h2>Inventário</h2>
+      <button class="fechar" onclick="fecharInventario()">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p class="dica" style="margin:0 0 12px">Um item por linha. O custo é opcional aqui: se faltar, o app pede na hora de cadastrar o produto. Itens já cadastrados no Estoque ficam marcados e não podem mais ser editados aqui.</p>
+      <div class="inv-cab"><span>Produto</span><span>Qtd</span><span>Preço de venda</span><span>Custo (un.)</span><span></span></div>
+      <div id="invLinhas"></div>
+      <button class="btn btn-claro btn-mini" onclick="inventarioNovaLinha()">+ Adicionar item</button>
+      <div class="inv-total" id="invTotal"></div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fecharInventario()">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarInventario()">Salvar inventário</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Modal: novo / editar serviço (2.6.0) ===== -->
 <div class="overlay" id="modalServico">
   <div class="modal" style="max-width:420px">
@@ -519,6 +584,8 @@
         <div class="campo"><label>Valor (R$)</label><input type="number" id="svValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
         <div class="campo"><label>Custo (R$, opcional)</label><input type="number" id="svCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
       </div>
+      <div class="campo"><label>Foto (endereço da imagem, opcional)</label>
+        <input type="url" id="svFoto" placeholder="https://… — aparece no visor do PDV e na tela do cliente" autocapitalize="off" spellcheck="false"></div>
       <div class="rodape-modal">
         <button class="btn btn-claro" id="svExcluir" style="margin-right:auto;color:var(--vermelho)" onclick="excluirServico()">Excluir</button>
         <button class="btn btn-claro" onclick="fechar('modalServico')">Cancelar</button>
@@ -891,6 +958,8 @@
 <div class="fab-menu" id="fabMenu">
   <button class="fab-opcao" data-fab="historico" onclick="fecharFab();abrirAvulsa()"><span>Inserir movimentação avulsa</span><i>
     <svg viewBox="0 0 24 24"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg></i></button>
+  <button class="fab-opcao" data-fab="servicos" onclick="fecharFab();abrirServico()"><span>Novo serviço</span><i>
+    <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></i></button>
   <button class="fab-opcao" data-fab="estoque" onclick="fecharFab();abrirProduto()"><span>Novo produto</span><i>
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></i></button>
   <button class="fab-opcao" data-fab="estoque" onclick="fecharFab();abrirCompra()"><span>Nova compra em lote</span><i>
@@ -924,6 +993,10 @@
   <button class="nav-item" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
     <span>Estoque</span>
+  </button>
+  <button class="nav-item so-pc nav-servicos" data-nav="servicos" onclick="mostrarView('servicos')" title="Serviços">
+    <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>
+    <span>Serviços</span>
   </button>
   <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>

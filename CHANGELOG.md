@@ -32,6 +32,48 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.11.0] - 2026-11-19
+
+> **Publicar também o `cloudflare/sync-worker.js` no Cloudflare** (Workers → china-sync → Edit code → colar → Deploy). Sem isso, a lista de aparelhos conectados não aparece; o resto funciona normalmente.
+
+### Adicionado
+
+- **Módulo Serviços:**
+  - Tela própria, que no PC fica no menu lateral, abaixo de Estoque, e no celular é uma aba "Produtos | Serviços" no topo do Estoque. A barra de baixo continua com 4 itens.
+  - Lista com custo (ou "não informado"), estoque infinito (∞) e preço. Tocar num serviço abre a edição, e o ⊕ cadastra um serviço novo.
+  - O serviço pode ter foto por endereço de imagem, como os produtos. A foto aparece no visor do PDV e na tela do cliente.
+  - Em Configurações, a chave "Módulo Serviços" liga e desliga o módulo para lojas que não prestam serviços. Desligado, ele some do menu e das abas, e o PDV e a movimentação avulsa deixam de sugerir serviços. Os serviços cadastrados continuam guardados.
+- **Histórico:**
+  - O horário da movimentação aparece embaixo do selo do tipo e da forma de pagamento.
+  - Na linha de cada dia há um botão de copiar. Ele copia as movimentações do dia em texto simples (nome, valor, lucro, forma de pagamento e horário, nessa ordem), com o total de vendas e o lucro no fim. Respeita os filtros da tela.
+- **Métricas → Horários de maior movimento:** novo card ao lado de Formas de pagamento, com as 5 faixas de 1 hora com mais vendas no período.
+- **Configurações → Inventário:**
+  - Lista rápida do que já está na loja no primeiro dia: produto, quantidade, preço de venda e custo (opcional).
+  - Enquanto houver itens para cadastrar, o Estoque mostra um aviso com o próximo item e o botão "Cadastrar". Ele abre o Novo produto já preenchido (nome, preço e estoque existente com quantidade e custo), e o item fica marcado como cadastrado.
+  - Convive com a opção "Estoque existente" do cadastro de produto.
+- **Configurações → Aparelhos conectados:**
+  - Lista os aparelhos que usam a sincronização, com o último acesso, o nível de acesso e se recebem notificações.
+  - "Remover" pede a senha do gerente. O aparelho removido para de sincronizar e de receber notificações e se desconecta sozinho no próximo contato com a nuvem.
+  - Cada aparelho já tem um nível de acesso (hoje sempre "Acesso total"), preparado para os níveis de uma versão futura.
+- **Aviso de estoque baixo pelo push:** quando uma venda, saída ou edição faz um produto passar do mínimo para baixo, os outros aparelhos recebem "Estoque baixo · produto" ("Restam X un. (mínimo Y un.)") ou "Sem estoque · produto".
+  - O aviso sai uma vez por vez que o estoque cruza o mínimo.
+  - Produto com alerta dispensado ou adiado não gera aviso.
+
+### Alterado
+
+- **PDV, consulta de preço com o caixa livre:** saiu o botão "Iniciar venda com este produto". O próprio "Iniciar venda" (F2) já começa a venda com o produto consultado.
+- **Texto das notificações de venda:**
+  - Primeira linha: "Produto · 1 un. · Pix". Com mais de um item, vira "Vários produtos".
+  - Segunda linha: "(Lançado por [aparelho])".
+  - Sai a categoria, e a forma de pagamento não aparece quando é "Outros" ou não informada. Na venda paga com duas formas, aparece "Espécie + Pix".
+- **Categorias de produtos:**
+  - Dá para reorganizar arrastando pela alça ⠿, no mouse ou no toque.
+  - A ordem padrão é alfabética, inclusive para as categorias novas, até alguém personalizar. Depois, a ordem escolhida vale em todo o app.
+  - O botão "Voltar à ordem alfabética" desfaz a personalização.
+- **Configurações:** o bloco "Serviços" virou a chave "Módulo Serviços". A ordem ficou: Módulo Serviços, Categorias, Promoções, Inventário, Notificações, Sincronização, Aparelhos conectados e o restante.
+
+---
+
 ## [2.10.0] - 2026-11-18
 
 ### Adicionado

@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.10.0';
+const VERSAO = '2.11.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -127,6 +127,9 @@ function alternarDirecao(){
 }
 
 function render(){
+  servicosTela();   // liga/desliga o módulo Serviços conforme a configuração (que também vem da sincronização)
+  inventarioAviso();
+  if(viewAtual==='servicos') renderServicos();
   preencherFiltroCategorias();
   ordenarPor = document.getElementById('ordenarPor').value;
   const busca = document.getElementById('busca').value.toLowerCase().trim();
@@ -326,6 +329,7 @@ function abrirProduto(id){
   document.getElementById('pBlocoInicial').style.display = 'none';
   document.getElementById('pQtdInicial').value = '';
   document.getElementById('pCustoInicial').value = '';
+  inventarioPendente = null;
   abrir('modalProduto');
   if(!p) setTimeout(()=>document.getElementById('pCodigoBarras').focus(), 80);   // pronto para o leitor USB
 }
@@ -366,8 +370,11 @@ function salvarProduto(){
     if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque existente.'); document.getElementById('pCustoInicial').focus(); return; }
     if(temIni && qIni<1){ toast('Informe a quantidade do estoque existente.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
-    estado.produtos.push({ id:uid(), ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
+    const novoId = uid();
+    estado.produtos.push({ id:novoId, ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
     produtoFotoDuplicada = '';
+    const itInv = inventarioPendente && (estado.inventario||[]).find(x=>x.id===inventarioPendente);
+    if(itInv){ itInv.pid = novoId; inventarioPendente = null; }   // item do inventário cadastrado
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
     toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque existente.` : 'Produto salvo.');
   }
@@ -475,7 +482,7 @@ const cent = v => Math.round(v*100)/100;
 function servicoDe(sid){ return (estado.servicos||[]).find(x=>x.id===sid); }
 function servicoComoProduto(sid){
   const sv = servicoDe(sid); if(!sv) return null;
-  return { id:'sv:'+sv.id, sid:sv.id, servico:true, nome:sv.nome, marca:'', preco:sv.valor, categoria:'Serviços', custo:sv.custo||0 };
+  return { id:'sv:'+sv.id, sid:sv.id, servico:true, nome:sv.nome, marca:'', preco:sv.valor, categoria:'Serviços', custo:sv.custo||0, foto:sv.foto||'' };
 }
 function itemDaVenda(it){ return it.sid ? servicoComoProduto(it.sid) : prod(it.pid); }
 
@@ -502,13 +509,16 @@ function rotuloDesconto(d){ return d && d.tipo==='pct' ? ` (${String(d.v).replac
 
 /* ----- Ações principais ----- */
 function pdvFocar(){ if(viewAtual==='pdv' && window.matchMedia && matchMedia('(pointer:fine)').matches){ const b = document.getElementById('pdvBusca'); if(b) b.focus(); } }
-function pdvIniciar(){
+function pdvIniciar(usarConsulta = true){
+  // caixa livre mostrando uma consulta de preço: "Iniciar venda" já começa com esse produto
+  const v = pdvVisor;
+  if(usarConsulta && !pdv.ativa && v.tipo==='produto' && v.modo==='consulta' && prod(v.pid)){ pdvIniciarCom(v.pid); return; }
   pdv = { ...pdvVazio(), ativa:true };
   pdvVisor = { tipo:'livre' };
   pdvGuardar(); renderPdv(); pdvFocar();
 }
 /* Atalho do botão ⊕ (Estoque e Histórico): abre o PDV já com uma venda iniciada */
-function pdvNovaVenda(){ mostrarView('pdv'); if(!pdv.ativa) pdvIniciar(); }
+function pdvNovaVenda(){ mostrarView('pdv'); if(!pdv.ativa) pdvIniciar(false); }
 function pdvCancelar(){
   const zerar = ()=>{ pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar(); renderPdv(); pdvFocar(); };
   if(!pdv.itens.length){ zerar(); return; }
@@ -529,7 +539,7 @@ function pdvBuscar(q){
 }
 function pdvBuscarServicos(q){
   q = q.toLowerCase().trim();
-  if(!q) return [];
+  if(!q || !servicosAtivos()) return [];
   return (estado.servicos||[]).filter(sv=>sv.nome.toLowerCase().includes(q)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,5);
 }
 function pdvFiltrar(){
@@ -783,6 +793,7 @@ function pdvConfirmar(){
     if(!l.p.servico && l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
   }
   const data = val('finData') || hoje(), hora = new Date().toTimeString().slice(0,5), vendaId = uid();
+  const antesEst = estoquesAntes(r.linhas.filter(l=>!l.p.servico).map(l=>l.p.id));
   // Desconto da venda repartido entre as linhas na proporção de cada uma (a última leva o resto dos centavos).
   // Assim o preço unitário gravado já é o preço real cobrado, e o lucro das Métricas continua certo.
   let resto = Math.round(r.total*100);
@@ -815,6 +826,7 @@ function pdvConfirmar(){
   fechar('modalFinalizar'); renderPdv(); pdvFocar();
   festejar();
   notificarVenda(feita);
+  avisarEstoqueBaixo(antesEst);
 }
 
 /* =========================================================
@@ -859,7 +871,7 @@ function avulsaBuscarServico(){
   const el = document.getElementById('avSugestoes'), q = val('avDesc').toLowerCase().trim();
   const lista = (estado.servicos||[]).filter(sv=>!q || sv.nome.toLowerCase().includes(q))
     .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,8);
-  if(avTipoSel!=='servico' || !lista.length || (lista.length===1 && lista[0].nome.toLowerCase()===q)){ el.innerHTML = ''; return; }
+  if(!servicosAtivos() || avTipoSel!=='servico' || !lista.length || (lista.length===1 && lista[0].nome.toLowerCase()===q)){ el.innerHTML = ''; return; }
   el.innerHTML = lista.map(sv=>`<div class="av-sug" onmousedown="event.preventDefault();avulsaEscolherServico('${sv.id}')">
     <span>${escapar(sv.nome)}</span><b>${fmtBRL(sv.valor)}</b></div>`).join('');
 }
@@ -938,7 +950,7 @@ function pdvVisorHtml(){
     const sv = servicoDe(v.sid), it = pdv.itens.find(x=>x.sid===sv.id);
     return `<div class="pdv-visor-in adicionado${pdv.ativa?' faixa':''}">
       <div class="pdv-faixa">
-        <div class="pdv-foto pdv-foto-serv"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
+        <div class="pdv-foto pdv-foto-serv">${sv.foto?`<img src="${escapar(sv.foto)}" alt="" onerror="this.remove()">`:''}<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
         <div class="pdv-info">
           <div class="pdv-marca">Serviço<span class="pdv-estado">● Na venda · ${it?it.qtd:1} un.</span></div>
           <div class="pdv-nome">${escapar(sv.nome)}</div>
@@ -978,7 +990,7 @@ function pdvVisorHtml(){
           <div class="pdv-nome">${escapar(p.nome)}</div>
           <div class="pdv-precos-grande">${precoHtml}</div>
           <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
-          ${consulta ? `<button class="btn btn-escuro pdv-visor-btn" onclick="${pdv.ativa?`pdvAdicionar('${p.id}')`:`pdvIniciarCom('${p.id}')`}">${pdv.ativa?'Adicionar à venda':'Iniciar venda com este produto'}</button>` : ''}
+          ${consulta && pdv.ativa ? `<button class="btn btn-escuro pdv-visor-btn" onclick="pdvAdicionar('${p.id}')">Adicionar à venda</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -1798,9 +1810,11 @@ function registrarSaida(){
   efetivarSaida(p, mov);
 }
 function efetivarSaida(p, mov){
+  const antesEst = estoquesAntes([p.id]);
   p.movimentacoes.push(mov);
   salvar(); aposMovimento(); toast('Baixa registrada.');
   if(mov.motivo==='Venda') notificarVenda({ total:mov.qtd*(mov.precoVenda||0), unidades:mov.qtd, produtos:1, pagamento:mov.pagamento, nomes:[p.nome] });
+  avisarEstoqueBaixo(antesEst);
 }
 
 /* =========================================================
@@ -2066,6 +2080,7 @@ function renderHistorico(){
 
   const dias = [];
   linhas.forEach(l=>{ const u = dias[dias.length-1]; if(u && u.data===l.data) u.itens.push(l); else dias.push({ data:l.data, itens:[l] }); });
+  hxDias = {}; dias.forEach(d=>hxDias[d.data] = d.itens);   // para o botão de copiar de cada dia
   const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
   const fmtSem = v=> fmtBRL(Math.abs(v));
 
@@ -2081,7 +2096,7 @@ function renderHistorico(){
   };
   const linhaHtml = (l, noGrupo)=>{ const c = classeMov(l.m); return `
       <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}"${l.avulsa?' data-avulsa="1"':''} title="Toque e segure para editar">
-        <div class="hx-mov">${noGrupo ? '' : tagMov(l.m)}</div>
+        <div class="hx-mov">${noGrupo ? '' : tagMov(l.m) + horaMov(l.m)}</div>
         <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
         <div class="num col-qtd">${l.qtd}</div>
@@ -2092,10 +2107,10 @@ function renderHistorico(){
     const qtd = b.itens.reduce((s,l)=>s+l.qtd,0);
     const total = b.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
     const temValor = b.itens.some(l=>l.v);
-    const sub = [m0.hora ? `às ${m0.hora}` : '', m0.tipo==='entrada' && m0.fornecedor ? escapar(m0.fornecedor) : ''].filter(Boolean).join(' · ');
+    const sub = m0.tipo==='entrada' && m0.fornecedor ? escapar(m0.fornecedor) : '';   // o horário fica embaixo do selo
     return `<div class="hx-grupo">
       <div class="hx-linha hx-grupo-cab">
-        <div class="hx-mov">${tagMov(m0)}</div>
+        <div class="hx-mov">${tagMov(m0)}${horaMov(m0)}</div>
         <div class="hx-prod">${b.itens.length} ${b.itens.some(l=>l.avulsa)?'itens':'produtos'}${sub?`<small>${sub}</small>`:''}</div>
         <div class="col-cat"></div>
         <div class="num col-qtd">${qtd}</div>
@@ -2110,7 +2125,9 @@ function renderHistorico(){
     const entra = conta.filter(v=>v>0).reduce((s,v)=>s+v,0), sai = conta.filter(v=>v<0).reduce((s,v)=>s+v,0), saldo = entra + sai;
     const ds = dataDe(d.data), sem = ['dom','seg','ter','qua','qui','sex','sáb'][ds.getDay()];
     return `<div class="hx-dia">
-      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i></div>
+      <div class="hx-data"><span>${fmtData(d.data)} <small>${sem}</small></span><i></i>
+        <button class="hx-copiar" onclick="copiarDiaHistorico('${d.data}')" title="Copiar as movimentações deste dia em texto" aria-label="Copiar as movimentações deste dia">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button></div>
       ${blocosDo(d.itens).map(b=> b.itens.length>1 ? grupoHtml(b) : linhaHtml(b.itens[0], false)).join('')}
       <div class="hx-saldo">
         ${entra && sai ? `<span>Entradas <b class="pos">+${fmtSem(entra)}</b></span><span>Saídas <b class="neg">−${fmtSem(sai)}</b></span>` : ''}
@@ -2120,6 +2137,49 @@ function renderHistorico(){
   }).join('');
   cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
     toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+}
+
+/* Horário da movimentação, embaixo do selo do tipo e da forma de pagamento */
+function horaMov(m){ return m.hora ? `<small class="hx-hora">${escapar(m.hora)}</small>` : ''; }
+
+/* Copiar o dia (botão no fim da linha da data): texto simples, uma linha por movimentação,
+   na ordem nome · valor · lucro · forma de pagamento · horário. Respeita os filtros da tela. */
+let hxDias = {};
+function copiarDiaHistorico(data){
+  const itens = hxDias[data] || []; if(!itens.length) return;
+  const custos = custosFIFO();
+  let total = 0, lucroT = 0;
+  const ds = dataDe(data);
+  const linhasTxt = [...itens].sort((a,b)=>(a.m.hora||'').localeCompare(b.m.hora||'')).map(l=>{
+    const m = l.m, venda = ehVendaMov(m);
+    const valor = l.v ? l.v.total : null;
+    let lucro = null;
+    if(venda){
+      const custo = m.tipo==='avulsa' ? (m.custo||0) : (custos.get(m.id)||0);
+      lucro = (valor||0) - custo;
+      total += valor||0; lucroT += lucro;
+    }
+    const nome = l.nome + (l.qtd>1 ? ` (${l.qtd} un.)` : '') + (venda ? '' : ` [${rotuloMov(m)}]`);
+    const partes = [nome];
+    if(valor!=null) partes.push((valor<0?'−':'') + fmtBRL(Math.abs(valor)));
+    if(lucro!=null) partes.push('lucro ' + fmtBRL(lucro));
+    if(venda && m.pagamento) partes.push(textoPagamentos(m));
+    if(m.hora) partes.push(m.hora);
+    return partes.join(' · ');
+  });
+  const texto = [`Movimentações de ${fmtData(data)} (${SEMANA_EXTENSO[ds.getDay()].toLowerCase()})`, ...linhasTxt,
+    total ? `Total de vendas: ${fmtBRL(total)} · lucro ${fmtBRL(lucroT)}` : ''].filter(Boolean).join('\n');
+  copiarTexto(texto, `${itens.length} movimentação(ões) de ${fmtData(data)} copiada(s).`);
+}
+function copiarTexto(texto, aviso){
+  const ok = ()=>toast(aviso || 'Copiado.');
+  const reserva = ()=>{   // navegadores sem a API de área de transferência
+    const t = document.createElement('textarea'); t.value = texto; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try{ document.execCommand('copy'); ok(); }catch(e){ toast('Não foi possível copiar neste navegador.'); }
+    t.remove();
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(ok, reserva); else reserva();
 }
 
 /* Toque e segure genérico (mouse e toque) */
@@ -2271,6 +2331,7 @@ function salvarEdicaoMov(){
     toast('Essa alteração deixaria o estoque negativo.'); return;
   }
   // sobrescreve no lugar (mantém o id da movimentação)
+  const antesEst = estoquesAntes([p.id]);
   m.data = novo.data; m.qtd = novo.qtd;
   if(m.tipo==='entrada'){ m.custoUnit = novo.custoUnit; if(novo.fornecedor) m.fornecedor = novo.fornecedor; else delete m.fornecedor; }
   else {
@@ -2285,12 +2346,51 @@ function salvarEdicaoMov(){
   salvar(); fechar('modalEditMov');
   render(); renderHistorico(); if(aberto('modalMov')) renderMov();
   toast('Movimentação atualizada.');
+  avisarEstoqueBaixo(antesEst);
 }
 
 /* =========================================================
    CATEGORIAS (criar / editar / remover)
    ========================================================= */
 let catEditando = null;
+/* Ordem das categorias (2.11.0): alfabética por padrão; depois que alguém arrasta, vale a ordem escolhida
+   (estado.config.catOrdemPersonalizada). A ordem vale para todas as listas de categorias do app. */
+function ordenarCategorias(e){
+  e = e || estado;
+  if(!Array.isArray(e.categorias) || (e.config && e.config.catOrdemPersonalizada)) return;
+  e.categorias.sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+}
+function categoriasAlfabetica(){
+  estado.config = estado.config || {};
+  delete estado.config.catOrdemPersonalizada;
+  ordenarCategorias(); salvar(); renderCategorias(); render(); toast('Categorias em ordem alfabética.');
+}
+/* Arrastar pela alça ⠿ (mouse e toque): a linha acompanha o dedo e as outras abrem espaço */
+function catArrastar(ev){
+  const li = ev.target.closest('li'), ul = li && li.parentElement; if(!li) return;
+  ev.preventDefault();
+  const corpo = ul.closest('.modal-corpo');
+  li.classList.add('arrastando');
+  const mover = e=>{
+    const y = e.clientY;
+    const outros = [...ul.children].filter(x=>x!==li);
+    const antes = outros.find(x=>{ const r = x.getBoundingClientRect(); return y < r.top + r.height/2; });
+    ul.insertBefore(li, antes || null);
+    if(corpo){ const r = corpo.getBoundingClientRect(); if(y < r.top+40) corpo.scrollTop -= 12; else if(y > r.bottom-40) corpo.scrollTop += 12; }
+  };
+  const soltar = ()=>{
+    document.removeEventListener('pointermove', mover);
+    document.removeEventListener('pointerup', soltar); document.removeEventListener('pointercancel', soltar);
+    li.classList.remove('arrastando');
+    const nova = [...ul.children].map(x=>estado.categorias[+x.dataset.i]).filter(c=>c!==undefined);
+    if(nova.length!==estado.categorias.length || nova.every((c,i)=>c===estado.categorias[i])){ renderCategorias(); return; }
+    estado.categorias = nova;
+    estado.config = estado.config || {}; estado.config.catOrdemPersonalizada = true;
+    salvar(); renderCategorias(); render(); toast('Ordem das categorias salva.');
+  };
+  document.addEventListener('pointermove', mover);
+  document.addEventListener('pointerup', soltar); document.addEventListener('pointercancel', soltar);
+}
 /* Categorias são gerenciadas só em Configurações (bloco "Categorias de produtos") */
 function abrirCategorias(){
   catEditando = null; renderCategorias();
@@ -2314,18 +2414,21 @@ function renderCategorias(){
         <button class="btn btn-claro btn-mini" onclick="catEditando=null;renderCategorias()">Cancelar</button>
       </li>`;
     }
-    return `<li><span class="cat-nome">${escapar(c)}<small>${n ? n+(n===1?' produto':' produtos') : 'sem produtos'}</small></span>
+    return `<li data-i="${i}"><span class="cat-alca" onpointerdown="catArrastar(event)" title="Arraste para mudar a ordem" aria-label="Arrastar">⠿</span><span class="cat-nome">${escapar(c)}<small>${n ? n+(n===1?' produto':' produtos') : 'sem produtos'}</small></span>
       <button class="btn btn-claro btn-mini" onclick="catEditando=${i};renderCategorias()">Editar</button>
       <button class="btn btn-claro btn-mini" onclick="removerCategoriaIdx(${i})" ${n?'disabled title="Em uso por produtos: mova os produtos para outra categoria antes de remover" style="opacity:.4"':''}>Remover</button></li>`;
   }).join('');
   if(catEditando!==null){ const inp=document.getElementById('catInput'); if(inp) setTimeout(()=>inp.focus(),30); }
+  const alf = document.getElementById('catAlfabetica');
+  if(alf) alf.hidden = !(estado.config && estado.config.catOrdemPersonalizada);
 }
 function adicionarCategoria(){
   const campo = document.getElementById('cfgNovaCat');
   const v = sanitizarCategoria(campo.value).trim();
   if(!v){ toast('Informe um nome válido.'); return; }
   if(estado.categorias.some(c=>c.toLowerCase()===v.toLowerCase())){ toast('Essa categoria já existe.'); return; }
-  estado.categorias.push(v);
+  estado.categorias.push(v);   // ordem personalizada: a nova entra no fim; senão, em ordem alfabética
+  ordenarCategorias();
   campo.value='';
   salvar(); renderCategorias(); render(); toast('Categoria adicionada.');
 }
@@ -2340,6 +2443,7 @@ function salvarEdicaoCategoria(i){
   const temEstoqueAtivo = estado.produtos.some(p=>p.categoria===antigo && estoqueDe(p)>0);
   const aplicar = ()=>{
     estado.categorias[i] = novo;
+    ordenarCategorias();
     estado.produtos.forEach(p=>{ if(p.categoria===antigo) p.categoria=novo; });
     salvar(); catEditando=null; renderCategorias(); render(); toast('Categoria renomeada.');
   };
@@ -2457,6 +2561,7 @@ const VIEWS = {
   pdv:        { secao:'viewPdv',        titulo:'PDV · Ponto de venda' },
   alertas:    { secao:'viewAlertas',    titulo:'Pontos de atenção' },
   estoque:    { secao:'viewEstoque',    titulo:'Controle de Estoque' },
+  servicos:   { secao:'viewServicos',   titulo:'Serviços' },
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
   desempenho: { secao:'viewDesempenho', titulo:'Métricas' },   // módulo renomeado de Desempenho para Métricas (2.3.0)
@@ -2465,19 +2570,23 @@ const VIEWS = {
 let viewAtual = 'pdv', viewAnterior = 'pdv';
 function mostrarView(v){
   if(!VIEWS[v]) return;
+  if(v==='servicos' && !servicosAtivos()) v = 'estoque';
   if(viewAtual!==v && viewAtual!=='alertas' && viewAtual!=='config') viewAnterior = viewAtual;
   viewAtual = v;
   Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
-  document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('ativo', b.dataset.nav===v));
+  document.querySelectorAll('.nav-item[data-nav]').forEach(b=>{
+    b.classList.toggle('ativo', b.dataset.nav===v);
+    b.classList.toggle('ativo-movel', v==='servicos' && b.dataset.nav==='estoque');   // celular: Serviços é uma aba do Estoque
+  });
   document.querySelectorAll('header .acoes [data-view]').forEach(b=>b.classList.toggle('fora', b.dataset.view!==v));
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
   document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');   // no PC a engrenagem some e Configurações fica no menu lateral
-  document.getElementById('fab').style.display = (v==='estoque' || v==='historico') ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
+  document.getElementById('fab').style.display = (v==='estoque' || v==='historico' || v==='servicos') ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
   document.querySelectorAll('#fabMenu [data-fab]').forEach(b=>b.style.display = b.dataset.fab===v ? '' : 'none');   // cada tela tem as suas ações
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
-  document.body.classList.toggle('modo-estoque', v==='estoque');       // idem no Estoque: filtros e cabeçalho fixos
+  document.body.classList.toggle('modo-estoque', v==='estoque' || v==='servicos');   // idem no Estoque e em Serviços: filtros e cabeçalho fixos
   document.body.classList.toggle('modo-pdv', v==='pdv');               // PDV usa a tela toda
   document.querySelector('main').scrollTop = 0;
   renderViewAtual();
@@ -2503,6 +2612,7 @@ function renderViewAtual(){
   if(viewAtual==='historico')  prepararHistorico();
   if(viewAtual==='financeiro') renderFinanceiro();
   if(viewAtual==='config')     renderConfig();
+  if(viewAtual==='servicos')   renderServicos();
   if(viewAtual==='desempenho') renderDesempenho();
 }
 
@@ -2511,7 +2621,7 @@ function renderViewAtual(){
    ========================================================= */
 function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
-  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); renderServicos();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2786,7 +2896,10 @@ function renderDesempenho(){
       ${dsBlocoProdutos(vendas)}
       ${dsBlocoCategorias(vendas)}
     </div>
-    ${dsBlocoPagamentos(vendas)}
+    <div class="ds-grade">
+      ${dsBlocoPagamentos(vendas)}
+      ${dsBlocoHorarios(vendas)}
+    </div>
     ${dsBlocoDescontos(vendas)}
     ${dsBlocoParados()}`;
   ligarTooltips(cont);
@@ -2904,6 +3017,31 @@ function dsBarrasCategoriasHtml(lista, todas){
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${DS_COR.fat}"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
       </div>`).join('')}</div>`;
+}
+
+/* ----- Horários de melhor fluxo: vendas por faixa de 1 hora (só as que têm horário registrado) ----- */
+function dsBlocoHorarios(vendas){
+  const g = {};
+  let semHora = 0;
+  vendas.forEach(v=>{
+    const h = parseInt((v.m.hora||'').slice(0,2));
+    if(isNaN(h)){ semHora++; return; }
+    g[h] = g[h] || { h, vendas:new Set(), fat:0, qtd:0 };
+    g[h].vendas.add(v.m.vendaId || v.m.id); g[h].fat += v.receita; g[h].qtd += v.qtd;
+  });
+  const lista = Object.values(g).map(x=>({ ...x, n:x.vendas.size })).sort((a,b)=>b.n-a.n || b.fat-a.fat).slice(0,5);
+  if(!lista.length) return '';
+  const max = lista[0].n || 1, faixa = h=>`${String(h).padStart(2,'0')}h às ${String((h+1)%24).padStart(2,'0')}h`;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Horários de maior movimento</h3><small>As faixas de 1 hora com mais vendas no período${semHora ? ' (vendas sem horário registrado ficam de fora)' : ''}</small></div></div>
+    <ol class="ds-rank">${lista.map((x,i)=>`
+      <li data-tip="<b>${faixa(x.h)}</b><span>Vendas <em>${x.n}</em></span><span>Faturamento <em>${fmtBRL(x.fat)}</em></span><span class='ds-tip-sec'>${x.qtd} un.</span>">
+        <span class="ds-rank-n">${i+1}</span>
+        <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${faixa(x.h)}</span><b>${x.n} venda(s)</b></div>
+          <div class="ds-mini"><div style="width:${x.n/max*100}%;background:${DS_COR.lucro}"></div></div>
+          <small>${fmtBRL(x.fat)} · ${x.qtd} un.</small></div>
+      </li>`).join('')}</ol>
+  </div>`;
 }
 
 /* ----- Formas de pagamento (só registro: o app não processa pagamentos) ----- */
@@ -3112,7 +3250,9 @@ function garantirFinanceiro(e){
   f.abertura = f.abertura || '';
   e.avulsas = Array.isArray(e.avulsas) ? e.avulsas : [];   // movimentações avulsas (receitas sem produto em estoque) — 2.3.0
   e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];
-  e.servicos = Array.isArray(e.servicos) ? e.servicos : [];   // cadastro de serviços (2.6.0)   // promoções (Configurações) — 2.4.0
+  e.servicos = Array.isArray(e.servicos) ? e.servicos : [];   // cadastro de serviços (2.6.0)
+  e.inventario = Array.isArray(e.inventario) ? e.inventario : [];   // inventário do primeiro dia (2.11.0)
+  ordenarCategorias(e);
   return e;
 }
 garantirFinanceiro(estado);
@@ -3485,9 +3625,11 @@ function normalizarEstado(e){
 class ErroSync extends Error{ constructor(tipo, msg){ super(msg); this.tipo = tipo; } }
 async function syncReq(metodo, caminho, corpo){
   const d = Sync.ler();
+  // identificação deste aparelho (2.11.0): o Worker registra o último acesso e permite remover o aparelho
+  const ident = (caminho.includes('?') ? '&' : '?') + 'ap=' + encodeURIComponent(aparelhoId()) + '&apn=' + encodeURIComponent(d.aparelho||'');
   let r;
   try{
-    r = await fetch(d.url + caminho, {
+    r = await fetch(d.url + caminho + ident, {
       method: metodo, cache: 'no-store',
       headers: { 'Authorization': 'Bearer ' + d.senha, ...(corpo ? {'Content-Type':'application/json'} : {}) },
       body: corpo ? JSON.stringify(corpo) : undefined
@@ -3500,12 +3642,70 @@ async function syncReq(metodo, caminho, corpo){
   let j = null; try{ j = await r.json(); }catch(e){}
   if(r.status===409) return { conflito:true, ...j };
   if(r.status===401) throw new ErroSync('senha', 'Senha da sincronização incorreta: ela precisa ser igual à SENHA_SYNC cadastrada no Worker.');
+  if(r.status===403 && j && j.erro==='revogado'){
+    // outro aparelho removeu este da sincronização: esquece o endereço e a senha (os dados continuam aqui)
+    clearTimeout(syncTimer); Sync.gravar(null); Sync.gravarBase(null);
+    aparelhoIdMem = null; try{ localStorage.removeItem(APARELHO_CHAVE); }catch(e){}   // ao conectar de novo, entra como aparelho novo
+    setTimeout(()=>{ syncFase = { tipo:'', msg:'' }; if(viewAtual==='config') renderConfig(); }, 0);
+    throw new ErroSync('revogado', 'Este aparelho foi removido da sincronização por outro aparelho. Os dados continuam aqui; para voltar, conecte de novo em Configurações.');
+  }
   if(!r.ok){
     const e = new ErroSync('api', (j && j.mensagem) || `O Worker respondeu com erro (${r.status}).`);
     e.codigo = j && j.erro;
     throw e;
   }
   return j || {};
+}
+
+/* Identificador fixo deste aparelho (continua o mesmo se desconectar e conectar de novo) */
+const APARELHO_CHAVE = 'chinatown_aparelho_id';
+let aparelhoIdMem = null;
+function aparelhoId(){
+  if(aparelhoIdMem) return aparelhoIdMem;
+  try{ aparelhoIdMem = localStorage.getItem(APARELHO_CHAVE); }catch(e){}
+  if(!aparelhoIdMem){ aparelhoIdMem = 'ap' + uid() + uid(); try{ localStorage.setItem(APARELHO_CHAVE, aparelhoIdMem); }catch(e){} }
+  return aparelhoIdMem;
+}
+/* ----- Aparelhos conectados (Configurações, 2.11.0) -----
+   Lista os aparelhos que usam a sincronização, com o último acesso. Remover pede a senha do gerente;
+   o aparelho removido se desconecta sozinho na próxima vez que falar com a nuvem.
+   Caminho preparado para níveis de acesso: cada aparelho já tem "nivel" (hoje sempre 'total'). */
+const NIVEIS_ACESSO = { total:'Acesso total' };
+async function dispositivosRender(forcar){
+  const bloco = document.getElementById('cfgAparelhosBloco'), el = document.getElementById('cfgAparelhos');
+  if(!bloco || !el) return;
+  bloco.hidden = !Sync.conectado();
+  if(!Sync.conectado()) return;
+  if(!forcar && el.dataset.carregado) return;
+  el.innerHTML = '<li class="pm-vazia">Carregando…</li>';
+  try{
+    const j = await syncReq('GET', '/aparelhos');
+    const lista = j.aparelhos || [];
+    el.dataset.carregado = '1';
+    el.innerHTML = lista.length ? lista.map(a=>`
+      <li class="ap-item">
+        <span class="ap-ic"><svg viewBox="0 0 24 24">${/celular|android|iphone|moto|samsung|xiaomi|redmi|tablet/i.test(a.nome)
+          ? '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>' : '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'}</svg></span>
+        <div class="ap-info"><b>${escapar(a.nome)}${a.atual?' <em class="ap-este">este aparelho</em>':''}</b>
+          <small>Último acesso ${a.vistoEm ? quandoFoi(a.vistoEm) : '—'} · ${NIVEIS_ACESSO[a.nivel]||a.nivel}${a.push?' · recebe notificações':''}</small></div>
+        ${a.atual ? '' : `<button class="btn btn-claro btn-mini" onclick="dispositivoRemover('${a.id}', '${escapar(a.nome).replace(/'/g,'&#39;')}')">Remover</button>`}
+      </li>`).join('') : '<li class="pm-vazia">Nenhum aparelho registrado ainda. Cada aparelho aparece aqui depois de sincronizar com esta versão do app.</li>';
+  }catch(e){
+    el.innerHTML = `<li class="pm-vazia">${escapar(e.codigo==='rota' ? 'Para ver os aparelhos, publique no Cloudflare a versão nova do sync-worker.js.' : e.message)}</li>`;
+  }
+}
+function quandoFoi(iso){
+  const min = Math.round((Date.now() - Date.parse(iso))/60000);
+  if(min < 2) return 'agora';
+  if(min < 60) return `há ${min} min`;
+  const h = Math.round(min/60); if(h < 24) return `há ${h} h`;
+  const d = Math.round(h/24); return d===1 ? 'ontem' : `há ${d} dias`;
+}
+function dispositivoRemover(id, nome){
+  pedirSenha(()=>pedirConfirmacao(`Remover “${nome}” da sincronização? Ele para de receber e enviar dados e de receber notificações. Os dados que já estão nele não são apagados. Para impedir que alguém conecte esse aparelho de novo, troque também a senha da sincronização (SENHA_SYNC) no Cloudflare.`, async ()=>{
+    try{ await syncReq('DELETE', '/aparelhos/' + encodeURIComponent(id)); toast(`“${nome}” foi removido.`); dispositivosRender(true); }
+    catch(e){ toast(e.message); }
+  }, 'Remover aparelho'), `Remover o aparelho “${nome}” da sincronização. Digite a senha do gerente.`);
 }
 
 /* ----- Status (aparece em Configurações) ----- */
@@ -3917,15 +4117,42 @@ async function pushIniciar(){
 
 /* Venda concluída: põe o aviso na fila e sincroniza (os dados sobem antes do aviso sair) */
 const PUSH_VALIDADE = 6*3600*1000;
+/* Texto do aviso (2.11.0):
+     título: "Venda concluída · R$ 20,00" (ou "Movimentação avulsa · …")
+     corpo:  "Suporte de TV Universal · 1 un. · Pix"   (mais de um item: "Vários produtos · 3 un. · Pix")
+             "(Lançado por PC Gaby)"
+   Sem categoria. Forma "Outros" ou não informada não aparece; venda dividida: "Espécie + Pix" (sem valores). */
+function pagamentoNoAviso(v){
+  if(v.pagamento==='varios' && Array.isArray(v.pagamentos)) return v.pagamentos.map(x=>nomePagamento(x.id)).join(' + ');
+  if(!v.pagamento || v.pagamento==='outros') return '';
+  return nomePagamento(v.pagamento);
+}
 function notificarVenda(v){
+  const nomes = v.nomes||[];
+  const item = (v.produtos||nomes.length)>1 ? 'Vários produtos' : (nomes[0] || 'Venda');
+  const linha1 = [item, `${v.unidades||1} un.`, pagamentoNoAviso(v)].filter(Boolean).join(' · ');
+  enfileirarAviso(`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, linha1, 'venda-'+uid());
+}
+function enfileirarAviso(titulo, linha1, tag){
   if(sandbox.ativo || !Sync.conectado()) return;
   const d = Sync.ler();
-  const nomes = (v.nomes||[]).slice(0,3).join(', ') + ((v.nomes||[]).length>3 ? '…' : '');
-  const linha1 = [v.titulo ? '' : `${v.unidades} un.`, textoPagamentos(v), d.aparelho].filter(Boolean).join(' · ');   // avulsa: sem "1 un."
   const fila = (d.fila||[]).filter(n=>Date.now()-n.em < PUSH_VALIDADE);
-  fila.push({ em:Date.now(), titulo:`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, corpo: nomes ? `${linha1}\n${nomes}` : linha1, tag:'venda-'+uid() });
+  fila.push({ em:Date.now(), titulo, corpo:`${linha1}\n(Lançado por ${d.aparelho||'outro aparelho'})`, tag });
   Sync.atualizar({ fila });
   sincronizar();
+}
+/* Aviso de estoque baixo (2.11.0): quando uma venda ou saída faz o produto CRUZAR o mínimo
+   (antes acima, depois igual ou abaixo). Um aviso por cruzamento; alerta dispensado/adiado não avisa. */
+function estoquesAntes(pids){ const m = {}; [...new Set(pids)].forEach(id=>{ const p = prod(id); if(p) m[id] = estoqueDe(p); }); return m; }
+function avisarEstoqueBaixo(antes){
+  Object.entries(antes).forEach(([id, estAntes])=>{
+    const p = prod(id); if(!p || p.arquivado) return;
+    const min = p.minimo||0, est = estoqueDe(p);
+    if(!(estAntes > min && est <= min)) return;
+    if(alertaEstado(p)!=='ativo') return;
+    enfileirarAviso(est<=0 ? `Sem estoque · ${p.nome}` : `Estoque baixo · ${p.nome}`,
+      est<=0 ? `Acabou o estoque (mínimo ${min} un.)` : `Restam ${est} un. (mínimo ${min} un.)`, 'estoque-'+p.id);
+  });
 }
 async function pushEnviarFila(){
   const d = Sync.ler();
@@ -4100,16 +4327,134 @@ function excluirPromocao(){
 }
 
 /* =========================================================
+   INVENTÁRIO (Configurações) — 2.11.0
+   estado.inventario = [{ id, nome, qtd, preco, custo?, pid? }]. Lista rápida do que já está na loja no
+   primeiro dia. O Estoque sugere cadastrar cada item como produto, com "Estoque existente" (qtd + custo).
+   Convive com o "Estoque existente" do cadastro de produto até o inventário ser todo cadastrado.
+   ========================================================= */
+let invRascunho = [], inventarioPendente = null;
+function inventarioPendentes(){ return (estado.inventario||[]).filter(x=>!x.pid || !prod(x.pid)); }
+function inventarioResumo(){
+  const el = document.getElementById('cfgInventarioResumo'); if(!el) return;
+  const inv = estado.inventario||[], pend = inventarioPendentes();
+  el.innerHTML = !inv.length ? 'Nenhum item no inventário ainda.'
+    : `<b>${inv.length}</b> item(ns) · <b>${inv.length-pend.length}</b> já cadastrado(s) no Estoque · <b>${pend.length}</b> para cadastrar`;
+}
+function abrirInventario(){
+  invRascunho = (estado.inventario||[]).map(x=>({ ...x }));
+  if(!invRascunho.length) invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'', custo:'' });
+  renderInventario(); abrir('modalInventario');
+}
+function fecharInventario(){ fechar('modalInventario'); }
+function inventarioLerTela(){
+  document.querySelectorAll('#invLinhas .inv-linha[data-id]').forEach(el=>{
+    const it = invRascunho.find(x=>x.id===el.dataset.id); if(!it || (it.pid && prod(it.pid))) return;
+    const v = c=>el.querySelector(c).value;
+    it.nome = v('.inv-nome').trim(); it.qtd = v('.inv-qtd'); it.preco = v('.inv-preco'); it.custo = v('.inv-custo');
+  });
+}
+function renderInventario(){
+  document.getElementById('invLinhas').innerHTML = invRascunho.map(it=>{
+    const feito = it.pid && prod(it.pid);
+    return `<div class="inv-linha${feito?' feito':''}" data-id="${it.id}">
+      <input class="inv-nome" type="text" maxlength="80" placeholder="Nome do produto" value="${escapar(it.nome||'')}" ${feito?'disabled':''}>
+      <input class="inv-qtd" type="number" min="0" step="1" inputmode="numeric" placeholder="Qtd" title="Quantidade" value="${it.qtd??''}" ${feito?'disabled':''} oninput="inventarioTotais()">
+      <input class="inv-preco" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Venda" title="Preço de venda (R$)" value="${it.preco??''}" ${feito?'disabled':''}>
+      <input class="inv-custo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Custo" title="Custo por unidade (R$)" value="${it.custo??''}" ${feito?'disabled':''} oninput="inventarioTotais()">
+      ${feito ? '<span class="inv-ok" title="Já cadastrado no Estoque">✓</span>'
+        : `<button type="button" class="inv-x" onclick="inventarioRemover('${it.id}')" title="Remover da lista" aria-label="Remover da lista">×</button>`}
+    </div>`; }).join('');
+  inventarioTotais();
+}
+function inventarioTotais(){
+  inventarioLerTela();
+  const un = invRascunho.reduce((t,x)=>t+(parseInt(x.qtd)||0),0);
+  const custo = invRascunho.reduce((t,x)=>t+(parseInt(x.qtd)||0)*(parseFloat(x.custo)||0),0);
+  document.getElementById('invTotal').textContent = `${invRascunho.filter(x=>x.nome).length} item(ns) · ${un} un.${custo ? ` · ${fmtBRL(custo)} em custo informado` : ''}`;
+}
+function inventarioNovaLinha(){
+  inventarioLerTela();
+  invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'', custo:'' });
+  renderInventario();
+  const ls = document.querySelectorAll('#invLinhas .inv-nome'); ls[ls.length-1].focus();
+}
+function inventarioRemover(id){ inventarioLerTela(); invRascunho = invRascunho.filter(x=>x.id!==id); renderInventario(); }
+function salvarInventario(){
+  inventarioLerTela();
+  const lista = [];
+  for(const it of invRascunho){
+    if(it.pid && prod(it.pid)){ lista.push(it); continue; }
+    if(!it.nome && !it.qtd && !it.preco && !it.custo) continue;   // linha em branco
+    if(!it.nome){ toast('Há um item sem nome.'); return; }
+    const qtd = parseInt(it.qtd), preco = parseFloat(it.preco), custo = parseFloat(it.custo);
+    if(!(qtd>0)){ toast(`Informe a quantidade de “${it.nome}”.`); return; }
+    const novo = { id:it.id, nome:it.nome.slice(0,80), qtd };
+    if(preco>0) novo.preco = cent(preco);
+    if(custo>=0 && !isNaN(custo)) novo.custo = cent(custo);
+    lista.push(novo);
+  }
+  estado.inventario = lista;
+  salvar(); fechar('modalInventario'); inventarioResumo(); inventarioAviso();
+  toast('Inventário salvo.');
+}
+/* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar */
+function inventarioAviso(){
+  const el = document.getElementById('esInventario'); if(!el) return;
+  const pend = inventarioPendentes();
+  el.hidden = !pend.length;
+  if(!pend.length) return;
+  el.innerHTML = `<span><b>Inventário:</b> ${pend.length} produto(s) para cadastrar no Estoque. Próximo: <b>${escapar(pend[0].nome)}</b> (${pend[0].qtd} un.).</span>
+    <button class="btn btn-amarelo btn-mini" onclick="inventarioCadastrar('${pend[0].id}')">Cadastrar</button>
+    <button class="btn btn-claro btn-mini" onclick="abrirInventario()">Ver lista</button>`;
+}
+/* Abre o cadastro de Novo produto já preenchido com o item do inventário (nome, preço e estoque existente) */
+function inventarioCadastrar(id){
+  const it = (estado.inventario||[]).find(x=>x.id===id); if(!it) return;
+  abrirProduto();
+  inventarioPendente = it.id;
+  document.getElementById('tituloProduto').textContent = 'Cadastrar item do inventário';
+  document.getElementById('pNome').value = it.nome;
+  if(it.preco) document.getElementById('pPreco').value = it.preco;
+  document.getElementById('pTemInicial').checked = true;
+  alternarEstoqueInicial();
+  document.getElementById('pQtdInicial').value = it.qtd;
+  document.getElementById('pCustoInicial').value = it.custo ?? '';
+  setTimeout(()=>{ const c = document.getElementById(it.custo==null ? 'pCustoInicial' : 'pMarca'); c.focus(); }, 120);
+  toast(it.custo==null ? 'Complete a marca, a categoria e o custo por unidade.' : 'Complete a marca e a categoria.');
+}
+
+/* =========================================================
    SERVIÇOS (Configurações) — 2.6.0
    estado.servicos = [{ id, nome, valor, custo? }]. Usados na busca da movimentação avulsa.
    ========================================================= */
+/* Módulo Serviços (2.11.0): tela própria (PC: menu lateral; celular: aba do Estoque) e chave em Configurações */
+function servicosAtivos(){ return !(estado.config && estado.config.servicosAtivo===false); }   // ligado por padrão
+function servicosAtivar(ligar){
+  estado.config = estado.config || {};
+  estado.config.servicosAtivo = !!ligar;
+  salvar(); servicosTela();
+  toast(ligar ? 'Módulo Serviços ligado.' : 'Módulo Serviços desligado. Os serviços cadastrados continuam guardados.');
+}
+function servicosTela(){
+  const on = servicosAtivos();
+  document.body.classList.toggle('sem-servicos', !on);
+  const c = document.getElementById('cfgServicosAtivo'); if(c) c.checked = on;
+  const r = document.getElementById('cfgServicosRotulo'); if(r) r.textContent = on ? 'Ligado' : 'Desligado';
+  if(!on && viewAtual==='servicos') mostrarView('estoque');
+}
 function renderServicos(){
-  const el = document.getElementById('cfgServicos'); if(!el) return;
-  const lista = [...(estado.servicos||[])].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const el = document.getElementById('svConteudo'); if(!el) return;
+  const q = (val('svBusca')||'').toLowerCase().trim();
+  const todos = estado.servicos||[];
+  const lista = todos.filter(sv=>!q || sv.nome.toLowerCase().includes(q)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   el.innerHTML = lista.length ? lista.map(sv=>`
-    <li class="sv-item" onclick="abrirServico('${sv.id}')" title="Editar">
-      <span>${escapar(sv.nome)}${sv.custo>0?`<small>custo ${fmtBRL(sv.custo)}</small>`:''}</span><b>${fmtBRL(sv.valor)}</b>
-    </li>`).join('') : '<li class="pm-vazia">Nenhum serviço cadastrado.</li>';
+    <div class="linha sv-linha" onclick="abrirServico('${sv.id}')" title="Editar">
+      <div class="nome">${sv.foto?`<img class="sv-mini" src="${escapar(sv.foto)}" alt="" onerror="this.remove()">`:''}${escapar(sv.nome)}</div>
+      <div class="col-cat">${sv.custo>0 ? `<span class="sv-custo">${fmtBRL(sv.custo)}</span>` : '<span class="sv-sem">não informado</span>'}</div>
+      <div class="num sv-inf" title="Serviço: sem limite de estoque">∞</div>
+      <div class="num">${fmtBRL(sv.valor)}</div>
+    </div>`).join('')
+    : `<div class="vazio">${todos.length ? '<h3>Nenhum serviço encontrado</h3>' : '<h3>Nenhum serviço cadastrado</h3><p>Toque no ⊕ para cadastrar o primeiro (ex.: xerox, impressão, reparo).</p>'}</div>`;
 }
 let svEditando = null;
 function abrirServico(id){
@@ -4119,6 +4464,7 @@ function abrirServico(id){
   document.getElementById('svNome').value = sv ? sv.nome : '';
   document.getElementById('svValor').value = sv ? sv.valor : '';
   document.getElementById('svCusto').value = sv && sv.custo>0 ? sv.custo : '';
+  document.getElementById('svFoto').value = sv && sv.foto ? sv.foto : '';
   document.getElementById('svExcluir').style.display = sv ? '' : 'none';
   abrir('modalServico');
   setTimeout(()=>document.getElementById('svNome').focus(), 80);
@@ -4132,7 +4478,9 @@ function salvarServico(){
   if(estado.servicos.some(x=>x.id!==svEditando && x.nome.toLowerCase()===nome.toLowerCase())){ toast('Já existe um serviço com esse nome.'); return; }
   const dados = { nome:nome.slice(0,60), valor:Math.round(valor*100)/100 };
   if(!isNaN(custo) && custo>0) dados.custo = Math.round(custo*100)/100;
-  if(svEditando){ const sv = estado.servicos.find(x=>x.id===svEditando); if(sv){ Object.assign(sv, dados); if(!dados.custo) delete sv.custo; } }
+  const foto = val('svFoto').trim();
+  if(foto){ if(!/^https?:\/\//i.test(foto)){ toast('A foto precisa ser um endereço que começa com https://'); return; } dados.foto = foto; }
+  if(svEditando){ const sv = estado.servicos.find(x=>x.id===svEditando); if(sv){ Object.assign(sv, dados); if(!dados.custo) delete sv.custo; if(!dados.foto) delete sv.foto; } }
   else estado.servicos.push({ id:uid(), ...dados });
   salvar(); fechar('modalServico'); renderServicos();
   toast(svEditando ? 'Serviço atualizado.' : 'Serviço cadastrado.');
