@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.11.0';
+const VERSAO = '2.12.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -1994,7 +1994,10 @@ function limparValor(){ document.getElementById('fhValMin').value=''; document.g
 function prepararHistorico(){
   const sel = document.getElementById('fhCategoria');
   const atual = sel.value;
-  sel.innerHTML = '<option value="">Categoria</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
+  // além das categorias de produtos: "Serviço" (serviços vendidos e movimentações avulsas de serviço)
+  const extras = [rotuloTipoAvulsa('servico')].filter(c=>!estado.categorias.includes(c));
+  sel.innerHTML = '<option value="">Categoria</option>' + estado.categorias.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('')
+    + extras.map(c=>`<option ${c===atual?'selected':''}>${escapar(c)}</option>`).join('');
   renderHistorico();
 }
 function histAlternarDir(){
@@ -4450,8 +4453,7 @@ function renderServicos(){
   el.innerHTML = lista.length ? lista.map(sv=>`
     <div class="linha sv-linha" onclick="abrirServico('${sv.id}')" title="Editar">
       <div class="nome">${sv.foto?`<img class="sv-mini" src="${escapar(sv.foto)}" alt="" onerror="this.remove()">`:''}${escapar(sv.nome)}</div>
-      <div class="col-cat">${sv.custo>0 ? `<span class="sv-custo">${fmtBRL(sv.custo)}</span>` : '<span class="sv-sem">não informado</span>'}</div>
-      <div class="num sv-inf" title="Serviço: sem limite de estoque">∞</div>
+      <div class="sv-col-custo">${sv.custo>0 ? `<span class="sv-custo">${fmtBRL(sv.custo)}</span>` : '<span class="sv-sem">não informado</span>'}</div>
       <div class="num">${fmtBRL(sv.valor)}</div>
     </div>`).join('')
     : `<div class="vazio">${todos.length ? '<h3>Nenhum serviço encontrado</h3>' : '<h3>Nenhum serviço cadastrado</h3><p>Toque no ⊕ para cadastrar o primeiro (ex.: xerox, impressão, reparo).</p>'}</div>`;

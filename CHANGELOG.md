@@ -32,6 +32,19 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.12.0] - 2026-11-19
+
+### Adicionado
+
+- **Histórico:** o filtro Categoria ganhou a opção "Serviço". Ela mostra os serviços vendidos no PDV e as movimentações avulsas de serviço.
+
+### Alterado
+
+- **Serviços:** saiu a coluna Estoque. A lista mostra Serviço, Custo e Preço, e no celular o custo também aparece.
+- **Menu lateral (PC):** o botão de recolher deu lugar a uma barra fina na borda direita do menu, de cima a baixo, com uma seta no meio. Clicar em qualquer ponto da barra recolhe ou expande. O logo voltou ao lugar de antes, e o menu recolhido ficou um pouco mais largo por causa da barra.
+
+---
+
 ## [2.11.0] - 2026-11-19
 
 > **Publicar também o `cloudflare/sync-worker.js` no Cloudflare** (Workers → china-sync → Edit code → colar → Deploy). Sem isso, a lista de aparelhos conectados não aparece; o resto funciona normalmente.

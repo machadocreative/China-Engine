@@ -152,8 +152,7 @@
     <p class="dica es-dica">Toque num serviço para editar. Serviços não têm estoque: podem ser vendidos sem limite.</p>
     <div class="linha-cabecalho sv-cab">
       <div>Serviço</div>
-      <div class="col-cat">Custo</div>
-      <div class="num">Estoque</div>
+      <div class="sv-col-custo">Custo</div>
       <div class="num">Preço</div>
     </div>
   </div>
@@ -983,8 +982,9 @@
     <img src="imagens/Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
     <span><b>China Engine</b><small>Chinatown Imports</small></span>
   </a>
-  <button class="nav-recolher so-pc" onclick="menuRecolher(!document.body.classList.contains('menu-recolhido'))" title="Recolher ou expandir o menu" aria-label="Recolher ou expandir o menu">
-    <svg viewBox="0 0 24 24"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+  <!-- Barra de recolher (PC): faixa na borda direita do menu, de cima a baixo -->
+  <button class="nav-borda so-pc" onclick="menuRecolher(!document.body.classList.contains('menu-recolhido'))" title="Recolher ou expandir o menu" aria-label="Recolher ou expandir o menu">
+    <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
   </button>
   <button class="nav-item" data-nav="pdv" onclick="mostrarView('pdv')" title="Ponto de venda">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 8v4M10 8v4M13 8v4M17 8v4"/></svg>

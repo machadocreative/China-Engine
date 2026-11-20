@@ -1477,3 +1477,28 @@ body.sem-servicos .nav-servicos,body.sem-servicos .sv-abas,body.sem-servicos [da
 .ap-info small{display:block;font-size:14px;color:var(--texto-sec)}
 .ap-este{font-style:normal;font-size:14px;font-weight:600;color:var(--verde);margin-left:6px}
 @media(max-width:620px){ .hx-hora{text-align:left;padding-left:2px} }
+
+/* ===== 2.12.0 ===== */
+/* Serviços: sem a coluna de estoque (serviço → custo → preço; o custo aparece também no celular) */
+.sv-cab,.sv-linha{grid-template-columns:2.6fr 1.1fr 1fr}
+@media(max-width:620px){ .sv-cab,.sv-linha{grid-template-columns:1.7fr 1fr 1fr} }
+
+/* Menu lateral (PC): barra de recolher na borda direita, de cima a baixo, com a seta no meio */
+.nav-borda{display:none}
+@media(min-width:901px){
+  .barra-inferior{padding-right:16px}
+  .nav-borda{
+    display:flex;position:absolute;top:0;bottom:0;right:0;width:16px;padding:0;align-items:center;justify-content:center;
+    border:none;border-left:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#C9C7BE;cursor:pointer;z-index:2;
+  }
+  .nav-borda:hover{background:rgba(255,255,255,.12);color:#fff}
+  .nav-borda:focus-visible{outline:2px solid var(--amarelo);outline-offset:-2px}
+  .nav-borda svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+  body.menu-recolhido .nav-borda svg{transform:rotate(180deg)}
+  /* sem o botão no topo, o logo volta ao recuo normal */
+  body:not(.menu-recolhido) .nav-logo{padding-left:22px;padding-right:12px}
+  /* recolhido: barra de ícones um pouco mais larga, por causa da faixa */
+  body.menu-recolhido{padding-left:84px}
+  body.menu-recolhido .barra-inferior{width:84px}
+  body.menu-recolhido .nav-logo{margin-bottom:12px}
+}
