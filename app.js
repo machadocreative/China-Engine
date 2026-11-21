@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.12.0';
+const VERSAO = '2.13.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -126,6 +126,8 @@ function alternarDirecao(){
   render();
 }
 
+/* Data/hora da última movimentação do produto (para ordenar o Estoque); sem movimentação = '' */
+function ultimaMovDe(p){ return p.movimentacoes.reduce((m,x)=>{ const k = (x.data||'') + ' ' + (x.hora||''); return k>m ? k : m; }, ''); }
 function render(){
   servicosTela();   // liga/desliga o módulo Serviços conforme a configuração (que também vem da sincronização)
   inventarioAviso();
@@ -149,6 +151,7 @@ function render(){
       case 'preco':   va=a.preco||0;   vb=b.preco||0;   break;
       case 'marca':   va=(a.marca||'').toLowerCase(); vb=(b.marca||'').toLowerCase(); break;
       case 'categoria': va=(a.categoria||'').toLowerCase(); vb=(b.categoria||'').toLowerCase(); break;
+      case 'movimentacao': va=ultimaMovDe(a); vb=ultimaMovDe(b); break;   // data (e hora) da última movimentação
       default:        va=a.nome.toLowerCase(); vb=b.nome.toLowerCase();
     }
     let r = (typeof va==='string') ? va.localeCompare(vb,'pt-BR') : va-vb;
@@ -363,12 +366,12 @@ function salvarProduto(){
       aplicar();
     }
   } else {
-    // Estoque inicial (opcional): mercadoria que já estava na loja — não é compra, fica fora do saldo do dia
+    // Inventário (opcional): mercadoria que já estava na loja — não é compra, fica fora do saldo do dia
     const temIni = document.getElementById('pTemInicial').checked;
     const qIni = temIni ? (parseInt(val('pQtdInicial'))||0) : 0;
     const cTxt = val('pCustoInicial').trim(), cIni = parseFloat(cTxt);
-    if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do estoque existente.'); document.getElementById('pCustoInicial').focus(); return; }
-    if(temIni && qIni<1){ toast('Informe a quantidade do estoque existente.'); document.getElementById('pQtdInicial').focus(); return; }
+    if(temIni && (cTxt==='' || isNaN(cIni) || cIni<0)){ toast('Informe o custo por unidade do inventário.'); document.getElementById('pCustoInicial').focus(); return; }
+    if(temIni && qIni<1){ toast('Informe a quantidade do inventário.'); document.getElementById('pQtdInicial').focus(); return; }
     const movs = qIni>0 ? [{ id:uid(), tipo:'entrada', inicial:true, data:hoje(), qtd:qIni, custoUnit:cIni }] : [];
     const novoId = uid();
     estado.produtos.push({ id:novoId, ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
@@ -376,7 +379,7 @@ function salvarProduto(){
     const itInv = inventarioPendente && (estado.inventario||[]).find(x=>x.id===inventarioPendente);
     if(itInv){ itInv.pid = novoId; inventarioPendente = null; }   // item do inventário cadastrado
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
-    toast(qIni>0 ? `Produto salvo com ${qIni} un. de estoque existente.` : 'Produto salvo.');
+    toast(qIni>0 ? `Produto salvo com ${qIni} un. de inventário.` : 'Produto salvo.');
   }
 }
 function excluirProduto(){ excluirProdutoId(document.getElementById('produtoId').value); }
@@ -664,6 +667,7 @@ function abrirDesconto(alvo){
 }
 function descontoTipo(t){
   dc.tipo = t;
+  definirMascara(document.getElementById('dcValor'), t==='pct' ? 'pct' : 'moeda');
   document.getElementById('dcTipoValor').classList.toggle('ativo', t==='valor');
   document.getElementById('dcTipoPct').classList.toggle('ativo', t==='pct');
   document.getElementById('dcRotulo').textContent = t==='pct' ? 'Desconto (%)' : 'Desconto (R$)';
@@ -952,7 +956,7 @@ function pdvVisorHtml(){
       <div class="pdv-faixa">
         <div class="pdv-foto pdv-foto-serv">${sv.foto?`<img src="${escapar(sv.foto)}" alt="" onerror="this.remove()">`:''}<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
         <div class="pdv-info">
-          <div class="pdv-marca">Serviço<span class="pdv-estado">● Na venda · ${it?it.qtd:1} un.</span></div>
+          <div class="pdv-marca">Serviço</div>
           <div class="pdv-nome">${escapar(sv.nome)}</div>
           <div class="pdv-sub">Não mexe no estoque</div>
         </div>
@@ -972,7 +976,7 @@ function pdvVisorHtml(){
         <div class="pdv-faixa">
           ${pdvFotoHtml(p)}
           <div class="pdv-info">
-            <div class="pdv-marca">${p.marca?escapar(p.marca):''}<span class="pdv-estado">${consulta ? 'Consulta de preço · não entrou na venda' : `● Na venda · ${it?it.qtd:1} un.`}</span></div>
+            ${p.marca?`<div class="pdv-marca">${escapar(p.marca)}</div>`:''}
             <div class="pdv-nome">${escapar(p.nome)}</div>
             <div class="pdv-sub"><span class="${est<=0?'zero':''}">${est<=0 ? 'Sem estoque' : est+' un. em estoque'}</span> · ${escapar(p.categoria)}${p.codigoBarras?` · ${escapar(p.codigoBarras)}`:''}</div>
             ${consulta ? `<button class="btn btn-escuro btn-mini pdv-visor-btn" onclick="pdvAdicionar('${p.id}')">Adicionar à venda</button>` : ''}
@@ -1482,7 +1486,7 @@ function fornecedorDaEntrada(p, m){ return (m.fornecedor || '').trim(); }
 function fornecedoresDe(p, incluirSem){
   const grupos = {}, sem = [];
   entradas(p).forEach(m=>{
-    if(m.inicial) return;   // estoque inicial não é compra de fornecedor
+    if(m.inicial) return;   // inventário não é compra de fornecedor
     const f = fornecedorDaEntrada(p, m);
     if(!f){ sem.push(m); return; }
     (grupos[f] = grupos[f] || []).push(m);
@@ -1571,7 +1575,7 @@ function ppEstoque(p){
           </div>
           ${g.lotes.map((l,li)=>`<div class="cp-lote">
             <span class="cp-data">${fmtData(l.data)}</span>
-            <span class="cp-forn">${l.inicial?'<i>Estoque existente</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
+            <span class="cp-forn">${l.inicial?'<i>Inventário</i>':l.fornecedor?escapar(l.fornecedor):'<i>Não informado</i>'}${gi===0 && li===0 && (comp.length>1 || g.lotes.length>1) ? ' <span class="cp-proximo" title="Lote mais antigo: é o próximo a sair nas vendas">sai primeiro</span>' : ''}</span>
             <span class="cp-resta">${l.resta===l.qtdCompra ? l.resta+' un.' : `${l.resta} <small>de ${l.qtdCompra}</small> un.`}</span>
           </div>`).join('')}
         </div>`).join('')}</div>`
@@ -1580,13 +1584,15 @@ function ppEstoque(p){
     <div class="resumo">
       <div class="caixa"><span>Estoque atual</span><b>${estoqueDe(p)} un.</b></div>
       <div class="caixa"><span>Unidades a receber</span><b>${ar} un.</b></div>
-      <div class="caixa"><span>Custo médio</span><b>${fmtBRL(cm)}</b></div>
       <div class="caixa"><span>Preço de venda</span><b>${fmtBRL(p.preco||null)}</b></div>
       ${cardLucro}
-      <div class="caixa"><span>Variação de custo entre lotes</span><b style="font-size:15px">${variacao}</b></div>
     </div>
     ${ar>0?`<div class="acoes-painel"><button class="btn btn-amarelo btn-mini" onclick="abrirReceber('${p.id}')">Finalizar recebimento (${ar})</button></div>`:''}
     <div class="sub" style="margin-top:4px">Composição do estoque atual</div>
+    <div class="resumo pp-custos">
+      <div class="caixa"><span>Custo médio</span><b>${fmtBRL(cm)}</b></div>
+      <div class="caixa"><span>Variação de custo entre lotes</span><b style="font-size:15px">${variacao}</b></div>
+    </div>
     ${compHtml}`;
 }
 
@@ -1620,14 +1626,16 @@ function ppMovimentacoes(p){
 function ppDados(p){
   const cats = estado.categorias.map(c=>`<option>${escapar(c)}</option>`).join('');
   return `
-    <div class="campo"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
-    <div class="campo"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
-    <div class="campo"><label>Modelo (opcional)</label><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Código do modelo na marca"></div>
-    <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
     <div class="campo"><label>Código de barras (opcional)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
         <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
     </div>
+    <div class="campo"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
+    <div class="linha-campos">
+      <div class="campo"><label>Marca</label><input type="text" id="dpMarca" value="${escapar(p.marca||'')}"></div>
+      <div class="campo"><label>Modelo (opcional)</label><input type="text" id="dpCodigo" value="${escapar(p.codigo||'')}" placeholder="Código do modelo"></div>
+    </div>
+    <div class="campo"><label>Categoria</label><select id="dpCategoria">${cats}</select></div>
     <div class="campo"><label>Foto do produto (link da imagem, opcional)</label>
       <input type="url" id="dpFoto" value="${escapar(p.foto||'')}" placeholder="https://… — aparece no visor do PDV" autocapitalize="off" spellcheck="false"></div>
     <div class="linha-campos">
@@ -1868,13 +1876,13 @@ function classeMov(m){
 }
 function rotuloMov(m){
   if(m.tipo==='avulsa') return 'Venda';   // a categoria (Serviço / Produto avulso) já mostra que é avulsa
-  if(m.tipo==='entrada') return m.inicial ? 'Estoque existente' : 'Aquisição';
+  if(m.tipo==='entrada') return m.inicial ? 'Inventário' : 'Aquisição';
   if(m.motivo==='Outros' && m.motivoTexto) return m.motivoTexto;
   if(m.motivo==='A receber' && m.recebido) return 'Recebido';
   return m.motivo || 'Saída';
 }
 /* Valor total da movimentação com sinal do caixa (null = sem valor financeiro).
-   Estoque inicial: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
+   Inventário: mostra o valor em estoque (sem sinal), mas foraCaixa = true → não entra no saldo do dia. */
 function valorMov(m){
   if(m.tipo==='avulsa') return { unit:m.valor/(m.qtd||1), total:m.valor };
   if(m.tipo==='entrada' && m.inicial) return { unit:m.custoUnit, total:m.qtd*m.custoUnit, foraCaixa:true };
@@ -1882,10 +1890,10 @@ function valorMov(m){
   if(m.motivo==='Venda' || (m.motivo==='A receber' && m.recebido)) return { unit:m.precoVenda, total:m.qtd*(m.precoVenda||0) };
   return null;
 }
-/* Selo do tipo; no celular, "Estoque inicial" vira "Inicial" para caber na coluna */
+/* Selo do tipo da movimentação */
 function tagMov(m){
   const r = rotuloMov(m), c = classeMov(m);
-  const curto = m.inicial ? 'Existente' : r;
+  const curto = r;   // "Inventário" já cabe no celular
   const pag = ehVendaMov(m) && m.pagamento ? `<small class="hx-pag" title="Forma de pagamento: ${escapar(textoPagamentos(m))}">${escapar(nomePagamento(m.pagamento, true))}</small>` : '';
   return (curto===r ? `<span class="hx-tag ${c}" title="${escapar(r)}">${escapar(r)}</span>`
     : `<span class="hx-tag ${c}" title="${escapar(r)}"><span class="rot-l">${escapar(r)}</span><span class="rot-c">${escapar(curto)}</span></span>`) + pag;
@@ -2039,7 +2047,7 @@ function renderHistorico(){
   });
 
   linhas = linhas.filter(l=>{
-    if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // estoque inicial só aparece filtrando por ele
+    if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // entradas de inventário só aparecem filtrando por elas
     if(fCat && l.categoria!==fCat) return false;
     if(fPag){   // só movimentações com dinheiro entrando (vendas, recebidos e avulsas)
       if(!ehVendaMov(l.m)) return false;
@@ -2145,33 +2153,33 @@ function renderHistorico(){
 /* Horário da movimentação, embaixo do selo do tipo e da forma de pagamento */
 function horaMov(m){ return m.hora ? `<small class="hx-hora">${escapar(m.hora)}</small>` : ''; }
 
-/* Copiar o dia (botão no fim da linha da data): texto simples, uma linha por movimentação,
-   na ordem nome · valor · lucro · forma de pagamento · horário. Respeita os filtros da tela. */
+/* Copiar o dia (botão no fim da linha da data): texto simples, uma linha por movimentação, no formato
+   "Nome do produto · R$ valor (+R$ lucro) · Forma de pagamento". Respeita os filtros da tela. */
 let hxDias = {};
 function copiarDiaHistorico(data){
   const itens = hxDias[data] || []; if(!itens.length) return;
   const custos = custosFIFO();
   let total = 0, lucroT = 0;
   const ds = dataDe(data);
+  const sinal = v=> (v<0 ? '−' : '+') + fmtBRL(Math.abs(v));
   const linhasTxt = [...itens].sort((a,b)=>(a.m.hora||'').localeCompare(b.m.hora||'')).map(l=>{
     const m = l.m, venda = ehVendaMov(m);
     const valor = l.v ? l.v.total : null;
-    let lucro = null;
+    const partes = [l.nome];
     if(venda){
       const custo = m.tipo==='avulsa' ? (m.custo||0) : (custos.get(m.id)||0);
-      lucro = (valor||0) - custo;
+      const lucro = (valor||0) - custo;
       total += valor||0; lucroT += lucro;
+      partes.push(`${fmtBRL(valor||0)} (${sinal(lucro)})`);
+      if(m.pagamento) partes.push(textoPagamentos(m));
+    } else {
+      if(valor!=null) partes.push((valor<0?'−':'') + fmtBRL(Math.abs(valor)));
+      partes.push(rotuloMov(m));   // entradas e outras saídas: o tipo no lugar da forma de pagamento
     }
-    const nome = l.nome + (l.qtd>1 ? ` (${l.qtd} un.)` : '') + (venda ? '' : ` [${rotuloMov(m)}]`);
-    const partes = [nome];
-    if(valor!=null) partes.push((valor<0?'−':'') + fmtBRL(Math.abs(valor)));
-    if(lucro!=null) partes.push('lucro ' + fmtBRL(lucro));
-    if(venda && m.pagamento) partes.push(textoPagamentos(m));
-    if(m.hora) partes.push(m.hora);
     return partes.join(' · ');
   });
   const texto = [`Movimentações de ${fmtData(data)} (${SEMANA_EXTENSO[ds.getDay()].toLowerCase()})`, ...linhasTxt,
-    total ? `Total de vendas: ${fmtBRL(total)} · lucro ${fmtBRL(lucroT)}` : ''].filter(Boolean).join('\n');
+    total ? `Total de vendas: ${fmtBRL(total)} (${sinal(lucroT)})` : ''].filter(Boolean).join('\n');
   copiarTexto(texto, `${itens.length} movimentação(ões) de ${fmtData(data)} copiada(s).`);
 }
 function copiarTexto(texto, aviso){
@@ -2222,7 +2230,7 @@ function abrirEdicaoMov(pid, mid){
     </div>
     ${ent ? `
     <div class="campo"><label>Custo por unidade (R$)</label><input type="number" id="emValor" min="0" step="0.01" value="${m.custoUnit}"></div>
-    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Estoque existente: conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
+    ${m.inicial ? '<p class="dica" style="margin:-6px 0 12px">Inventário: mercadoria que já estava na loja. Conta no estoque, no custo e no lucro, mas fica fora do saldo do dia.</p>'
       : `<div class="campo"><label>Fornecedor</label><input type="text" id="emForn" list="listaFornecedores" value="${escapar(m.fornecedor||'')}" placeholder="Não informado"></div>`}
     ` : `
     <div class="campo"><label>Motivo</label>
@@ -2270,11 +2278,11 @@ function excluirMovimentacao(){
   const est = estoqueDe(p), depois = ent ? est - m.qtd : est + m.qtd;
   if(depois < 0){
     mostrarAviso('Não é possível excluir',
-      `<p>Excluir ${m.inicial?'este estoque existente':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
+      `<p>Excluir ${m.inicial?'esta entrada de inventário':'esta aquisição'} de <b>${m.qtd} un.</b> deixaria o estoque de “${escapar(p.nome)}” negativo (${depois} un.), porque parte dessas unidades já saiu.</p>
        <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Se o registro está errado, edite a quantidade em vez de excluir.</p>`);
     return;
   }
-  const desc = `${ent?(m.inicial?'o estoque existente':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
+  const desc = `${ent?(m.inicial?'a entrada de inventário':'a aquisição'):'a saída “'+rotuloMov(m)+'”'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)})`;
   // 1ª confirmação: o efeito no estoque
   pedirConfirmacao(
     `Excluir ${desc}? Isso altera o estoque: ele passa de ${est} para ${depois} un.` +
@@ -2771,6 +2779,18 @@ function renderAlertas(){
 function alternarFab(){ document.getElementById('fabMenu').classList.contains('aberto') ? fecharFab() : abrirFab(); }
 function abrirFab(){ ['fab','fabMenu','fabFundo'].forEach(id=>document.getElementById(id).classList.add('aberto')); }
 function fecharFab(){ ['fab','fabMenu','fabFundo','pdvFab','pdvMenu'].forEach(id=>{ const el = document.getElementById(id); if(el) el.classList.remove('aberto'); }); }
+/* PC (mouse): o ⊕ abre só de passar o mouse e fecha ao sair do botão e do menu. Toque continua no clique. */
+(function(){
+  const mouse = window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)');
+  const fab = document.getElementById('fab'), menu = document.getElementById('fabMenu');
+  if(!fab || !menu) return;
+  let t = null;
+  const entrar = ()=>{ if(!mouse.matches) return; clearTimeout(t); abrirFab(); };
+  const sair = ()=>{ if(!mouse.matches) return; clearTimeout(t); t = setTimeout(()=>{ if(!fab.matches(':hover') && !menu.matches(':hover')) fecharFab(); }, 250); };
+  [fab, menu].forEach(el=>{ el.addEventListener('mouseenter', entrar); el.addEventListener('mouseleave', sair); });
+  // no PC o clique no ⊕ não fecha o menu que o mouse acabou de abrir
+  fab.addEventListener('click', e=>{ if(mouse.matches && menu.classList.contains('aberto')){ e.stopImmediatePropagation(); } }, true);
+})();
 /* Menu ☰ do PDV (celular e tablet): as mesmas ações dos botões da tela do PC */
 function alternarPdvMenu(){
   if(document.getElementById('pdvMenu').classList.contains('aberto')){ fecharFab(); return; }
@@ -4289,6 +4309,7 @@ function abrirPromocao(id){
 }
 function promoTipo(t){
   pmTipo = t;
+  definirMascara(document.getElementById('pmValor'), t==='pct' ? 'pct' : 'moeda');
   document.getElementById('pmTipoPct').classList.toggle('ativo', t==='pct');
   document.getElementById('pmTipoValor').classList.toggle('ativo', t==='valor');
   document.getElementById('pmValorRot').textContent = t==='pct' ? 'Desconto (%)' : 'Desconto por unidade (R$)';
@@ -4330,87 +4351,121 @@ function excluirPromocao(){
 }
 
 /* =========================================================
-   INVENTÁRIO (Configurações) — 2.11.0
+   INVENTÁRIO (Configurações) — 2.11.0 / 2.13.0
    estado.inventario = [{ id, nome, qtd, preco, custo?, pid? }]. Lista rápida do que já está na loja no
-   primeiro dia. O Estoque sugere cadastrar cada item como produto, com "Estoque existente" (qtd + custo).
-   Convive com o "Estoque existente" do cadastro de produto até o inventário ser todo cadastrado.
+   primeiro dia (onboarding). O Estoque sugere cadastrar cada item como produto, com a entrada de
+   "Inventário" (qtd + custo, o custo é informado no cadastro). Ao terminar, "Fechar inventário"
+   trava a lista (estado.config.inventarioFechado = data): ela vira só consulta.
+   A opção "Produto do inventário" no cadastro de produto novo continua existindo.
    ========================================================= */
 let invRascunho = [], inventarioPendente = null;
+function inventarioFechado(){ return !!(estado.config && estado.config.inventarioFechado); }
 function inventarioPendentes(){ return (estado.inventario||[]).filter(x=>!x.pid || !prod(x.pid)); }
 function inventarioResumo(){
   const el = document.getElementById('cfgInventarioResumo'); if(!el) return;
   const inv = estado.inventario||[], pend = inventarioPendentes();
-  el.innerHTML = !inv.length ? 'Nenhum item no inventário ainda.'
+  const btn = document.getElementById('cfgInventarioBtn');
+  if(btn) btn.textContent = inventarioFechado() ? 'Ver inventário' : 'Abrir inventário';
+  el.innerHTML = inventarioFechado()
+    ? `Inventário fechado em <b>${fmtData(estado.config.inventarioFechado)}</b> · ${inv.length} item(ns) · ${inv.length-pend.length} cadastrado(s) no Estoque. Agora o estoque é gerenciado pelo PDV e pelo módulo Estoque.`
+    : !inv.length ? 'Nenhum item no inventário ainda.'
     : `<b>${inv.length}</b> item(ns) · <b>${inv.length-pend.length}</b> já cadastrado(s) no Estoque · <b>${pend.length}</b> para cadastrar`;
 }
 function abrirInventario(){
   invRascunho = (estado.inventario||[]).map(x=>({ ...x }));
-  if(!invRascunho.length) invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'', custo:'' });
+  if(!invRascunho.length && !inventarioFechado()) invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'' });
   renderInventario(); abrir('modalInventario');
 }
 function fecharInventario(){ fechar('modalInventario'); }
 function inventarioLerTela(){
-  document.querySelectorAll('#invLinhas .inv-linha[data-id]').forEach(el=>{
+  document.querySelectorAll('#invLinhas .inv-linha[data-id], #invFeitos .inv-linha[data-id]').forEach(el=>{
     const it = invRascunho.find(x=>x.id===el.dataset.id); if(!it || (it.pid && prod(it.pid))) return;
     const v = c=>el.querySelector(c).value;
-    it.nome = v('.inv-nome').trim(); it.qtd = v('.inv-qtd'); it.preco = v('.inv-preco'); it.custo = v('.inv-custo');
+    it.nome = v('.inv-nome').trim(); it.qtd = v('.inv-qtd'); it.preco = v('.inv-preco');
   });
 }
 function renderInventario(){
-  document.getElementById('invLinhas').innerHTML = invRascunho.map(it=>{
-    const feito = it.pid && prod(it.pid);
-    return `<div class="inv-linha${feito?' feito':''}" data-id="${it.id}">
-      <input class="inv-nome" type="text" maxlength="80" placeholder="Nome do produto" value="${escapar(it.nome||'')}" ${feito?'disabled':''}>
-      <input class="inv-qtd" type="number" min="0" step="1" inputmode="numeric" placeholder="Qtd" title="Quantidade" value="${it.qtd??''}" ${feito?'disabled':''} oninput="inventarioTotais()">
-      <input class="inv-preco" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Venda" title="Preço de venda (R$)" value="${it.preco??''}" ${feito?'disabled':''}>
-      <input class="inv-custo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Custo" title="Custo por unidade (R$)" value="${it.custo??''}" ${feito?'disabled':''} oninput="inventarioTotais()">
-      ${feito ? '<span class="inv-ok" title="Já cadastrado no Estoque">✓</span>'
-        : `<button type="button" class="inv-x" onclick="inventarioRemover('${it.id}')" title="Remover da lista" aria-label="Remover da lista">×</button>`}
-    </div>`; }).join('');
+  const fechado = inventarioFechado();
+  const feito = it=>it.pid && prod(it.pid);
+  const abertos = invRascunho.filter(it=>!feito(it)), feitos = invRascunho.filter(feito);
+  const linha = (it, travada)=>`<div class="inv-linha${travada?' travada':''}" data-id="${it.id}">
+      <input class="inv-nome" type="text" maxlength="80" placeholder="Nome do produto" value="${escapar(it.nome||'')}" ${travada?'disabled':''}>
+      <input class="inv-qtd" type="number" min="0" step="1" inputmode="numeric" placeholder="Qtd" title="Quantidade" value="${it.qtd??''}" ${travada?'disabled':''} oninput="inventarioTotais()">
+      <input class="inv-preco" type="number" min="0" step="0.01" placeholder="Preço" title="Preço de venda (R$)" value="${it.preco??''}" ${travada?'disabled':''}>
+      ${travada ? '<span></span>' : `<button type="button" class="inv-x" onclick="inventarioRemover('${it.id}')" title="Remover da lista" aria-label="Remover da lista">×</button>`}
+    </div>`;
+  // ainda não cadastrados primeiro; os já cadastrados no Estoque descem para um grupo no fim
+  document.getElementById('invLinhas').innerHTML = abertos.map(it=>linha(it, fechado)).join('');
+  document.getElementById('invFeitos').innerHTML = feitos.length
+    ? `<div class="inv-grupo">Já cadastrados no Estoque (${feitos.length})</div>` + feitos.map(it=>linha(it, true)).join('') : '';
+  document.getElementById('invNovo').hidden = fechado;
+  document.getElementById('invSalvar').hidden = fechado;
+  document.getElementById('invFechar').hidden = fechado || !(estado.inventario||[]).length;
+  document.getElementById('invAvisoFechado').hidden = !fechado;
+  document.getElementById('invDica').hidden = fechado;
   inventarioTotais();
 }
 function inventarioTotais(){
   inventarioLerTela();
   const un = invRascunho.reduce((t,x)=>t+(parseInt(x.qtd)||0),0);
-  const custo = invRascunho.reduce((t,x)=>t+(parseInt(x.qtd)||0)*(parseFloat(x.custo)||0),0);
-  document.getElementById('invTotal').textContent = `${invRascunho.filter(x=>x.nome).length} item(ns) · ${un} un.${custo ? ` · ${fmtBRL(custo)} em custo informado` : ''}`;
+  document.getElementById('invTotal').textContent = `${invRascunho.filter(x=>x.nome).length} item(ns) · ${un} un.`;
 }
 function inventarioNovaLinha(){
   inventarioLerTela();
-  invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'', custo:'' });
+  invRascunho.push({ id:uid(), nome:'', qtd:'', preco:'' });
   renderInventario();
-  const ls = document.querySelectorAll('#invLinhas .inv-nome'); ls[ls.length-1].focus();
+  const ls = document.querySelectorAll('#invLinhas .inv-linha:not(.travada) .inv-nome'); if(ls.length) ls[ls.length-1].focus();
 }
 function inventarioRemover(id){ inventarioLerTela(); invRascunho = invRascunho.filter(x=>x.id!==id); renderInventario(); }
-function salvarInventario(){
+function inventarioValidar(){
   inventarioLerTela();
   const lista = [];
   for(const it of invRascunho){
     if(it.pid && prod(it.pid)){ lista.push(it); continue; }
-    if(!it.nome && !it.qtd && !it.preco && !it.custo) continue;   // linha em branco
-    if(!it.nome){ toast('Há um item sem nome.'); return; }
-    const qtd = parseInt(it.qtd), preco = parseFloat(it.preco), custo = parseFloat(it.custo);
-    if(!(qtd>0)){ toast(`Informe a quantidade de “${it.nome}”.`); return; }
+    if(!it.nome && !it.qtd && !it.preco) continue;   // linha em branco
+    if(!it.nome){ toast('Há um item sem nome.'); return null; }
+    const qtd = parseInt(it.qtd), preco = parseFloat(it.preco);
+    if(!(qtd>0)){ toast(`Informe a quantidade de “${it.nome}”.`); return null; }
     const novo = { id:it.id, nome:it.nome.slice(0,80), qtd };
     if(preco>0) novo.preco = cent(preco);
-    if(custo>=0 && !isNaN(custo)) novo.custo = cent(custo);
+    if(it.custo!=null && it.custo!=='') novo.custo = it.custo;   // itens antigos que já tinham custo
     lista.push(novo);
   }
+  return lista;
+}
+function salvarInventario(){
+  if(inventarioFechado()) return;
+  const lista = inventarioValidar(); if(!lista) return;
   estado.inventario = lista;
   salvar(); fechar('modalInventario'); inventarioResumo(); inventarioAviso();
   toast('Inventário salvo.');
 }
-/* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar */
+/* Fechar o inventário: fim do onboarding. A lista fica só para consulta. */
+function fecharInventarioDefinitivo(){
+  const lista = inventarioValidar(); if(!lista) return;
+  const pend = lista.filter(x=>!x.pid || !prod(x.pid)).length;
+  pedirSenha(()=>pedirConfirmacao(
+    (pend ? `Ainda há ${pend} item(ns) que não foram cadastrados no Estoque. Eles ficam só na lista de consulta. ` : '')
+    + 'Depois de fechado, o inventário não pode mais ser editado: o estoque passa a ser gerenciado só pelo PDV e pelo módulo Estoque. Fechar o inventário?', ()=>{
+      estado.inventario = lista;
+      estado.config = estado.config || {};
+      estado.config.inventarioFechado = hoje();
+      salvar(); renderInventario(); inventarioResumo(); inventarioAviso();
+      toast('Inventário fechado.');
+    }, 'Fechar inventário'), 'Fechar o inventário. Digite a senha do gerente.');
+}
+/* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar (some quando o inventário é fechado) */
 function inventarioAviso(){
   const el = document.getElementById('esInventario'); if(!el) return;
-  const pend = inventarioPendentes();
+  const pend = inventarioFechado() ? [] : inventarioPendentes();
   el.hidden = !pend.length;
   if(!pend.length) return;
   el.innerHTML = `<span><b>Inventário:</b> ${pend.length} produto(s) para cadastrar no Estoque. Próximo: <b>${escapar(pend[0].nome)}</b> (${pend[0].qtd} un.).</span>
     <button class="btn btn-amarelo btn-mini" onclick="inventarioCadastrar('${pend[0].id}')">Cadastrar</button>
     <button class="btn btn-claro btn-mini" onclick="abrirInventario()">Ver lista</button>`;
 }
-/* Abre o cadastro de Novo produto já preenchido com o item do inventário (nome, preço e estoque existente) */
+/* Abre o cadastro de Novo produto já preenchido com o item do inventário (nome, preço e quantidade);
+   o custo por unidade é informado aqui, no cadastro */
 function inventarioCadastrar(id){
   const it = (estado.inventario||[]).find(x=>x.id===id); if(!it) return;
   abrirProduto();
@@ -4453,7 +4508,6 @@ function renderServicos(){
   el.innerHTML = lista.length ? lista.map(sv=>`
     <div class="linha sv-linha" onclick="abrirServico('${sv.id}')" title="Editar">
       <div class="nome">${sv.foto?`<img class="sv-mini" src="${escapar(sv.foto)}" alt="" onerror="this.remove()">`:''}${escapar(sv.nome)}</div>
-      <div class="sv-col-custo">${sv.custo>0 ? `<span class="sv-custo">${fmtBRL(sv.custo)}</span>` : '<span class="sv-sem">não informado</span>'}</div>
       <div class="num">${fmtBRL(sv.valor)}</div>
     </div>`).join('')
     : `<div class="vazio">${todos.length ? '<h3>Nenhum serviço encontrado</h3>' : '<h3>Nenhum serviço cadastrado</h3><p>Toque no ⊕ para cadastrar o primeiro (ex.: xerox, impressão, reparo).</p>'}</div>`;
@@ -4571,6 +4625,83 @@ function menuRecolher(recolher){
   setTimeout(()=>{ if(viewAtual==='desempenho') renderDesempenho(); }, 220);   // gráficos acompanham a nova largura
 }
 try{ if(localStorage.getItem(MENU_CHAVE)==='1') document.body.classList.add('menu-recolhido'); }catch(e){}
+
+/* =========================================================
+   MÁSCARAS DOS CAMPOS DE VALOR (2.13.0)
+   R$: digitação da direita para a esquerda (5 → 0,05 → 0,50 → 5,00), "R$" apagado dentro do campo,
+       sem as setinhas de +/−. O resto do app continua lendo e gravando .value como número ("1234.56").
+   %:  número com vírgula e o símbolo % apagado dentro do campo.
+   Vale para todo campo de dinheiro (input number com step 0.01), também os criados depois (modais, abas).
+   ========================================================= */
+const VALOR_NATIVO = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+const fmtCentavos = c => (c/100).toLocaleString('pt-BR',{ minimumFractionDigits:2, maximumFractionDigits:2 });
+function prepararMascara(el){
+  if(el._mascara) return;
+  const inicial = VALOR_NATIVO.get.call(el);
+  el.type = 'text'; el.autocomplete = 'off'; el.spellcheck = false;
+  el.removeAttribute('min'); el.removeAttribute('step');
+  el._dig = '';
+  Object.defineProperty(el, 'value', {
+    configurable:true,
+    get(){
+      if(el.dataset.mascara==='moeda') return el._dig==='' ? '' : String(parseInt(el._dig,10)/100);
+      return VALOR_NATIVO.get.call(el).replace(/\./g,'').replace(',', '.');
+    },
+    set(v){
+      const txt = v==null ? '' : String(v).trim();
+      const n = txt==='' ? NaN : parseFloat(txt.includes(',') ? txt.replace(/\./g,'').replace(',','.') : txt);
+      if(el.dataset.mascara==='moeda'){ el._dig = isNaN(n) ? '' : String(Math.round(n*100)); mascaraDesenhar(el); }
+      else VALOR_NATIVO.set.call(el, isNaN(n) ? '' : String(n).replace('.', ','));
+    }
+  });
+  el._mascara = true;
+  return inicial;
+}
+function definirMascara(el, tipo){
+  if(!el) return;
+  const atual = el._mascara ? el.value : prepararMascara(el);
+  if(el.dataset.mascara===tipo && el._mascara && atual===el.value) return;
+  el.dataset.mascara = tipo;
+  el.classList.toggle('campo-moeda', tipo==='moeda');
+  el.classList.toggle('campo-pct', tipo==='pct');
+  el.inputMode = tipo==='moeda' ? 'numeric' : 'decimal';
+  el.value = atual;
+}
+function mascaraDesenhar(el){
+  VALOR_NATIVO.set.call(el, el._dig==='' ? '' : fmtCentavos(parseInt(el._dig,10)));
+}
+/* Corre antes dos oninput dos campos (fase de captura): quem lê o .value já recebe o número certo */
+document.addEventListener('input', e=>{
+  const el = e.target; if(!el || !el._mascara) return;
+  const txt = VALOR_NATIVO.get.call(el);
+  if(el.dataset.mascara==='moeda'){
+    let dig = txt.replace(/\D/g,'').replace(/^0+(?=\d)/,'').slice(0,11);
+    if(/^delete/.test(e.inputType||'') && parseInt(dig||'0',10)===0) dig = '';   // apagou tudo: campo vazio
+    el._dig = dig; mascaraDesenhar(el);
+    const fim = VALOR_NATIVO.get.call(el).length;
+    try{ el.setSelectionRange(fim, fim); }catch(err){}
+  } else {
+    let t = txt.replace(/[^\d,.]/g,'').replace('.', ',');
+    const i = t.indexOf(',');
+    if(i>=0) t = t.slice(0,i+1) + t.slice(i+1).replace(/,/g,'').slice(0,2);
+    if(t!==txt) VALOR_NATIVO.set.call(el, t);
+  }
+}, true);
+/* sempre digita no fim (a máscara cresce da direita para a esquerda) */
+document.addEventListener('focusin', e=>{
+  const el = e.target;
+  if(el && el._mascara && el.dataset.mascara==='moeda') setTimeout(()=>{ const f = VALOR_NATIVO.get.call(el).length; try{ el.setSelectionRange(f, f); }catch(err){} }, 0);
+});
+const SELETOR_MOEDA = 'input[type="number"][step="0.01"]:not(#dcValor):not(#pmValor), #fhValMin, #fhValMax, #finValor1';
+function aplicarMascaras(raiz){
+  (raiz.querySelectorAll ? raiz : document).querySelectorAll(SELETOR_MOEDA).forEach(el=>{ if(!el._mascara) definirMascara(el, 'moeda'); });
+  if(raiz.matches && raiz.matches(SELETOR_MOEDA) && !raiz._mascara) definirMascara(raiz, 'moeda');
+}
+aplicarMascaras(document);
+new MutationObserver(lista=>lista.forEach(m=>m.addedNodes.forEach(n=>{ if(n.nodeType===1) aplicarMascaras(n); })))
+  .observe(document.body, { childList:true, subtree:true });
+definirMascara(document.getElementById('dcValor'), 'moeda');
+definirMascara(document.getElementById('pmValor'), 'pct');
 
 /* ===== Início ===== */
 document.getElementById('versao').textContent = VERSAO;   // a versão aparece só em Configurações

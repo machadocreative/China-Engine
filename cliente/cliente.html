@@ -35,13 +35,45 @@ body{
 }
 .cl-topo img{height:70%;aspect-ratio:1;border-radius:50%;background:var(--amarelo);object-fit:contain}
 .cl-topo b{font-family:var(--display);font-weight:800;font-size:clamp(22px,2vw,38px)}
-.cl-topo .cl-faz{margin-left:auto;font-size:clamp(14px,1vw,18px);font-weight:700;color:var(--preto);background:var(--amarelo);padding:4px 12px;border-radius:999px}
+.cl-topo-dir{margin-left:auto;display:flex;align-items:center;gap:16px;height:100%}
+.cl-topo .cl-faz{font-size:clamp(14px,1vw,18px);font-weight:700;color:var(--preto);background:var(--amarelo);padding:4px 12px;border-radius:999px}
 .cl-tela-cheia{
-  position:fixed;top:14px;right:14px;z-index:20;border:1px solid rgba(255,255,255,.3);background:rgba(26,26,23,.85);color:#fff;
+  position:fixed;bottom:14px;right:14px;z-index:20;border:1px solid rgba(255,255,255,.3);background:rgba(26,26,23,.85);color:#fff;
   font:600 15px var(--corpo);padding:8px 14px;border-radius:10px;cursor:pointer;opacity:0;transition:opacity .2s;
 }
 body:hover .cl-tela-cheia{opacity:1}
 :fullscreen .cl-tela-cheia{display:none}
+/* Consultar preço (touch): botão grande no topo e tela de consulta */
+.cl-consultar{
+  display:flex;align-items:center;gap:12px;height:76%;min-height:52px;padding:0 clamp(18px,1.8vw,30px);border:none;border-radius:14px;
+  background:var(--amarelo);color:var(--preto);font:800 clamp(18px,1.5vw,28px) var(--display);cursor:pointer;touch-action:manipulation;
+}
+.cl-consultar svg{width:1.2em;height:1.2em;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
+.cl-consultar:active{transform:scale(.97)}
+body.consultando .cl-consultar{visibility:hidden}
+.cl-cons{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3vh;text-align:center;min-width:0}
+.cl-cons-card{width:min(100%,1100px);display:flex;flex-direction:column;align-items:center;gap:2.4vh;padding:5vh 4vw}
+.cl-cons-ic{width:clamp(110px,18vh,200px);height:auto;stroke:var(--preto);fill:none;stroke-width:1.6;stroke-linecap:round;animation:cl-pulsa 1.6s ease-in-out infinite}
+.cl-cons h1{font-family:var(--display);font-weight:800;font-size:clamp(32px,3.6vw,72px);line-height:1.05}
+.cl-cons p{font-size:clamp(17px,1.5vw,28px);color:var(--texto-sec)}
+.cl-cons input{
+  width:min(100%,520px);font:600 clamp(18px,1.4vw,26px) var(--corpo);text-align:center;padding:14px 18px;border-radius:14px;
+  border:2px solid var(--borda);background:#fff;outline:none;
+}
+.cl-cons input:focus{border-color:var(--preto)}
+.cl-cons .cl-prod{width:min(100%,1100px);flex-direction:column;text-align:center;padding:4vh 3vw}
+.cl-cons .cl-foto{width:clamp(140px,28vh,360px)}
+.cl-cons .cl-precos{text-align:center}
+.cl-cons .cl-preco{font-size:clamp(56px,7vw,140px)}
+.cl-cons .cl-nome{font-size:clamp(28px,3vw,60px)}
+.cl-cons-nao h1{color:var(--vermelho)}
+.cl-cons-botoes{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.cl-cons-botoes button{
+  min-height:64px;min-width:220px;padding:0 28px;border-radius:14px;font:700 clamp(18px,1.4vw,26px) var(--corpo);cursor:pointer;
+  border:2px solid var(--preto);background:#fff;color:var(--preto);touch-action:manipulation;
+}
+.cl-cons-botoes button.prim{background:var(--preto);color:#fff}
+@keyframes cl-pulsa{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:.75}}
 main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
 .cl-cartao{background:var(--card);border:1px solid var(--borda);border-radius:20px;overflow:hidden}
 
@@ -71,7 +103,7 @@ main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
 .cl-lado .cl-insta{flex:1}
 
 /* ----- Produto lido (consulta de preço / último item) ----- */
-.cl-prod{display:flex;align-items:center;gap:2vw;padding:2.4vh 2vw;min-width:0}
+.cl-prod{display:flex;align-items:center;gap:2vw;padding:2.4vh 2vw;min-width:0;min-height:320px}
 .cl-foto{flex-shrink:0;width:clamp(90px,16vh,220px);aspect-ratio:1;border-radius:16px;background:var(--bg);border:1px solid var(--borda);overflow:hidden;display:flex;align-items:center;justify-content:center}
 .cl-foto img{width:100%;height:100%;object-fit:contain;background:#fff}
 .cl-foto svg{width:42%;height:42%;stroke:#C4C0B4;fill:none;stroke-width:1.2}
@@ -149,7 +181,10 @@ main{flex:1;min-height:0;display:flex;padding:3vh 3vw;gap:2.4vw}
 <div class="cl-topo">
   <img src="../imagens/Chinatown_Imports_Logo.png" alt="" onerror="this.style.display='none'">
   <b>Chinatown Imports</b>
-  <span class="cl-faz" id="clFaz" hidden>Demonstração</span>
+  <div class="cl-topo-dir">
+    <span class="cl-faz" id="clFaz" hidden>Demonstração</span>
+    <button class="cl-consultar" onclick="consultaAbrir()"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Consultar preço</button>
+  </div>
 </div>
 <button class="cl-tela-cheia" onclick="telaCheia()">⛶ Tela cheia</button>
 <main id="cl"></main>
@@ -192,6 +227,7 @@ function desenhar(d){
   if(chave===ultimaChave) return;
   ultimaChave = chave; ultimo = d;
   document.getElementById('clFaz').hidden = !d.faz;
+  if(cons) return;   // o cliente está consultando um preço: a tela da venda volta quando ele terminar
   const el = document.getElementById('cl');
   if(d.fase==='concluida' && d.concluida){
     el.innerHTML = `<div class="cl-fim">
@@ -278,11 +314,82 @@ function telaCheia(){
 }
 document.addEventListener('dblclick', telaCheia);
 
+/* ----- Consultar preço (pelo cliente) -----
+   O cliente toca em "Consultar preço" e passa o produto no leitor de código de barras.
+   A tela pergunta ao PDV, que responde só nome, foto e preço (com a promoção, se houver).
+   A consulta NÃO mexe na venda do caixa. */
+let cons = null, consTimer = null, consResp = null;
+const icBarras = '<svg class="cl-cons-ic" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>';
+function consultaAbrir(){ cons = { etapa:'aguardando' }; document.body.classList.add('consultando'); desenharConsulta(); }
+function consultaFechar(){
+  cons = null; clearTimeout(consTimer); clearTimeout(consResp); document.body.classList.remove('consultando');
+  const d = ultimo; ultimaChave = ''; desenhar(d || { fase:'livre', promocoes:[] });
+  try{ if(window.opener && !window.opener.closed) window.opener.focus(); }catch(e){}   // devolve o foco ao caixa, se o navegador deixar
+}
+function consultaPrazo(seg){ clearTimeout(consTimer); consTimer = setTimeout(consultaFechar, seg*1000); }   // volta sozinha se ninguém mexer
+function consultar(codigo){
+  codigo = String(codigo||'').trim(); if(!codigo || !cons) return;
+  cons = { etapa:'buscando', codigo };
+  if(!canal){ cons = { etapa:'nao', codigo, msg:'A tela do caixa não está aberta.' }; desenharConsulta(); return; }
+  canal.postMessage({ tipo:'consulta', codigo });
+  clearTimeout(consResp);
+  consResp = setTimeout(()=>{ if(cons && cons.etapa==='buscando'){ cons = { etapa:'nao', codigo, msg:'O caixa não respondeu. Peça ajuda a um atendente.' }; desenharConsulta(); } }, 2500);
+}
+function desenharConsulta(){
+  const el = document.getElementById('cl'), voltar = '<button onclick="consultaFechar()">Voltar</button>';
+  if(cons.etapa==='resultado'){
+    el.innerHTML = `<div class="cl-cons">${blocoProduto(cons.produto)}
+      <div class="cl-cons-botoes"><button class="prim" onclick="consultaAbrir()">Consultar outro</button>${voltar}</div></div>`;
+    consultaPrazo(15);
+  } else if(cons.etapa==='nao'){
+    el.innerHTML = `<div class="cl-cons cl-cons-nao"><div class="cl-cartao cl-cons-card">
+      <h1>Produto não encontrado</h1><p>${esc(cons.msg || 'Não encontramos o preço deste produto. Peça ajuda no caixa.')}</p>
+      <div class="cl-cons-botoes"><button class="prim" onclick="consultaAbrir()">Tentar de novo</button>${voltar}</div></div></div>`;
+    consultaPrazo(12);
+  } else if(cons.etapa==='aguardando'){
+    el.innerHTML = `<div class="cl-cons"><div class="cl-cartao cl-cons-card">
+      ${icBarras}
+      <h1>Passe o código de barras no leitor</h1>
+      <p>Aponte o leitor para a etiqueta do produto.</p>
+      <input id="clCodigo" type="text" inputmode="numeric" autocomplete="off" placeholder="ou toque aqui e digite o código"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();consultar(this.value)}">
+      <div class="cl-cons-botoes">${voltar}</div></div></div>`;
+    consultaPrazo(40);
+  }
+}
+
+/* ----- Leitor USB: ele "digita" o código na janela que está em foco e termina com Enter.
+   Com a consulta aberta, a leitura é do cliente. Fora dela, a leitura é do caixa: vai para o PDV
+   (acontece quando esta janela ficou em foco depois de um toque). */
+let leitBuf = '', leitUlt = 0;
+document.addEventListener('keydown', e=>{
+  if(e.target && e.target.id==='clCodigo') return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const agora = Date.now();
+  if(agora - leitUlt > 300) leitBuf = '';
+  leitUlt = agora;
+  if(e.key==='Enter'){
+    const cod = leitBuf.trim(); leitBuf = '';
+    if(cod.length < 3) return;
+    e.preventDefault();
+    if(cons) consultar(cod);
+    else if(canal) canal.postMessage({ tipo:'leitura', codigo:cod });
+  } else if(e.key.length===1) leitBuf += e.key;
+});
+
 /* ----- conversa com o PDV ----- */
+const canal = ('BroadcastChannel' in window) ? new BroadcastChannel('china-engine-cliente') : null;
 desenhar({ fase:'livre', promocoes:[] });
-if('BroadcastChannel' in window){
-  const canal = new BroadcastChannel('china-engine-cliente');
-  canal.onmessage = e=>{ if(e.data && e.data.tipo==='estado') desenhar(e.data); };
+if(canal){
+  canal.onmessage = e=>{
+    const d = e.data || {};
+    if(d.tipo==='estado') desenhar(d);
+    else if(d.tipo==='consultaResp' && cons && cons.etapa==='buscando' && d.codigo===cons.codigo){
+      clearTimeout(consResp);
+      cons = d.produto ? { etapa:'resultado', produto:d.produto } : { etapa:'nao', codigo:d.codigo };
+      desenharConsulta();
+    }
+  };
   canal.postMessage({ tipo:'oi' });
   setInterval(()=>canal.postMessage({ tipo:'oi' }), 5000);   // avisa o PDV que a tela segue aberta (e recebe o estado de novo)
 }

@@ -1502,3 +1502,50 @@ body.sem-servicos .nav-servicos,body.sem-servicos .sv-abas,body.sem-servicos [da
   body.menu-recolhido .barra-inferior{width:84px}
   body.menu-recolhido .nav-logo{margin-bottom:12px}
 }
+
+/* ===== 2.13.0 ===== */
+/* Todas as telas com o mesmo espaço reservado para a barra de rolagem: o filtro de período do
+   Histórico e das Métricas fica exatamente na mesma posição */
+main{scrollbar-gutter:stable}
+
+/* PDV, caixa livre: espaço entre o visor e o campo de leitura / "Iniciar venda" */
+.pdv:not(.ativa){row-gap:14px}
+.pdv:not(.ativa) .pdv-visor{margin-bottom:0}
+/* PDV com venda: visor com altura mínima de 220px e foto de até 200px */
+.pdv.ativa .pdv-visor{height:auto;min-height:220px}
+.pdv-faixa{padding-top:10px;padding-bottom:10px}
+.pdv-faixa .pdv-foto{height:auto;width:clamp(120px,18cqw,196px);max-height:200px;min-width:0}
+@media(max-width:900px){ .pdv.ativa .pdv-visor{min-height:220px} }
+
+/* Painel do produto: custo médio e variação entre lotes logo abaixo de "Composição do estoque atual" */
+.resumo.pp-custos{margin:8px 0 14px}
+
+/* Serviços: só serviço e preço */
+.sv-cab,.sv-linha{grid-template-columns:minmax(0,1fr) auto}
+@media(max-width:620px){ .sv-cab,.sv-linha{grid-template-columns:minmax(0,1fr) auto} }
+
+/* Histórico: horário alinhado com a forma de pagamento (à direita do selo) */
+@media(min-width:621px){
+  .hx-linha:not(.pp-linha) .hx-hora{text-align:left;margin:0 0 0 120px;padding:0}   /* 112px do selo + 8px de espaço */
+}
+
+/* Inventário: produto · qtd · preço · remover; já cadastrados agrupados no fim */
+.inv-cab,.inv-linha{grid-template-columns:minmax(0,1fr) 84px 130px 36px}
+@media(max-width:620px){ .inv-linha{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 36px} }
+.inv-linha.travada input{background:#F3F1EA;border-color:transparent;color:var(--texto)}
+.inv-grupo{margin:16px 0 8px;padding-top:12px;border-top:1px dashed var(--borda-forte);font-size:14px;font-weight:700;color:var(--verde)}
+.inv-fechado{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#E5F2E6;color:var(--verde);font-size:14px;font-weight:600}
+.inv-fechado[hidden],#invNovo[hidden],#invSalvar[hidden],#invFechar[hidden],#invDica[hidden]{display:none}
+/* ----- Máscaras: "R$" e "%" apagados dentro do campo ----- */
+input.campo-moeda{
+  padding-left:38px !important;text-align:right;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='20'%3E%3Ctext x='0' y='15' font-family='IBM Plex Sans,Arial,sans-serif' font-size='15' font-weight='600' fill='%231A1A17' fill-opacity='.38'%3ER$%3C/text%3E%3C/svg%3E") !important;
+  background-repeat:no-repeat !important;background-position:12px center !important;
+}
+input.campo-pct{
+  padding-right:34px !important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='20'%3E%3Ctext x='0' y='15' font-family='IBM Plex Sans,Arial,sans-serif' font-size='15' font-weight='600' fill='%231A1A17' fill-opacity='.38'%3E%25%3C/text%3E%3C/svg%3E") !important;
+  background-repeat:no-repeat !important;background-position:right 12px center !important;
+}
+input.campo-moeda::placeholder{text-align:right}
+@container (max-width:560px){ .pdv-faixa .pdv-foto{width:96px;height:auto} }   /* celular: foto menor na faixa */

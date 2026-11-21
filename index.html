@@ -116,6 +116,7 @@
         <option value="categoria">Ordenar: Categoria</option>
         <option value="estoque">Ordenar: Quantidade</option>
         <option value="preco">Ordenar: Preço</option>
+        <option value="movimentacao">Ordenar: Data de movimentação</option>
       </select></label>
       <button class="hx-chip hx-chip-btn" id="btnDir" onclick="alternarDirecao()" title="Inverter a ordem">Crescente ↑</button>
       <div class="hx-busca">
@@ -152,7 +153,6 @@
     <p class="dica es-dica">Toque num serviço para editar. Serviços não têm estoque: podem ser vendidos sem limite.</p>
     <div class="linha-cabecalho sv-cab">
       <div>Serviço</div>
-      <div class="sv-col-custo">Custo</div>
       <div class="num">Preço</div>
     </div>
   </div>
@@ -186,7 +186,7 @@
         <option value="">Tipo</option>
         <option value="venda">Venda</option>
         <option value="aquisicao">Aquisição</option>
-        <option value="inicial">Estoque existente</option>
+        <option value="inicial">Inventário</option>
         <option value="areceber">A receber</option>
         <option value="outras">Outras saídas</option>
       </select></label>
@@ -319,9 +319,9 @@
 
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Inventário</h3>
-      <small>Lista rápida de tudo o que já está na loja no dia em que o app começa a ser usado: produto, quantidade, preço de venda e custo. Depois, o Estoque sugere cadastrar cada item da lista como produto, já com o estoque existente.</small></div>
+      <small>Lista rápida de tudo o que já está na loja no dia em que o app começa a ser usado: produto, quantidade e preço de venda. Depois, o Estoque sugere cadastrar cada item como produto (o custo é informado nesse cadastro). Ao terminar, feche o inventário.</small></div>
     <div class="sy-status" id="cfgInventarioResumo"></div>
-    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirInventario()">Abrir inventário</button></div>
+    <div class="cfg-acoes"><button class="btn btn-escuro" id="cfgInventarioBtn" onclick="abrirInventario()">Abrir inventário</button></div>
   </div>
 
   <div class="cfg-bloco">
@@ -557,14 +557,17 @@
       <button class="fechar" onclick="fecharInventario()">&times;</button>
     </div>
     <div class="modal-corpo">
-      <p class="dica" style="margin:0 0 12px">Um item por linha. O custo é opcional aqui: se faltar, o app pede na hora de cadastrar o produto. Itens já cadastrados no Estoque ficam marcados e não podem mais ser editados aqui.</p>
-      <div class="inv-cab"><span>Produto</span><span>Qtd</span><span>Preço de venda</span><span>Custo (un.)</span><span></span></div>
+      <p class="dica" id="invDica" style="margin:0 0 12px">Um item por linha: produto, quantidade e preço de venda. O custo é informado depois, ao cadastrar o produto no Estoque. Itens já cadastrados descem para o fim da lista e não podem mais ser editados aqui.</p>
+      <p class="inv-fechado" id="invAvisoFechado" hidden>Inventário fechado: lista só para consulta. O estoque agora é gerenciado pelo PDV e pelo módulo Estoque.</p>
+      <div class="inv-cab"><span>Produto</span><span>Qtd</span><span>Preço de venda</span><span></span></div>
       <div id="invLinhas"></div>
-      <button class="btn btn-claro btn-mini" onclick="inventarioNovaLinha()">+ Adicionar item</button>
+      <button class="btn btn-claro btn-mini" id="invNovo" onclick="inventarioNovaLinha()">+ Adicionar item</button>
+      <div id="invFeitos"></div>
       <div class="inv-total" id="invTotal"></div>
       <div class="rodape-modal">
-        <button class="btn btn-claro" onclick="fecharInventario()">Cancelar</button>
-        <button class="btn btn-amarelo" onclick="salvarInventario()">Salvar inventário</button>
+        <button class="btn btn-claro" id="invFechar" style="margin-right:auto" onclick="fecharInventarioDefinitivo()" title="Termina o inventário: a lista fica só para consulta">Fechar inventário</button>
+        <button class="btn btn-claro" onclick="fecharInventario()">Voltar</button>
+        <button class="btn btn-amarelo" id="invSalvar" onclick="salvarInventario()">Salvar inventário</button>
       </div>
     </div>
   </div>
@@ -750,13 +753,15 @@
         <label>Nome do produto</label>
         <input type="text" id="pNome" placeholder="Ex: Cabo USB-C 1m">
       </div>
-      <div class="campo">
-        <label>Marca</label>
-        <input type="text" id="pMarca" placeholder="Ex: Baseus">
-      </div>
-      <div class="campo">
-        <label>Modelo (opcional)</label>
-        <input type="text" id="pCodigo" placeholder="Ex: CA-UC1M (código do modelo na marca)">
+      <div class="linha-campos">
+        <div class="campo">
+          <label>Marca</label>
+          <input type="text" id="pMarca" placeholder="Ex: Baseus">
+        </div>
+        <div class="campo">
+          <label>Modelo (opcional)</label>
+          <input type="text" id="pCodigo" placeholder="Ex: CA-UC1M">
+        </div>
       </div>
       <div class="dica" style="margin:-8px 0 14px">Cada variação (cor, capacidade) é um produto separado.</div>
       <div class="campo">
@@ -775,9 +780,9 @@
           <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div>
         </div>
       </div>
-      <!-- Estoque inicial: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
+      <!-- Inventário: só no cadastro de produto novo. Mercadoria que já estava na loja (não é compra) -->
       <div id="pWrapInicial">
-        <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Estoque existente?</label>
+        <label class="pi-check"><input type="checkbox" id="pTemInicial" onchange="alternarEstoqueInicial()"> Produto do inventário (já estava na loja)?</label>
         <div class="pi-bloco" id="pBlocoInicial" style="display:none">
           <div class="pi-tit">Mercadoria que já estava na loja antes do app</div>
           <div class="linha-campos">

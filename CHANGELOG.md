@@ -32,6 +32,42 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.13.0] - 2026-11-21
+
+### Adicionado
+
+- **Máscara nos campos de dinheiro (app inteiro):**
+  - A digitação vai da direita para a esquerda (5 → 0,05 → 0,50 → 5,00), com "R$" apagado dentro do campo e sem as setinhas de +/−. Apagar tudo deixa o campo vazio.
+  - Vale também para os campos que aparecem depois, em modais e abas.
+- **Campos de porcentagem:** símbolo "%" apagado dentro do campo, no desconto do PDV e nas promoções. O campo troca sozinho entre R$ e % quando se muda o tipo de desconto.
+- **Estoque:** nova ordenação "Data de movimentação", pela data da última movimentação de cada produto.
+- **Inventário: botão "Fechar inventário"** (pede a senha do gerente), para o fim da implantação.
+  - O inventário vira só consulta e o aviso no Estoque some.
+  - A opção "Produto do inventário" no cadastro de produto novo continua existindo.
+- **PC: o ⊕ de ações rápidas** (Estoque, Serviços e Histórico) abre só de passar o mouse e fecha ao sair. No celular continua no toque.
+
+### Alterado
+
+- **PDV:**
+  - Com o caixa livre, há espaço entre o visor e o campo de leitura / "Iniciar venda".
+  - Com a venda em andamento, o visor tem altura mínima de 220px e a foto do produto vai até 200px.
+  - Saiu o texto "● Na venda · 1 un." / "Consulta de preço…" ao lado da marca, para reduzir o excesso de informação.
+- **Tela do cliente:** o cartão do produto tem altura mínima de 320px.
+- **Painel do produto:** "Custo médio" e "Variação de custo entre lotes" ficam logo abaixo de "Composição do estoque atual", antes da lista de lotes.
+- **Novo produto e aba Dados:**
+  - "Modelo" fica ao lado de "Marca", cada um com metade da largura.
+  - Na aba Dados, o código de barras é o primeiro campo.
+- **Serviços:** a lista mostra só serviço e preço, sem a coluna Custo.
+- **Histórico:** o horário fica alinhado com a forma de pagamento, à direita do selo.
+- **"Estoque existente" passa a se chamar "Inventário"** em todo o app: selo do Histórico, filtro Tipo, composição do estoque, cadastro de produto e avisos.
+- **Inventário:**
+  - Saiu o campo Custo: o custo é informado ao cadastrar o produto no Estoque.
+  - Os itens já cadastrados descem para um grupo "Já cadastrados no Estoque" no fim da lista, sem marca em cada linha.
+- **Copiar o dia (Histórico):** cada linha sai como "Produto · R$ valor (+R$ lucro) · Forma de pagamento", e o total como "Total de vendas: R$ X (+R$ lucro)".
+- **Filtro de período:** fica exatamente na mesma posição no Histórico e nas Métricas, porque todas as telas reservam o espaço da barra de rolagem.
+
+---
+
 ## [2.12.0] - 2026-11-19
 
 ### Adicionado
