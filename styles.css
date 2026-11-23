@@ -42,7 +42,6 @@ header{
   display:flex;align-items:center;gap:14px;
   flex-wrap:wrap;
   position:relative;z-index:50;flex-shrink:0;
-  border-bottom:4px solid var(--amarelo);
 }
 header .logo{
   width:46px;height:46px;border-radius:50%;
@@ -54,8 +53,7 @@ header .titulo span{font-size:14px;color:#C9C7BE;letter-spacing:.5px;text-transf
 header .titulo em{font-style:normal;color:var(--amarelo);font-weight:600;margin-left:4px}
 header .acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 header{padding-right:120px}   /* espaço dos botões Ajustes e sininho */
-.marca-app{display:flex;align-items:center;gap:14px;color:inherit;text-decoration:none;cursor:pointer}
-.marca-app:hover .titulo b{color:var(--amarelo)}
+.marca-app{display:flex;align-items:center;gap:14px;color:inherit}
 
 /* Contador de pontos de atenção (canto superior direito) */
 .notif{
@@ -525,7 +523,7 @@ body.modo-historico main{overflow:hidden;display:flex;flex-direction:column;padd
 #toast{
   position:fixed;bottom:78px;left:50%;transform:translateX(-50%) translateY(80px);
   background:var(--preto);color:#fff;padding:12px 20px;border-radius:12px;font-weight:500;
-  border-left:4px solid var(--amarelo);transition:transform .25s,opacity .25s;z-index:200;max-width:90%;
+  transition:transform .25s,opacity .25s;z-index:200;max-width:90%;
   opacity:0;pointer-events:none;
 }
 #toast.mostra{transform:translateX(-50%) translateY(0);opacity:1}
@@ -620,7 +618,6 @@ header .acoes [data-view].fora{display:none}
 .ini-qtd{margin-left:auto;font-family:var(--corpo);font-weight:600;font-size:14px;padding:2px 10px;border-radius:999px}
 .ini-bloco.baixo .ini-cab{border-top:4px solid var(--vermelho)}
 .ini-bloco.baixo .ini-qtd{background:var(--vermelho-claro);color:var(--vermelho)}
-.ini-bloco.receber .ini-cab{border-top:4px solid var(--amarelo)}
 .ini-bloco.receber .ini-qtd{background:var(--amarelo-claro);color:#8A6D00}
 .ini-item{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--borda);font-size:14px}
 .ini-item:first-of-type{border-top:none}
@@ -992,11 +989,11 @@ body.modo-estoque main{overflow:hidden;display:flex;flex-direction:column;paddin
   body{padding-bottom:0;padding-left:210px}
   .barra-inferior{
     top:0;bottom:0;right:auto;width:210px;height:auto;flex-direction:column;gap:4px;
-    border-top:none;border-right:3px solid var(--amarelo);padding:0 0 16px;
+    border-top:none;padding:0 0 16px;
   }
   .nav-logo{
     display:flex;align-items:center;gap:12px;height:78px;flex-shrink:0;padding:0 16px;margin-bottom:12px;
-    border-bottom:4px solid var(--amarelo);color:#fff;text-decoration:none;
+    color:#fff;text-decoration:none;
   }
   .nav-logo img{width:46px;height:46px;border-radius:50%;background:var(--amarelo);object-fit:contain;flex-shrink:0}
   .nav-logo span{display:flex;flex-direction:column;line-height:1.15}
@@ -1489,9 +1486,9 @@ body.sem-servicos .nav-servicos,body.sem-servicos .sv-abas,body.sem-servicos [da
   .barra-inferior{padding-right:16px}
   .nav-borda{
     display:flex;position:absolute;top:0;bottom:0;right:0;width:16px;padding:0;align-items:center;justify-content:center;
-    border:none;border-left:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#C9C7BE;cursor:pointer;z-index:2;
+    border:none;border-left:1px solid rgba(255,255,255,.16);background:#3A3A35;color:#E8E6DE;cursor:pointer;z-index:2;
   }
-  .nav-borda:hover{background:rgba(255,255,255,.12);color:#fff}
+  .nav-borda:hover{background:#4A4A44;color:#fff}
   .nav-borda:focus-visible{outline:2px solid var(--amarelo);outline-offset:-2px}
   .nav-borda svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
   body.menu-recolhido .nav-borda svg{transform:rotate(180deg)}
@@ -1549,3 +1546,103 @@ input.campo-pct{
 }
 input.campo-moeda::placeholder{text-align:right}
 @container (max-width:560px){ .pdv-faixa .pdv-foto{width:96px;height:auto} }   /* celular: foto menor na faixa */
+
+/* ===== 2.14.0 ===== */
+/* Botão "olho" (Histórico e Métricas): esconde os valores em R$ da tela */
+.hx-periodo{position:relative}
+.hx-olho{
+  position:absolute;right:0;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;
+  border:none;background:transparent;color:var(--texto-sec);display:flex;align-items:center;justify-content:center;padding:0;
+}
+.hx-olho:hover{background:rgba(26,26,23,.07);color:var(--texto)}
+.hx-olho svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hx-olho .olho-fechado{display:none}
+.hx-olho.oculto{background:#EAE7DE;color:var(--texto)}
+.hx-olho.oculto .olho-aberto{display:none}
+.hx-olho.oculto .olho-fechado{display:block}
+
+/* Métricas: sem textos descritivos nas linhas dos rankings e barras (o detalhe fica no tooltip);
+   ficam só os subtítulos dos cartões */
+#dsConteudo .ds-rank-corpo > small,#dsConteudo .ds-barra-rot small,
+body:has(#viewDesempenho:not([hidden])) #infoCorpo .ds-rank-corpo > small,
+body:has(#viewDesempenho:not([hidden])) #infoCorpo .ds-barra-rot small{display:none}
+
+/* PDV (PC): o PDV inteiro com 80% da altura útil, centralizado na vertical */
+@media(min-width:901px){
+  #viewPdv:not([hidden]){display:flex;flex-direction:column;justify-content:center}
+  .pdv{height:80%;min-height:min(100%,520px)}
+  /* durante a venda: campo de leitura solto sobre o fundo (o pulso amarelo aparece inteiro) e a tabela como cartão próprio, 30px abaixo */
+  .pdv.ativa .pdv-leitor{background:none;border:none;border-radius:0;padding:0;margin-bottom:30px}
+  .pdv-venda{border-top:1px solid var(--borda)}
+}
+/* selo da consulta de preço: maior e centralizado */
+.pdv-selo.pdv-selo-consulta{justify-content:center;font-size:clamp(16px,2.2cqw,22px);height:52px;letter-spacing:.8px}
+/* × da tabela da venda: redondo e vermelho (o % do desconto continua quadrado) */
+.pdv-ico.pdv-x{width:34px;height:34px;border-radius:50%;border:none;background:var(--vermelho);color:#fff;font-size:20px;padding:0;align-self:center;justify-self:center}
+.pdv-ico.pdv-x:hover{background:#B81D16}
+
+/* Regra geral: listas e tabelas sem cantos arredondados; cartões e botões continuam arredondados */
+.tabela,.es-lista,#esCab,.hx-lista,.hx-cab,.hx-grupo,.hx-filtros,.pdv-venda,.pdv-lista-cab,.pdv-resultados,
+.cp-lista,.nf-tabela,.sv-item,.ap-item,.pm-item,.ds-promo,.lista-cat li.arrastando,.linha-compra{border-radius:0}
+@media(max-width:900px){
+  .hx-filtros{border-radius:0}
+  .pdv-venda{border-radius:0}
+  .inv-linha{border-radius:0}
+}
+
+/* ----- Níveis de acesso (Gerente / Caixa / Só consulta) ----- */
+.acesso-oculto{display:none !important}
+body:not(.nivel-gerente) .so-gerente{display:none !important}
+body.nivel-consulta .nao-consulta{display:none !important}
+body:not(.nivel-gerente) #avCustoCampo{display:none !important}
+/* Caixa: Histórico só do dia de hoje */
+body.nivel-caixa #viewHistorico .hx-seta{visibility:hidden}
+body.nivel-caixa #hxPeriodoRotulo{pointer-events:none}
+/* Só consulta: Histórico sem edição */
+body.nivel-consulta .hx-linha[data-mid]{cursor:default}
+.nivel-selo{
+  align-self:center;margin-left:4px;padding:3px 12px;border-radius:999px;background:var(--amarelo);color:var(--preto);
+  font-size:14px;font-weight:700;white-space:nowrap;
+}
+.nivel-selo[hidden]{display:none}
+@media(max-width:900px){ .nivel-selo{position:absolute;left:84px;bottom:6px;margin:0;padding:1px 10px} }
+@media(min-width:901px){
+  .nav-nivel{margin:auto 14px 0}
+  .nav-nivel ~ .nav-sbx{margin-top:8px}
+  .nav-nivel:empty{display:none}
+  .nav-nivel:empty ~ .nav-sbx{margin-top:auto}
+  .nav-nivel-in{
+    width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.14);background:transparent;color:#fff;text-align:left;font:inherit;cursor:pointer;
+  }
+  div.nav-nivel-in{cursor:default}
+  button.nav-nivel-in:hover{background:rgba(255,255,255,.08)}
+  .nav-nivel-in.caixa{background:var(--amarelo);color:var(--preto);border-color:var(--amarelo)}
+  .nav-nivel-in.caixa:hover{background:var(--amarelo);filter:brightness(1.05)}
+  .nav-nivel-in.caixa small{color:var(--preto);opacity:.75}
+  .nav-nivel-in svg{width:22px;height:22px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .nav-nivel-in b{display:block;font-size:15px}
+  .nav-nivel-in small{display:block;font-size:14px;color:#C9C7BE}
+  body.menu-recolhido .nav-nivel{margin:auto 10px 0}
+  body.menu-recolhido .nav-nivel-in{justify-content:center;padding:10px 0}
+  body.menu-recolhido .nav-nivel-in span{display:none}
+}
+/* Aparelhos conectados: nível */
+.ap-nivel{margin-top:6px;height:36px;padding:0 10px;font-size:14px;border:1px solid var(--borda-forte);border-radius:10px;background:#fff;max-width:100%}
+.ap-nivel-fixo{display:inline-block;margin-top:4px;font-size:14px;font-weight:600;color:var(--texto)}
+/* QR code de conexão */
+.par-niveis{display:flex;flex-direction:column;gap:8px}
+.par-nivel{display:block;text-align:left;padding:12px 14px;border:1px solid var(--borda-forte);border-radius:12px;background:#fff;font:inherit;color:var(--texto)}
+.par-nivel b{display:block;font-size:16px}
+.par-nivel small{display:block;font-size:14px;color:var(--texto-sec);margin-top:2px}
+.par-nivel.ativo{border:2px solid var(--preto);background:var(--amarelo-claro)}
+.par-instr{margin-bottom:12px}
+.par-qr{width:min(100%,260px);margin:0 auto;background:#fff;padding:6px;border:1px solid var(--borda);border-radius:12px;transition:opacity .2s}
+.par-qr svg{display:block;width:100%;height:auto}
+.par-qr.vencido{opacity:.15}
+.par-codigo{text-align:center;margin:14px 0 6px;display:flex;flex-direction:column;gap:2px}
+.par-codigo small{font-size:14px;color:var(--texto-sec)}
+.par-codigo b{font-family:var(--display);font-weight:800;font-size:38px;letter-spacing:4px;line-height:1.1}
+.par-codigo span{font-size:14px;font-weight:600;color:var(--verde)}
+.par-codigo span.vencido{color:var(--vermelho)}
+.par-info{text-align:center;overflow-wrap:anywhere}

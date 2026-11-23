@@ -28,13 +28,14 @@
 
 <header>
   <!-- Coloque o arquivo do logo na mesma pasta do index.html -->
-  <!-- Logo + título: tocar volta para o PDV (tela inicial) -->
-  <a class="marca-app" href="#" onclick="mostrarView('pdv');return false" title="Voltar ao PDV">
+  <!-- Logo + título da tela (sem link desde a 2.14.0) -->
+  <div class="marca-app">
     <img class="logo" src="imagens/Chinatown_Imports_Logo.png" alt="Chinatown Imports" onerror="this.style.display='none'">
     <div class="titulo">
       <b id="tituloView">PDV</b>
     </div>
-  </a>
+    <span class="nivel-selo" id="nivelSelo" hidden></span>
+  </div>
   <!-- Ajustes (Configurações): à esquerda do sininho -->
   <button class="notif btn-ajustes so-movel" id="btnAjustes" onclick="alternarAjustes()" title="Ajustes" aria-label="Ajustes">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
@@ -178,6 +179,10 @@
         </div>
       </div>
       <button class="hx-seta" onclick="periodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
+      <button class="hx-olho" data-tela="historico" onclick="olhoAlternar('historico')" title="Esconder os valores" aria-label="Esconder ou mostrar os valores em reais" aria-pressed="false">
+        <svg class="olho-aberto" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="olho-fechado" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+      </button>
     </div>
 
     <!-- Filtros discretos -->
@@ -248,6 +253,10 @@
       </div>
     </div>
     <button class="hx-seta ds-seta" onclick="dsPeriodoPasso(1)" title="Próximo período" aria-label="Próximo período">›</button>
+    <button class="hx-olho" data-tela="desempenho" onclick="olhoAlternar('desempenho')" title="Esconder os valores" aria-label="Esconder ou mostrar os valores em reais" aria-pressed="false">
+      <svg class="olho-aberto" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg class="olho-fechado" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+    </button>
   </div>
   <div id="dsConteudo"></div>
 </section>
@@ -299,25 +308,30 @@
 <!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Nível de acesso deste aparelho</h3>
+      <small>Gerente tem acesso total. No modo Caixa, o funcionário usa o PDV sem ver custos nem lucro. Só consulta mostra as Métricas e o Histórico, sem alterar nada.</small></div>
+    <div id="cfgNivel"></div>
+  </div>
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Módulo Serviços</h3>
       <small>Para lojas que também cobram serviços (xerox, impressão, fichas, reparos…). Ligado, aparece o módulo Serviços (no celular, como aba dentro do Estoque) e os serviços podem ser vendidos no PDV junto com os produtos.</small></div>
     <label class="sbx-chave"><input type="checkbox" id="cfgServicosAtivo" onchange="servicosAtivar(this.checked)"><i></i><span id="cfgServicosRotulo">Ligado</span></label>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Categorias de produtos</h3>
       <small>Crie, renomeie ou remova as categorias dos produtos. <span id="cfgCatTotal"></span></small></div>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCategorias()">Gerenciar categorias</button></div>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Promoções</h3>
       <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede a senha do gerente.</small></div>
     <ul class="pm-lista" id="cfgPromoLista"></ul>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirPromocao()">+ Nova promoção</button></div>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Inventário</h3>
       <small>Lista rápida de tudo o que já está na loja no dia em que o app começa a ser usado: produto, quantidade e preço de venda. Depois, o Estoque sugere cadastrar cada item como produto (o custo é informado nesse cadastro). Ao terminar, feche o inventário.</small></div>
     <div class="sy-status" id="cfgInventarioResumo"></div>
@@ -339,7 +353,11 @@
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Sincronização na nuvem</h3>
       <small>Mantém os dados iguais no PC e no celular, pelo seu Cloudflare (Worker + banco D1). Alterações feitas em aparelhos diferentes são juntadas automaticamente. O endereço e a senha ficam salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
-    <div class="cfg-form" id="cfgSyncForm">
+    <div class="cfg-acoes" id="cfgSyncCodigo" style="margin-bottom:14px">
+      <button class="btn btn-amarelo" onclick="conectarCodigoAbrir()">Conectar com o código do gerente</button>
+    </div>
+    <div class="cfg-form so-gerente" id="cfgSyncForm">
+      <div class="dica" style="margin:0 0 10px">Ou, no aparelho do gerente, conecte com o endereço do Worker e a senha da sincronização (SENHA_SYNC):</div>
       <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgSyncUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <div class="linha-campos">
         <div class="campo"><label>Senha da sincronização</label><input type="password" id="cfgSyncSenha" autocomplete="new-password" placeholder="A SENHA_SYNC do Worker"></div>
@@ -352,8 +370,8 @@
       <div class="sy-status" id="cfgSyncStatus"></div>
       <div class="cfg-acoes">
         <button class="btn btn-escuro" onclick="sincronizarAgora()">Sincronizar agora</button>
-        <button class="btn btn-claro" onclick="syncVerCopias()">Cópias diárias</button>
-        <button class="btn btn-claro" onclick="syncDesconectar()">Desconectar</button>
+        <button class="btn btn-claro so-gerente" onclick="syncVerCopias()">Cópias diárias</button>
+        <button class="btn btn-claro so-gerente" onclick="syncDesconectar()">Desconectar</button>
       </div>
       <div id="cfgSyncCopias"></div>
     </div>
@@ -361,12 +379,15 @@
 
   <div class="cfg-bloco" id="cfgAparelhosBloco" hidden>
     <div class="cfg-cab"><h3>Aparelhos conectados</h3>
-      <small>Aparelhos que usam a sincronização desta loja, com o último acesso. Remover desconecta o aparelho e pede a senha do gerente.</small></div>
+      <small>Aparelhos que usam a sincronização desta loja, com o último acesso e o nível. Para conectar um aparelho novo, gere um QR code: ele vale por 2 minutos e uma vez só. Mudar o nível ou remover pede a senha do gerente.</small></div>
     <ul class="ap-lista" id="cfgAparelhos"></ul>
-    <div class="cfg-acoes"><button class="btn btn-claro" onclick="dispositivosRender(true)">Atualizar lista</button></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-escuro" onclick="parearAbrir()">Conectar novo aparelho (QR code)</button>
+      <button class="btn btn-claro" onclick="dispositivosRender(true)">Atualizar lista</button>
+    </div>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Backup dos dados</h3>
       <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
     <div class="cfg-acoes">
@@ -376,27 +397,28 @@
     <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Senha do gerente</h3>
-      <small>Usada para alterar preços, editar movimentações e excluir produtos. É uma trava de operação, não uma senha de segurança: ela fica salva junto com os dados deste navegador e no arquivo de backup.</small></div>
+      <small>Libera o modo Gerente, configurações sensíveis e, no modo Caixa, descontos e edições. A senha em si não fica guardada: o app guarda só um resumo protegido dela, que vai para os outros aparelhos pela sincronização e entra no backup.</small></div>
+    <div class="sy-status erro" id="cfgSenhaPadrao" hidden>A loja ainda usa a senha padrão de fábrica, que aparecia no código público do app. Troque agora por uma senha só sua.</div>
     <div class="cfg-form">
       <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
       <div class="linha-campos">
         <div class="campo"><label>Nova senha</label><input type="password" id="cfgSenhaNova" autocomplete="new-password"></div>
         <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgSenhaRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenha()"></div>
       </div>
-      <div class="dica" style="margin:-6px 0 12px">Mínimo de 4 caracteres.</div>
+      <div class="dica" style="margin:-6px 0 12px">Mínimo de 6 caracteres. Use algo difícil de adivinhar.</div>
       <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
     </div>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Modo Faz-de-Conta</h3>
       <small>Para testar vendas, entradas e saídas sem medo (modo sandbox). Com ele ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
     <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Desligado</span></label>
   </div>
 
-  <div class="cfg-bloco">
+  <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Financeiro (em pausa)</h3>
       <small>O módulo de faturamento MEI saiu da navegação principal enquanto não está em uso. Os dados continuam salvos e entram no backup.</small></div>
     <div class="cfg-acoes"><button class="btn btn-claro" onclick="mostrarView('financeiro')">Abrir o Financeiro →</button></div>
@@ -520,7 +542,7 @@
         <div class="campo" style="flex:.7"><label>Quantidade</label><input type="number" id="avQtd" min="1" step="1" value="1" inputmode="numeric" oninput="avulsaTotais()"></div>
         <div class="campo"><label>Valor por unidade (R$)</label><input type="number" id="avValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaTotais()"></div>
       </div>
-      <label class="av-custo-chk"><input type="checkbox" id="avTemCusto" onchange="avulsaCusto()"> Houve custo?</label>
+      <label class="av-custo-chk so-gerente"><input type="checkbox" id="avTemCusto" onchange="avulsaCusto()"> Houve custo?</label>
       <div class="campo" id="avCustoCampo" style="display:none"><label>Custo por unidade (R$)</label>
         <input type="number" id="avCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal" oninput="avulsaTotais()">
         <div class="dica">Ex.: papel e tinta da impressão, peça usada no reparo. Entra nas Métricas como custo, para o lucro ficar certo.</div>
@@ -846,6 +868,58 @@
 </div>
 
 <!-- ===== Modal: senha do gerente ===== -->
+<!-- ===== Modal: conectar novo aparelho pelo QR code (Gerente, 2.14.0) ===== -->
+<div class="overlay" id="modalParear">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-cabecalho">
+      <h2>Conectar novo aparelho</h2>
+      <button class="fechar" onclick="parearFechar()">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div id="parPasso1">
+        <p style="margin-bottom:12px">Qual será o nível do aparelho novo?</p>
+        <div class="par-niveis" id="parNiveis"></div>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="parearFechar()">Cancelar</button>
+          <button class="btn btn-amarelo" onclick="parearGerar()">Gerar QR code</button>
+        </div>
+      </div>
+      <div id="parPasso2" hidden>
+        <p class="par-instr">No aparelho novo, aponte a câmera para o QR code (ou abra Configurações → Sincronização → <b>Conectar com o código do gerente</b>).</p>
+        <div class="par-qr" id="parQr"></div>
+        <div class="par-codigo"><small>Ou digite o código</small><b id="parCodigo"></b><span id="parTempo"></span></div>
+        <p class="dica par-info">Nível: <b id="parNivelRot"></b> · Endereço do Worker: <span id="parUrl"></span><br>O código vale uma vez só. A senha da sincronização não vai no QR code.</p>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="document.getElementById('parPasso1').hidden=false;document.getElementById('parPasso2').hidden=true">Gerar outro</button>
+          <button class="btn btn-amarelo" onclick="parearFechar()">Concluído</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ===== Modal: aparelho novo entrando com o código do gerente (2.14.0) ===== -->
+<div class="overlay" id="modalConectarCodigo">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-cabecalho">
+      <h2>Conectar à sincronização</h2>
+      <button class="fechar" onclick="fechar('modalConectarCodigo')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p style="margin-bottom:12px">Use o QR code ou o código de 6 números que aparece no aparelho do gerente (Configurações → Aparelhos conectados).</p>
+      <div class="cfg-acoes" id="ccLerQr" style="margin-bottom:12px"><button class="btn btn-escuro" onclick="conectarCodigoLerQr()">Ler QR code com a câmera</button></div>
+      <div class="campo"><label>Endereço do Worker</label><input type="url" id="ccUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Código</label><input type="text" id="ccCodigo" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="one-time-code"></div>
+        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="ccNome" maxlength="40" placeholder="Ex: Celular do caixa" onkeydown="if(event.key==='Enter')conectarCodigoConfirmar()"></div>
+      </div>
+      <div class="sy-status aviso" id="ccAviso" hidden>Os dados que estão neste aparelho serão substituídos pelos da loja.</div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalConectarCodigo')">Cancelar</button>
+        <button class="btn btn-amarelo" id="ccConfirmar" onclick="conectarCodigoConfirmar()">Conectar</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="modalSenha">
   <div class="modal" style="max-width:420px">
     <div class="modal-cabecalho">
@@ -1015,8 +1089,10 @@
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
     <span>Configurações</span>
   </button>
-  <!-- Modo Faz-de-Conta: chave no pé do menu lateral (só PC) -->
-  <label class="nav-sbx so-pc" title="Testar sem salvar nada">
+  <!-- Nível de acesso (2.14.0): troca rápida Gerente ⇄ Caixa no pé do menu lateral (só PC) -->
+  <div class="nav-nivel so-pc" id="navNivel"></div>
+  <!-- Modo Faz-de-Conta: chave no pé do menu lateral (só PC, só Gerente) -->
+  <label class="nav-sbx so-pc so-gerente" title="Testar sem salvar nada">
     <span><b>Modo Faz-de-Conta</b><small id="navSbxRotulo">Desligado</small></span>
     <span class="sbx-chave"><input type="checkbox" id="navSandbox" onchange="sandboxAlternar(this.checked)"><i></i></span>
   </label>

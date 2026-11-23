@@ -32,6 +32,58 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.14.0] - 2026-11-23
+
+> **Importante:** publique no Cloudflare a versão nova de `cloudflare/sync-worker.js` (Worker → Edit code → colar → Deploy).
+> Sem ela, o app continua sincronizando, mas os níveis de acesso e o QR code não funcionam.
+> Depois, abra o app em todos os aparelhos para que todos fiquem na 2.14.0.
+
+### Adicionado
+
+- **Níveis de acesso por aparelho (fase 1):**
+  - **Gerente:** acesso total (é o que todos os aparelhos tinham até agora).
+  - **Caixa:** só PDV e Histórico do dia, sem nenhum custo ou lucro (nem no aviso de margem do desconto, nem em "Houve custo?", nem no texto copiado do dia). Descontos e edições continuam pedindo a senha do gerente. Sem Estoque, Serviços, Métricas, Painel do Produto, Modo Faz-de-Conta e configurações sensíveis.
+  - **Só consulta:** Métricas e Histórico, só leitura (sem PDV, sem ⊕, sem editar movimentações). Não envia nada para a nuvem.
+  - Aparelho Gerente pode passar para o **modo Caixa** (ex.: funcionário usando o PC) e voltar ao modo Gerente com a senha do gerente: pelo pé do menu lateral (PC) ou em Configurações → Nível de acesso deste aparelho (celular). O modo aparece num selo no cabeçalho.
+  - Fase 1: os dados chegam completos a todos os aparelhos e o app esconde o que cada nível não vê. A criptografia dos custos ("caminho do meio") fica para uma versão futura.
+- **Conectar aparelho novo pelo QR code (como no WhatsApp Web):**
+  - Só um aparelho Gerente gera: Configurações → Aparelhos conectados → Conectar novo aparelho. Escolhe o nível, digita a senha do gerente e aparece o QR code + um código de 6 números.
+  - O código vale 2 minutos e uma vez só. A senha da sincronização (SENHA_SYNC) nunca vai no QR code: o aparelho novo recebe uma chave só dele.
+  - No aparelho novo: apontar a câmera do celular para o QR code (abre o app direto) ou Configurações → Sincronização → Conectar com o código do gerente (ler o QR pelo app ou digitar endereço + código).
+  - Aparelhos conectados mostra o nível de cada um; o gerente pode mudar o nível (vale na próxima sincronização daquele aparelho) ou remover. Removido, o aparelho Caixa/Só consulta é desconectado na hora e os dados da loja são apagados dele.
+  - Depois de 10 códigos errados seguidos, os códigos abertos deixam de valer.
+- **Botão "olho" no Histórico e nas Métricas:** esconde os valores em R$ daquela tela (cada tela tem o seu; a escolha fica guardada no aparelho). Copiar o dia continua copiando os valores reais.
+- Métricas: unidades de produto e serviços contadas separadamente ("5 un. e 2 serviços") no Faturamento, nos tooltips, rankings, categorias, formas de pagamento, horários, dias da semana e melhores datas. "Produto avulso" conta como unidade.
+
+### Alterado
+
+- No modo Gerente, alterar o preço de venda (cadastro e Painel do Produto) e editar movimentações (inclusive avulsas) não pede mais a senha. Configurações sensíveis continuam pedindo.
+- Métricas de um dia só (Hoje ou um dia escolhido): sem "Dias da semana" e "Melhores datas".
+- Métricas sem movimento: "Nenhuma venda hoje.", "Nenhuma venda esta semana.", "Nenhuma venda este mês.", "Nenhuma venda registrada ainda." (dias e períodos passados continuam "em …").
+- Métricas: linhas dos rankings e das barras só com o essencial (o detalhe fica no tooltip); os subtítulos dos cartões continuam. Tiles sem os textos explicativos.
+- PDV (PC): o PDV inteiro ocupa 80% da altura útil, centralizado na vertical. Durante a venda, o campo de leitura fica solto sobre o fundo (o pulso amarelo aparece inteiro) e a tabela vira um cartão próprio, 30px abaixo.
+- PDV: na consulta de preço, o selo diz só "Consulta de preço", maior e centralizado. Botão × da tabela da venda redondo e vermelho.
+- Listas e tabelas sem cantos arredondados (itens da venda, Estoque, Serviços, Histórico, listas das Configurações, barras de filtros e lista da tela do cliente); cartões e botões continuam arredondados.
+- Barra de recolher o menu lateral num tom mais claro, fácil de ver.
+
+### Segurança
+
+- **Senha do gerente guardada só como resumo protegido** (PBKDF2-SHA256, 150 mil rodadas). A senha em texto deixa de existir nos dados, no backup e na sincronização; a senha antiga é convertida sozinha. A senha padrão de fábrica não aparece mais no código, e Configurações avisa enquanto a loja ainda usa a senha padrão. Nova senha: mínimo de 6 caracteres.
+
+### Removido
+
+- Bordas amarelas do cabeçalho, do topo do menu lateral, do aviso (toast), do bloco "Pagamentos pendentes" e a borda à direita do menu lateral.
+- Link do título do cabeçalho (resquício de antes do menu).
+- Notas em texto das Métricas sobre vendas "a receber" pendentes e movimentações avulsas.
+- Selo "· não entrou na venda" da consulta de preço.
+
+### Notas técnicas
+
+- Worker: login por senha mestra (Gerente) ou por chave do aparelho (só o resumo SHA-256 fica no D1, coluna `aparelhos.chave_hash`); tabela `pareamentos`; rotas `POST /pareamento`, `POST /pareamento/usar`, `PATCH /aparelhos/{id}`; `GET /versao` devolve o nível; Caixa e Só consulta bloqueados em aparelhos, pareamento e cópias; Só consulta bloqueado em `PUT /dados` e `/push/enviar`. Tabelas e colunas novas são criadas sozinhas.
+- Gerador de QR code: `bibliotecas/qrcode.js` (qrcode-generator 1.4.4, licença MIT), carregado só quando o gerente abre o QR code.
+
+---
+
 ## [2.13.0] - 2026-11-21
 
 ### Adicionado

@@ -1,13 +1,15 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.13.0';
+const VERSAO = '2.14.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
    OBS: por estar no código, ela serve como trava de operação
    (estilo caixa de supermercado), não como segurança real. */
-const SENHA_ADMIN = 'CHINAMASTER999';   // senha padrão; pode ser trocada em Configurações
+/* Senha do gerente (2.14.0): guardada só como "resumo" lento (PBKDF2-SHA256), nunca o texto.
+   Este é o resumo da senha padrão de fábrica (a mesma das versões antigas): troque-a em Configurações. */
+const SENHA_PADRAO_HASH = { s:'y9qwpnWu/oaN716FFU4O4A==', h:'ejE+8Aus+4aDJiOcBsLrwfEiuC8cQogGBvhZf1Apq7Q=', i:150000 };
 
 /* ===== Armazenamento (localStorage com fallback em memória) ===== */
 let memoria = null;
@@ -113,7 +115,31 @@ function lucroDe(p){
 
 /* ===== Formatação ===== */
 const moeda = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
-function fmtBRL(v){ return v==null ? '—' : moeda.format(v); }
+function fmtBRL(v){ return v==null ? '—' : valoresOcultos() ? MASCARA_RS : moeda.format(v); }
+
+/* ----- Botão "olho" (Histórico e Métricas, cada um com o seu): esconde os valores em R$ da própria tela.
+   A escolha fica guardada neste aparelho. Copiar o dia continua copiando os valores reais. ----- */
+const MASCARA_RS = 'R$ ••••', OLHO_CHAVE = 'chinatown_ocultar_valores';
+let olhoTelas = (()=>{ try{ return JSON.parse(localStorage.getItem(OLHO_CHAVE)||'{}') || {}; }catch(e){ return {}; } })();
+let semMascara = false;
+function valoresOcultos(){
+  if(semMascara) return false;
+  try{ return !!olhoTelas[viewAtual]; }catch(e){ return false; }   // viewAtual ainda não existe no começo do arquivo
+}
+function olhoAlternar(tela){
+  olhoTelas[tela] = !olhoTelas[tela];
+  try{ localStorage.setItem(OLHO_CHAVE, JSON.stringify(olhoTelas)); }catch(e){}
+  olhoAtualizar();
+  if(tela==='historico') renderHistorico(); else renderDesempenho();
+}
+function olhoAtualizar(){
+  document.querySelectorAll('.hx-olho').forEach(b=>{
+    const oculto = !!olhoTelas[b.dataset.tela];
+    b.classList.toggle('oculto', oculto);
+    b.title = oculto ? 'Mostrar os valores' : 'Esconder os valores';
+    b.setAttribute('aria-pressed', oculto ? 'true' : 'false');
+  });
+}
 function fmtData(iso){ if(!iso) return ''; const [a,m,d]=iso.split('-'); return `${d}/${m}/${a}`; }
 function escapar(t){ return String(t).replace(/[&<>"]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
 
@@ -129,6 +155,7 @@ function alternarDirecao(){
 /* Data/hora da última movimentação do produto (para ordenar o Estoque); sem movimentação = '' */
 function ultimaMovDe(p){ return p.movimentacoes.reduce((m,x)=>{ const k = (x.data||'') + ' ' + (x.hora||''); return k>m ? k : m; }, ''); }
 function render(){
+  if(estado.config && 'senhaGerente' in estado.config) migrarSenhaGerente();   // senha antiga em texto (backup ou aparelho antigo)
   servicosTela();   // liga/desliga o módulo Serviços conforme a configuração (que também vem da sincronização)
   inventarioAviso();
   if(viewAtual==='servicos') renderServicos();
@@ -361,7 +388,7 @@ function salvarProduto(){
     const precoMudou = Math.abs((dados.preco||0) - (p.preco||0)) > 0.001;
     const aplicar = ()=>{ Object.assign(p, dados); salvar(); fechar('modalProduto'); render(); toast('Produto salvo.'); };
     if(precoMudou){
-      pedirSenha(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
+      senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
     } else {
       aplicar();
     }
@@ -691,6 +718,7 @@ function descontoPrevia(){
    Item: margem do item depois da promoção e deste desconto. Venda: margem da venda toda depois do desconto. */
 const MARGEM_MINIMA = 40;
 function descontoAvisoMargem(c){
+  if(!ehGerente()) return '';   // Caixa não vê custo nem margem
   const r = pdvResumo();
   const linhas = dc.alvo==='venda' ? r.linhas : [r.linhas[dc.alvo]].filter(Boolean);
   if(!linhas.length) return '';
@@ -865,7 +893,7 @@ function avulsaCusto(){ document.getElementById('avCustoCampo').style.display = 
 function avulsaTotais(){
   const el = document.getElementById('avTotal'); if(!el) return;
   const q = parseInt(val('avQtd'))||0, v = parseFloat(val('avValor')), c = parseFloat(val('avCusto'));
-  const temCusto = document.getElementById('avTemCusto').checked && c>0;
+  const temCusto = document.getElementById('avTemCusto').checked && c>0 && ehGerente();
   el.innerHTML = q>0 && v>0
     ? `<span>Total: <b>${fmtBRL(cent(q*v))}</b>${q>1 ? ` <small>(${q} × ${fmtBRL(v)})</small>` : ''}</span>${temCusto ? `<span>Custo total: <b>${fmtBRL(cent(q*c))}</b></span>` : ''}`
     : '';
@@ -928,10 +956,11 @@ function salvarAvulsa(){
   toast('Movimentação avulsa registrada.');
   notificarVenda({ total:dados.valor, unidades:qtd, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
 }
-/* Editar ou excluir: como nas outras movimentações, pede a senha do gerente */
+/* Editar ou excluir: no modo Caixa pede a senha do gerente (no modo Gerente, não) */
 function pedirEdicaoAvulsa(id){
   const a = (estado.avulsas||[]).find(x=>x.id===id); if(!a) return;
-  pedirSenha(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente.`);
+  if(nivelAtual()==='consulta') return;
+  senhaSeNaoGerente(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente.`);
 }
 function excluirAvulsa(){
   const a = (estado.avulsas||[]).find(x=>x.id===avEditando); if(!a) return;
@@ -986,7 +1015,7 @@ function pdvVisorHtml(){
       </div>`;
     }
     return `<div class="pdv-visor-in ${consulta?'consulta':'adicionado'}">
-      <div class="pdv-selo">${consulta ? 'Consulta de preço · não entrou na venda' : `Na venda · ${it?it.qtd:1} un.`}</div>
+      <div class="pdv-selo${consulta?' pdv-selo-consulta':''}">${consulta ? 'Consulta de preço' : `Na venda · ${it?it.qtd:1} un.`}</div>
       <div class="pdv-prod">
         ${pdvFotoHtml(p)}
         <div class="pdv-info">
@@ -1013,7 +1042,7 @@ function pdvVisorHtml(){
         <em>Parabéns pela venda!</em>
         <b>${fmtBRL(v.total)}</b>
         <span>${v.unidades} un. em ${v.produtos} produto(s) · ${escapar(textoPagamentos(v))}</span>
-        <button type="button" class="pdv-link-ds" onclick="mostrarView('desempenho')">Veja como estão as vendas nas Métricas →</button>
+        <button type="button" class="pdv-link-ds so-gerente" onclick="mostrarView('desempenho')">Veja como estão as vendas nas Métricas →</button>
       </div>
     </div>`;
   }
@@ -1078,7 +1107,7 @@ function renderPdv(){
       <div class="pdv-col-unit pdv-item-unit">${l.promo?`<s>${fmtBRL(l.unit)}</s>`:''}${fmtBRL(l.unitPromo)}</div>
       <div class="pdv-item-total">${fmtBRL(l.liquido)}${l.descManual>0?`<small>−${fmtBRL(l.descManual)}${rotuloDesconto(l.it.desc)}</small>`:''}</div>
       <button type="button" class="pdv-ico${l.descManual>0?' ligado':''}" onclick="abrirDesconto(${l.i})" title="Desconto neste item" aria-label="Desconto neste item">%</button>
-      <button type="button" class="pdv-ico" onclick="pdvRemover(${l.i})" title="Remover da venda" aria-label="Remover da venda">×</button>
+      <button type="button" class="pdv-ico pdv-x" onclick="pdvRemover(${l.i})" title="Remover da venda" aria-label="Remover da venda">×</button>
     </div>`).join('')
     : `<div class="pdv-lista-vazia">${pdv.ativa ? 'Os produtos lidos aparecem aqui.' : 'Clique em “Iniciar venda” para começar.'}</div>`;
 
@@ -1156,20 +1185,21 @@ document.addEventListener('keydown', e=>{
 
 /* ===== Leitor de código de barras por câmera (BarcodeDetector) ===== */
 let scanStream = null, scanTimer = null, scanDetector = null, scanAlvo = 'pCodigoBarras';
+let scanModoQr = false;   // 2.14.0: ler o QR code de conexão de um aparelho novo
 async function abrirScanner(alvo){
   if(typeof alvo==='string') scanAlvo = alvo; else if(!vendaScanAtivo) scanAlvo = 'pCodigoBarras';
   if(!('BarcodeDetector' in window)){
-    toast('Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
-    vendaScanAtivo = false; compraScanIdx = null; return;
+    toast(scanModoQr ? 'Este navegador não lê QR code. Digite o endereço e o código.' : 'Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
+    vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false; return;
   }
   try{
-    scanDetector = new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+    scanDetector = new window.BarcodeDetector({formats: scanModoQr ? ['qr_code'] : ['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
   }catch(e){ scanDetector = new window.BarcodeDetector(); }
   try{
     scanStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão.');
-    vendaScanAtivo = false; compraScanIdx = null; return;
+    vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false; return;
   }
   const v = document.getElementById('scanVideo');
   v.srcObject = scanStream;
@@ -1185,9 +1215,11 @@ async function loopScan(){
     if(codes && codes.length){
       const raw = codes[0].rawValue;
       const paraVenda = vendaScanAtivo;   // guarda o contexto antes de fecharScanner() zerar a flag
-      const paraCompra = compraScanIdx;
+      const paraCompra = compraScanIdx, paraQr = scanModoQr;
       fecharScanner();
-      if(paraCompra!==null){
+      if(paraQr){
+        conectarQrLido(raw);
+      } else if(paraCompra!==null){
         compraCodigoLido(paraCompra, raw);
       } else if(paraVenda){
         pdvCodigoLido(raw);   // PDV: adiciona à venda ou consulta o preço
@@ -1203,7 +1235,7 @@ async function loopScan(){
 function fecharScanner(){
   if(scanTimer){ clearTimeout(scanTimer); scanTimer=null; }
   if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
-  vendaScanAtivo = false; compraScanIdx = null;
+  vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false;
   fechar('modalScanner');
 }
 
@@ -1472,6 +1504,7 @@ const PP_ABAS = [
   { id:'fornecedores', nome:'Fornecedores' }
 ];
 function abrirMov(id, aba){
+  if(!ehGerente()) return;   // o Painel do Produto mostra custos e permite editar: só no modo Gerente
   produtoAtivo = id;
   ppAba = aba || 'estoque';
   renderMov();
@@ -1665,7 +1698,7 @@ function salvarDadosPainel(){
   if(foto && !/^https?:\/\//i.test(foto)){ toast('O link da foto precisa começar com http:// ou https://'); return; }
   const aplicar = ()=>{ Object.assign(p, dados); if(foto) p.foto = foto; else delete p.foto; salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
   if(Math.abs((dados.preco||0)-(p.preco||0)) > 0.001)
-    pedirSenha(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
+    senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
   else aplicar();
 }
 
@@ -1837,11 +1870,56 @@ function pedirSenha(callback, mensagem){
   setTimeout(()=>document.getElementById('senhaInput').focus(), 50);
 }
 function cancelarSenha(){ acaoSenha = null; fechar('modalSenha'); }
-function confirmarSenha(){
-  if(document.getElementById('senhaInput').value !== senhaGerente()){ toast('Senha incorreta.'); return; }
+let senhaConferindo = false;
+async function confirmarSenha(){
+  if(senhaConferindo) return;
+  senhaConferindo = true;
+  let ok = false;
+  try{ ok = await senhaConfere(document.getElementById('senhaInput').value); }
+  finally{ senhaConferindo = false; }
+  if(!ok){ toast('Senha incorreta.'); return; }
   fechar('modalSenha');
   const cb = acaoSenha; acaoSenha = null;
   if(cb) cb();
+}
+/* Gerente no aparelho: editar preço e movimentações não pede senha (2.14.0). Caixa: pede. */
+function senhaSeNaoGerente(cb, mensagem){ if(ehGerente()) cb(); else pedirSenha(cb, mensagem); }
+
+/* ----- Resumo lento da senha (PBKDF2-SHA256, Web Crypto) ----- */
+const b64De = u8 => btoa(String.fromCharCode(...u8));
+const deB64 = t => Uint8Array.from(atob(t), c=>c.charCodeAt(0));
+async function resumoSenha(senha, salB64, iter){
+  const sal = salB64 ? deB64(salB64) : crypto.getRandomValues(new Uint8Array(16));
+  const it = iter || 150000;
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(senha)), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt:sal, iterations:it }, k, 256));
+  return { s:b64De(sal), h:b64De(bits), i:it };
+}
+function senhaReferencia(){ const c = estado.config || {}; return c.senhaGerenteHash && c.senhaGerenteHash.h ? c.senhaGerenteHash : SENHA_PADRAO_HASH; }
+function senhaEhPadrao(){ return senhaReferencia()===SENHA_PADRAO_HASH; }
+async function senhaConfere(senha){
+  if(!senha) return false;
+  const ref = senhaReferencia();
+  try{
+    const r = await resumoSenha(senha, ref.s, ref.i);
+    let dif = r.h.length ^ ref.h.length;
+    for(let i=0;i<Math.min(r.h.length, ref.h.length);i++) dif |= r.h.charCodeAt(i) ^ ref.h.charCodeAt(i);
+    return dif===0;
+  }catch(e){ toast('Este navegador não conseguiu conferir a senha.'); return false; }
+}
+/* Senha antiga em texto (até a 2.13.0): vira resumo e o texto é apagado */
+let migrandoSenha = false;
+async function migrarSenhaGerente(){
+  const c = estado.config || {};
+  if(migrandoSenha || !('senhaGerente' in c)) return;
+  if(c.senhaGerenteHash && c.senhaGerenteHash.h){ delete c.senhaGerente; if(!sandbox.ativo) salvar(); return; }
+  migrandoSenha = true;
+  try{
+    const texto = c.senhaGerente;
+    if(texto){ const r = await resumoSenha(texto); if(estado.config.senhaGerente===texto) estado.config.senhaGerenteHash = r; }
+    delete estado.config.senhaGerente;
+    if(!sandbox.ativo) salvar();
+  }catch(e){} finally{ migrandoSenha = false; }
 }
 
 /* ===== Confirmação genérica ===== */
@@ -1935,6 +2013,11 @@ function intervaloDe(P){
   const ini = new Date(r.getFullYear(), r.getMonth(), 1), fim = new Date(r.getFullYear(), r.getMonth()+1, 0);
   return { de:isoDe(ini), ate:isoDe(fim) };
 }
+/* "Nenhuma venda hoje." / "esta semana" / "este mês" / "registrada ainda" / "em 20/11/2026" */
+function textoSemVendas(P){
+  const r = rotuloDe(P), especiais = { 'Hoje':'hoje', 'Esta semana':'esta semana', 'Este mês':'este mês', 'Este ano':'este ano', 'Todo o período':'registrada ainda' };
+  return `Nenhuma venda ${especiais[r] || 'em ' + r}.`;
+}
 function rotuloDe(P){
   const h = hoje();
   if(P.tipo==='tudo') return 'Todo o período';
@@ -2016,6 +2099,11 @@ function histAlternarDir(){
 /* A altura do Histórico vem do CSS (layout em "casca": só a área de conteúdo rola; no Histórico, só a lista) */
 
 function renderHistorico(){
+  const caixa = nivelAtual()==='caixa';
+  // Caixa: só o dia de hoje, sem compras nem inventário (que mostram custo)
+  if(caixa && !(hxPeriodo.tipo==='dia' && hxPeriodo.ref===hoje())) hxPeriodo = { tipo:'dia', ref:hoje() };
+  document.querySelectorAll('#fhTipo option[value="aquisicao"], #fhTipo option[value="inicial"]').forEach(o=>{ o.hidden = caixa; o.disabled = caixa; });
+  if(caixa && ['aquisicao','inicial'].includes(val('fhTipo'))) document.getElementById('fhTipo').value = '';
   histPor = document.getElementById('histOrdenar').value;
   document.getElementById('hxPeriodoRotulo').textContent = rotuloPeriodo() + ' ▾';
   document.querySelectorAll('.hx-seta').forEach(b=>b.disabled = hxPeriodo.tipo==='tudo');
@@ -2047,6 +2135,7 @@ function renderHistorico(){
   });
 
   linhas = linhas.filter(l=>{
+    if(caixa && (l.tipoF==='aquisicao' || l.tipoF==='inicial')) return false;
     if(fTipo ? l.tipoF!==fTipo : l.tipoF==='inicial') return false;   // entradas de inventário só aparecem filtrando por elas
     if(fCat && l.categoria!==fCat) return false;
     if(fPag){   // só movimentações com dinheiro entrando (vendas, recebidos e avulsas)
@@ -2146,8 +2235,9 @@ function renderHistorico(){
       </div>
     </div>`;
   }).join('');
-  cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
-    toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+  if(nivelAtual()!=='consulta')   // Só consulta: sem edição
+    cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
+      toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
 }
 
 /* Horário da movimentação, embaixo do selo do tipo e da forma de pagamento */
@@ -2157,7 +2247,12 @@ function horaMov(m){ return m.hora ? `<small class="hx-hora">${escapar(m.hora)}<
    "Nome do produto · R$ valor (+R$ lucro) · Forma de pagamento". Respeita os filtros da tela. */
 let hxDias = {};
 function copiarDiaHistorico(data){
+  semMascara = true;   // o texto copiado leva os valores reais, mesmo com o "olho" fechado
+  try{ copiarDiaHistoricoTexto(data); } finally { semMascara = false; }
+}
+function copiarDiaHistoricoTexto(data){
   const itens = hxDias[data] || []; if(!itens.length) return;
+  const semLucro = !ehGerente() && nivelAtual()!=='consulta';   // Caixa não vê lucro
   const custos = custosFIFO();
   let total = 0, lucroT = 0;
   const ds = dataDe(data);
@@ -2170,7 +2265,7 @@ function copiarDiaHistorico(data){
       const custo = m.tipo==='avulsa' ? (m.custo||0) : (custos.get(m.id)||0);
       const lucro = (valor||0) - custo;
       total += valor||0; lucroT += lucro;
-      partes.push(`${fmtBRL(valor||0)} (${sinal(lucro)})`);
+      partes.push(semLucro ? fmtBRL(valor||0) : `${fmtBRL(valor||0)} (${sinal(lucro)})`);
       if(m.pagamento) partes.push(textoPagamentos(m));
     } else {
       if(valor!=null) partes.push((valor<0?'−':'') + fmtBRL(Math.abs(valor)));
@@ -2179,7 +2274,7 @@ function copiarDiaHistorico(data){
     return partes.join(' · ');
   });
   const texto = [`Movimentações de ${fmtData(data)} (${SEMANA_EXTENSO[ds.getDay()].toLowerCase()})`, ...linhasTxt,
-    total ? `Total de vendas: ${fmtBRL(total)} (${sinal(lucroT)})` : ''].filter(Boolean).join('\n');
+    total ? `Total de vendas: ${fmtBRL(total)}${semLucro ? '' : ` (${sinal(lucroT)})`}` : ''].filter(Boolean).join('\n');
   copiarTexto(texto, `${itens.length} movimentação(ões) de ${fmtData(data)} copiada(s).`);
 }
 function copiarTexto(texto, aviso){
@@ -2212,7 +2307,8 @@ let editMov = null;
 function pedirEdicaoMov(pid, mid){
   const p = prod(pid); const m = p && p.movimentacoes.find(x=>x.id===mid);
   if(!m) return;
-  pedirSenha(()=>abrirEdicaoMov(pid, mid),
+  if(nivelAtual()==='consulta') return;
+  senhaSeNaoGerente(()=>abrirEdicaoMov(pid, mid),
     `Editar ${m.tipo==='entrada'?'a entrada':'a saída'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)}). Digite a senha do gerente.`);
 }
 function abrirEdicaoMov(pid, mid){
@@ -2582,6 +2678,7 @@ let viewAtual = 'pdv', viewAnterior = 'pdv';
 function mostrarView(v){
   if(!VIEWS[v]) return;
   if(v==='servicos' && !servicosAtivos()) v = 'estoque';
+  if(!viewPermitida(v)) v = viewInicial();   // níveis de acesso (2.14.0)
   if(viewAtual!==v && viewAtual!=='alertas' && viewAtual!=='config') viewAnterior = viewAtual;
   viewAtual = v;
   Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
@@ -2594,7 +2691,7 @@ function mostrarView(v){
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
   document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');   // no PC a engrenagem some e Configurações fica no menu lateral
-  document.getElementById('fab').style.display = (v==='estoque' || v==='historico' || v==='servicos') ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
+  document.getElementById('fab').style.display = (v==='estoque' || v==='historico' || v==='servicos') && nivelAtual()!=='consulta' ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
   document.querySelectorAll('#fabMenu [data-fab]').forEach(b=>b.style.display = b.dataset.fab===v ? '' : 'none');   // cada tela tem as suas ações
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
   document.body.classList.toggle('modo-estoque', v==='estoque' || v==='servicos');   // idem no Estoque e em Serviços: filtros e cabeçalho fixos
@@ -2630,8 +2727,8 @@ function renderViewAtual(){
 /* =========================================================
    CONFIGURAÇÕES (backup e senha do gerente)
    ========================================================= */
-function senhaGerente(){ return (estado.config && estado.config.senhaGerente) || SENHA_ADMIN; }
 function renderConfig(){
+  nivelRenderConfig(); senhaRenderAviso();
   syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
@@ -2641,17 +2738,24 @@ function renderConfig(){
   el.textContent = `Último backup: ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}` + (dias>=7 ? ` (há ${dias} dias — vale baixar um novo)` : '');
   el.style.color = dias>=7 ? 'var(--vermelho)' : '';
 }
-function alterarSenha(){
+async function alterarSenha(){
+  if(emSandbox('alterar a senha')) return;
   const atual = val('cfgSenhaAtual'), nova = val('cfgSenhaNova'), rep = val('cfgSenhaRep');
-  if(atual !== senhaGerente()){ toast('Senha atual incorreta.'); return; }
-  if(nova.length < 4){ toast('A nova senha precisa ter ao menos 4 caracteres.'); return; }
+  if(!(await senhaConfere(atual))){ toast('Senha atual incorreta.'); return; }
+  if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
   if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
   if(nova === atual){ toast('A nova senha é igual à atual.'); return; }
+  if((await resumoSenha(nova, SENHA_PADRAO_HASH.s, SENHA_PADRAO_HASH.i)).h===SENHA_PADRAO_HASH.h){ toast('Escolha uma senha diferente da senha padrão.'); return; }
   estado.config = estado.config || {};
-  estado.config.senhaGerente = nova;
+  estado.config.senhaGerenteHash = await resumoSenha(nova);
+  delete estado.config.senhaGerente;
   salvar();
   ['cfgSenhaAtual','cfgSenhaNova','cfgSenhaRep'].forEach(id=>document.getElementById(id).value='');
-  mostrarAviso('Senha alterada', '<p>A senha do gerente foi alterada.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Ela vale para este navegador e entra no próximo backup. Se você restaurar um backup antigo, volta a senha que estava nele.</p>');
+  senhaRenderAviso();
+  mostrarAviso('Senha alterada', '<p>A senha do gerente foi alterada.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">A senha em si não fica guardada em lugar nenhum: o app guarda só um resumo protegido dela, que vai junto para os outros aparelhos pela sincronização e entra no próximo backup. Se você restaurar um backup antigo, volta a senha que estava nele.</p>');
+}
+function senhaRenderAviso(){
+  const el = document.getElementById('cfgSenhaPadrao'); if(el) el.hidden = !senhaEhPadrao();
 }
 
 /* A consulta de produtos pela API GTIN foi removida na 2.0.0 (não encontrava os produtos da loja).
@@ -2746,14 +2850,14 @@ function renderAlertas(){
       <div class="ini-item${lido?' lido':''}">
         <div class="nome">${escapar(p.nome)}${lido?' <span class="ini-tag">Lido</span>':''}<small>${p.marca?escapar(p.marca)+' · ':''}mínimo ${p.minimo||0} un.</small></div>
         <div class="val" style="color:${est<=0?'var(--vermelho)':'inherit'}">${est} un.<small>${est<=0?'sem estoque':'em estoque'}</small></div>
-        <button class="btn btn-amarelo btn-mini" onclick="abrirRegistroEntrada('${p.id}')">+ Entrada</button>
-        <button class="ini-mais" onclick="abrirOpcoesAlerta('${p.id}')" title="Marcar como lido, lembrar depois ou dispensar" aria-label="Opções do alerta">⋯</button>
+        <button class="btn btn-amarelo btn-mini so-gerente" onclick="abrirRegistroEntrada('${p.id}')">+ Entrada</button>
+        <button class="ini-mais nao-consulta" onclick="abrirOpcoesAlerta('${p.id}')" title="Marcar como lido, lembrar depois ou dispensar" aria-label="Opções do alerta">⋯</button>
       </div>`; }).join('') : `<div class="ini-vazio">Nenhum alerta ativo agora, mas ${ocultos.length} produto(s) continua(m) abaixo do mínimo, com o alerta adiado ou dispensado (veja abaixo).</div>`}
     ${ocultos.length ? `<details class="ini-ocultos"><summary>${ocultos.length} alerta(s) adiado(s) ou dispensado(s)</summary>
       ${ocultos.map(p=>{ const a = p.alerta; return `
       <div class="ini-item">
         <div class="nome">${escapar(p.nome)}<small>${a.estado==='adiado' ? `lembrete em ${fmtData(a.ate)}` : 'dispensado até o estoque ser reposto'} · ${estoqueDe(p)} un.</small></div>
-        <button class="btn btn-claro btn-mini" onclick="alertaRestaurar('${p.id}')">Mostrar de novo</button>
+        <button class="btn btn-claro btn-mini nao-consulta" onclick="alertaRestaurar('${p.id}')">Mostrar de novo</button>
       </div>`; }).join('')}</details>` : ''}
   </div>`;
 
@@ -2764,7 +2868,7 @@ function renderAlertas(){
       <div class="ini-item">
         <div class="nome">${escapar(p.nome)}<small>${m.qtd} un. · saída em ${fmtData(m.data)}</small></div>
         <div class="val">${d<=0?'hoje':d+(d===1?' dia':' dias')}<small>pendente</small></div>
-        <button class="btn btn-claro btn-mini" onclick="abrirReceber('${p.id}')">Receber</button>
+        <button class="btn btn-claro btn-mini nao-consulta" onclick="abrirReceber('${p.id}')">Receber</button>
       </div>`; }).join('') : '<div class="ini-vazio">Nenhum pagamento pendente.</div>'}
   </div>`;
 
@@ -2846,7 +2950,7 @@ function vendasDe(de, ate){
     if(de && m.data<de) return;
     if(ate && m.data>ate) return;
     const receita = m.qtd*(m.precoVenda||0), custo = custos.get(m.id)||0;
-    lista.push({ p, m, data:m.data, qtd:m.qtd, receita, custo, lucro:receita-custo, pagamento:m.pagamento||'' });
+    lista.push({ p, m, data:m.data, qtd:m.qtd, qtdS:0, receita, custo, lucro:receita-custo, pagamento:m.pagamento||'' });
   }));
   // Movimentações avulsas (serviços e produtos sem cadastro): receita sem custo informado.
   // Ficam num "produto" virtual por tipo, com a categoria "Serviços" ou "Produtos avulsos".
@@ -2855,12 +2959,21 @@ function vendasDe(de, ate){
     if(ate && a.data>ate) return;
     const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
     const custo = a.custo || 0;   // "Houve custo?" (2.6.0); antes era sempre 0
-    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, data:a.data, qtd:a.qtd||1, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
+    const sv = a.tipo==='servico';   // serviços contam à parte ("5 un. e 2 serviços")
+    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, servico:sv, data:a.data, qtd:sv?0:(a.qtd||1), qtdS:sv?(a.qtd||1):0, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
   });
   return lista;
 }
-function soma(lista, k){ return lista.reduce((s,x)=>s+x[k],0); }
+function soma(lista, k){ return lista.reduce((s,x)=>s+(x[k]||0),0); }
+/* "5 un. e 2 serviços" — unidades de produto e serviços somados separadamente */
+function fmtQtd(x){
+  const p = Math.round(x.qtd||0), sv = Math.round(x.qtdS||0), partes = [];
+  if(p || !sv) partes.push(`${p} un.`);
+  if(sv) partes.push(`${sv} ${sv===1?'serviço':'serviços'}`);
+  return partes.join(' e ');
+}
 function fmtCompacto(v){
+  if(valoresOcultos()) return 'R$ •••';
   const a = Math.abs(v);
   if(a>=1e6) return 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi';
   if(a>=1e4) return 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil';
@@ -2883,38 +2996,27 @@ function renderDesempenho(){
   dsVendasAtuais = vendas;
   const cont = document.getElementById('dsConteudo');
 
-  const pendentes = [];
-  estado.produtos.forEach(p=>saidas(p).forEach(m=>{
-    if(m.motivo==='A receber' && !m.recebido && (!de || m.data>=de) && (!ate || m.data<=ate)) pendentes.push(m);
-  }));
-  const avs = vendas.filter(v=>v.avulsa);
-  const notaAvulsa = avs.length
-    ? (()=>{ const semCusto = avs.filter(v=>!v.custo).length;
-        return `<p class="dica ds-nota">Inclui ${fmtBRL(soma(avs,'receita'))} em ${avs.length} movimentação(ões) avulsa(s) (serviços e produtos sem cadastro)${soma(avs,'custo')>0 ? `, com ${fmtBRL(soma(avs,'custo'))} de custo informado` : ''}.${semCusto ? ` ${semCusto===avs.length?'Elas':`${semCusto} delas`} não têm custo informado, então entram inteiras no lucro.` : ''}</p>`; })() : '';
-  const notaPend = pendentes.length
-    ? `<p class="dica ds-nota">${soma(pendentes,'qtd')} un. em vendas “a receber” ainda pendentes neste período não entram nos números até o recebimento.</p>` : '';
-
   if(!vendas.length){
-    cont.innerHTML = `<div class="ds-vazio"><b>Nenhuma venda em ${escapar(rotuloDe(dsPeriodo))}.</b><br>Use as setas ou o menu do período para ver outro intervalo.</div>${notaPend}` + dsBlocoParados();
+    cont.innerHTML = `<div class="ds-vazio"><b>${escapar(textoSemVendas(dsPeriodo))}</b><br>Use as setas ou o menu do período para ver outro intervalo.</div>` + dsBlocoParados();
     return;
   }
+  const umDia = !!de && de===ate;   // um dia só: "Dias da semana" e "Melhores datas" não dizem nada
 
   const fat = soma(vendas,'receita'), custo = soma(vendas,'custo'), lucro = fat-custo;
   const margem = fat>0 ? lucro/fat*100 : NaN;
 
   cont.innerHTML = `
     <div class="ds-tiles">
-      <div class="ds-tile"><span>Faturamento</span><b>${fmtBRL(fat)}</b><small>${soma(vendas,'qtd')} un. vendidas</small></div>
-      <div class="ds-tile"><span>Custo das vendas</span><b>${fmtBRL(custo)}</b><small>custo dos lotes vendidos</small></div>
-      <div class="ds-tile"><span>Lucro bruto</span><b class="${lucro<0?'neg':''}">${fmtBRL(lucro)}</b><small>faturamento − custo</small></div>
-      <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b><small>lucro ÷ faturamento</small></div>
+      <div class="ds-tile"><span>Faturamento</span><b>${fmtBRL(fat)}</b><small>${fmtQtd({ qtd:soma(vendas,'qtd'), qtdS:soma(vendas,'qtdS') })}</small></div>
+      <div class="ds-tile"><span>Custo das vendas</span><b>${fmtBRL(custo)}</b></div>
+      <div class="ds-tile"><span>Lucro bruto</span><b class="${lucro<0?'neg':''}">${fmtBRL(lucro)}</b></div>
+      <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b></div>
     </div>
-    ${notaPend}${notaAvulsa}
     ${dsBlocoEvolucao(vendas, de, ate)}
-    <div class="ds-grade">
+    ${umDia ? '' : `<div class="ds-grade">
       ${dsBlocoSemana(vendas, de, ate)}
       ${dsBlocoMelhoresDatas(vendas)}
-    </div>
+    </div>`}
     <div class="ds-grade">
       ${dsBlocoProdutos(vendas)}
       ${dsBlocoCategorias(vendas)}
@@ -2948,7 +3050,7 @@ function dsBlocoEvolucao(vendas, de, ate){
     while(d<=f){ pontos.push({ chave:isoDe(d), rotulo:fmtData(isoDe(d)).slice(0,5), fat:0, lucro:0, n:0 }); d.setDate(d.getDate()+1); }
   }
   const idx = new Map(pontos.map((p,i)=>[p.chave,i]));
-  vendas.forEach(v=>{ const i = idx.get(porMes ? v.data.slice(0,7) : v.data); if(i==null) return; pontos[i].fat+=v.receita; pontos[i].lucro+=v.lucro; pontos[i].n+=v.qtd; });
+  vendas.forEach(v=>{ const i = idx.get(porMes ? v.data.slice(0,7) : v.data); if(i==null) return; pontos[i].fat+=v.receita; pontos[i].lucro+=v.lucro; pontos[i].qtd=(pontos[i].qtd||0)+v.qtd; pontos[i].qtdS=(pontos[i].qtdS||0)+v.qtdS; });
   dsSerie = { pontos, porMes };
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Evolução no tempo</h3><small>${porMes?'Por mês':'Por dia'} · faturamento e lucro</small></div>
@@ -3005,7 +3107,7 @@ function ligarCrosshair(){
     mostrarTip(`<b>${dsSerie.porMes ? p.rotulo : fmtData(p.chave)+' · '+SEMANA_CURTA[dataDe(p.chave).getDay()]}</b>
       <span><i style="background:${DS_COR.fat}"></i>Faturamento <em>${fmtBRL(p.fat)}</em></span>
       <span><i style="background:${DS_COR.lucro}"></i>Lucro <em>${fmtBRL(p.lucro)}</em></span>
-      <span class="ds-tip-sec">${p.n} un. vendidas</span>`, bx.left+X, bx.top + +d.t);
+      <span class="ds-tip-sec">${fmtQtd(p)}</span>`, bx.left+X, bx.top + +d.t);
   };
   r.addEventListener('mousemove', mover);
   r.addEventListener('touchstart', mover, {passive:true});
@@ -3016,7 +3118,7 @@ function ligarCrosshair(){
 /* ----- Vendas por categoria (barras horizontais, uma cor) ----- */
 function dsCategoriasLista(vendas){
   const g = {};
-  vendas.forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; });
+  vendas.forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0, qtdS:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; g[c].qtdS+=v.qtdS; });
   return Object.values(g).sort((a,b)=>b.fat-a.fat);
 }
 function dsBlocoCategorias(vendas){
@@ -3035,8 +3137,8 @@ function dsVerCategorias(){
 function dsBarrasCategoriasHtml(lista, todas){
   const max = todas[0].fat || 1, total = soma(todas,'fat') || 1;
   return `<div class="ds-barras">${lista.map(c=>`
-      <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Lucro <em>${fmtBRL(c.lucro)}</em></span><span>Margem <em>${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
-        <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.qtd} un. · margem ${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</small></div>
+      <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Lucro <em>${fmtBRL(c.lucro)}</em></span><span>Margem <em>${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</em></span><span class='ds-tip-sec'>${fmtQtd(c)} · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
+        <div class="ds-barra-rot">${escapar(c.nome)}<small>${fmtQtd(c)} · margem ${fmtPctDs(c.fat?c.lucro/c.fat*100:NaN)}</small></div>
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${DS_COR.fat}"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
       </div>`).join('')}</div>`;
@@ -3049,8 +3151,8 @@ function dsBlocoHorarios(vendas){
   vendas.forEach(v=>{
     const h = parseInt((v.m.hora||'').slice(0,2));
     if(isNaN(h)){ semHora++; return; }
-    g[h] = g[h] || { h, vendas:new Set(), fat:0, qtd:0 };
-    g[h].vendas.add(v.m.vendaId || v.m.id); g[h].fat += v.receita; g[h].qtd += v.qtd;
+    g[h] = g[h] || { h, vendas:new Set(), fat:0, qtd:0, qtdS:0 };
+    g[h].vendas.add(v.m.vendaId || v.m.id); g[h].fat += v.receita; g[h].qtd += v.qtd; g[h].qtdS += v.qtdS;
   });
   const lista = Object.values(g).map(x=>({ ...x, n:x.vendas.size })).sort((a,b)=>b.n-a.n || b.fat-a.fat).slice(0,5);
   if(!lista.length) return '';
@@ -3058,11 +3160,11 @@ function dsBlocoHorarios(vendas){
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Horários de maior movimento</h3><small>As faixas de 1 hora com mais vendas no período${semHora ? ' (vendas sem horário registrado ficam de fora)' : ''}</small></div></div>
     <ol class="ds-rank">${lista.map((x,i)=>`
-      <li data-tip="<b>${faixa(x.h)}</b><span>Vendas <em>${x.n}</em></span><span>Faturamento <em>${fmtBRL(x.fat)}</em></span><span class='ds-tip-sec'>${x.qtd} un.</span>">
+      <li data-tip="<b>${faixa(x.h)}</b><span>Vendas <em>${x.n}</em></span><span>Faturamento <em>${fmtBRL(x.fat)}</em></span><span class='ds-tip-sec'>${fmtQtd(x)}</span>">
         <span class="ds-rank-n">${i+1}</span>
         <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${faixa(x.h)}</span><b>${x.n} venda(s)</b></div>
           <div class="ds-mini"><div style="width:${x.n/max*100}%;background:${DS_COR.lucro}"></div></div>
-          <small>${fmtBRL(x.fat)} · ${x.qtd} un.</small></div>
+          <small>${fmtBRL(x.fat)} · ${fmtQtd(x)}</small></div>
       </li>`).join('')}</ol>
   </div>`;
 }
@@ -3072,8 +3174,8 @@ function dsBlocoPagamentos(vendas){
   const g = {};
   // venda paga com duas formas: cada forma recebe a sua parte do valor (ex.: R$ 20 em Espécie e R$ 30 em Pix)
   vendas.forEach(v=>partesPagamento(v.m).forEach(({id:k, frac})=>{
-    g[k] = g[k] || { id:k, fat:0, qtd:0, vendas:new Set() };
-    g[k].fat += v.receita*frac; g[k].qtd += v.qtd*frac; g[k].vendas.add(v.m.vendaId || v.m.id);
+    g[k] = g[k] || { id:k, fat:0, qtd:0, qtdS:0, vendas:new Set() };
+    g[k].fat += v.receita*frac; g[k].qtd += v.qtd*frac; g[k].qtdS += v.qtdS*frac; g[k].vendas.add(v.m.vendaId || v.m.id);
   }));
   Object.values(g).forEach(x=>x.qtd = Math.round(x.qtd));
   // da forma mais usada (nº de vendas) para a menos usada; empate: maior faturamento
@@ -3084,7 +3186,7 @@ function dsBlocoPagamentos(vendas){
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Formas de pagamento</h3><small>Faturamento no período, pela forma registrada em cada venda. Venda paga com duas formas entra em cada uma com a sua parte.</small></div></div>
     <div class="ds-barras">${lista.map(c=>`
-      <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${c.qtd} un. · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
+      <div class="ds-barra-linha" data-tip="<b>${escapar(c.nome)}</b><span>Faturamento <em>${fmtBRL(c.fat)}</em></span><span>Vendas <em>${c.n}</em></span><span class='ds-tip-sec'>${fmtQtd(c)} · ${fmtPctDs(c.fat/total*100)} do faturamento</span>">
         <div class="ds-barra-rot">${escapar(c.nome)}<small>${c.n} venda(s) · ${fmtPctDs(c.fat/total*100)}</small></div>
         <div class="ds-barra-trilho"><div class="ds-barra" style="width:${Math.max(1.5, c.fat/max*100)}%;background:${c.id ? DS_COR.fat : DS_COR.neutro}"></div></div>
         <div class="ds-barra-val">${fmtBRL(c.fat)}</div>
@@ -3124,8 +3226,8 @@ function abrirInfo(titulo, html){
 
 /* ----- Dias da semana (colunas; destaque no melhor dia) ----- */
 function dsBlocoSemana(vendas, de, ate){
-  const tot = Array.from({length:7},()=>({ fat:0, qtd:0 }));
-  vendas.forEach(v=>{ const d = dataDe(v.data).getDay(); tot[d].fat+=v.receita; tot[d].qtd+=v.qtd; });
+  const tot = Array.from({length:7},()=>({ fat:0, qtd:0, qtdS:0 }));
+  vendas.forEach(v=>{ const d = dataDe(v.data).getDay(); tot[d].fat+=v.receita; tot[d].qtd+=v.qtd; tot[d].qtdS+=v.qtdS; });
   // quantas vezes cada dia da semana aparece no período (para a média por dia)
   const ini = de || vendas.reduce((a,v)=>v.data<a?v.data:a, vendas[0].data);
   let fim = ate || vendas.reduce((a,v)=>v.data>a?v.data:a, vendas[0].data);
@@ -3137,7 +3239,7 @@ function dsBlocoSemana(vendas, de, ate){
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Dias da semana</h3><small>Faturamento por dia da semana · melhor: <b>${SEMANA[melhor]}</b></small></div></div>
     <div class="ds-colunas">${tot.map((t,i)=>`
-      <div class="ds-col" data-tip="<b>${SEMANA[i]}</b><span>Faturamento <em>${fmtBRL(t.fat)}</em></span><span>Média por ${SEMANA[i].toLowerCase()} <em>${fmtBRL(ocorr[i]?t.fat/ocorr[i]:0)}</em></span><span class='ds-tip-sec'>${t.qtd} un. · ${ocorr[i]} ${SEMANA[i].toLowerCase()}(s) no período</span>">
+      <div class="ds-col" data-tip="<b>${SEMANA[i]}</b><span>Faturamento <em>${fmtBRL(t.fat)}</em></span><span>Média por ${SEMANA[i].toLowerCase()} <em>${fmtBRL(ocorr[i]?t.fat/ocorr[i]:0)}</em></span><span class='ds-tip-sec'>${fmtQtd(t)} · ${ocorr[i]} ${SEMANA[i].toLowerCase()}(s) no período</span>">
         <div class="ds-col-val">${i===melhor?fmtCompacto(t.fat):''}</div>
         <div class="ds-col-trilho"><div class="ds-col-barra" style="height:${t.fat?Math.max(3,t.fat/max*100):0}%;background:${i===melhor?DS_COR.fat:DS_COR.neutro}"></div></div>
         <div class="ds-col-rot${i===melhor?' forte':''}">${SEMANA_CURTA[i]}</div>
@@ -3148,17 +3250,17 @@ function dsBlocoSemana(vendas, de, ate){
 /* ----- Melhores datas (ranking) ----- */
 function dsBlocoMelhoresDatas(vendas){
   const g = {};
-  vendas.forEach(v=>{ g[v.data] = g[v.data] || { data:v.data, fat:0, qtd:0, lucro:0 }; g[v.data].fat+=v.receita; g[v.data].qtd+=v.qtd; g[v.data].lucro+=v.lucro; });
+  vendas.forEach(v=>{ g[v.data] = g[v.data] || { data:v.data, fat:0, qtd:0, qtdS:0, lucro:0 }; g[v.data].fat+=v.receita; g[v.data].qtd+=v.qtd; g[v.data].qtdS+=v.qtdS; g[v.data].lucro+=v.lucro; });
   const lista = Object.values(g).sort((a,b)=>b.fat-a.fat).slice(0,5);
   const max = lista[0].fat || 1;
   return `<div class="ds-card">
     <div class="ds-cab"><div><h3>Melhores datas</h3><small>Os 5 dias com maior faturamento</small></div></div>
     <ol class="ds-rank">${lista.map((d,i)=>`
-      <li data-tip="<b>${fmtData(d.data)} · ${SEMANA_EXTENSO[dataDe(d.data).getDay()]}</b><span>Faturamento <em>${fmtBRL(d.fat)}</em></span><span>Lucro <em>${fmtBRL(d.lucro)}</em></span><span class='ds-tip-sec'>${d.qtd} un. vendidas</span>">
+      <li data-tip="<b>${fmtData(d.data)} · ${SEMANA_EXTENSO[dataDe(d.data).getDay()]}</b><span>Faturamento <em>${fmtBRL(d.fat)}</em></span><span>Lucro <em>${fmtBRL(d.lucro)}</em></span><span class='ds-tip-sec'>${fmtQtd(d)}</span>">
         <span class="ds-rank-n">${i+1}</span>
         <div class="ds-rank-corpo"><div class="ds-rank-topo"><span>${fmtData(d.data)} <small>${SEMANA_EXTENSO[dataDe(d.data).getDay()]}</small></span><b>${fmtBRL(d.fat)}</b></div>
           <div class="ds-mini"><div style="width:${d.fat/max*100}%;background:${DS_COR.fat}"></div></div>
-          <small>${d.qtd} un. · lucro ${fmtBRL(d.lucro)}</small></div>
+          <small>${fmtQtd(d)} · lucro ${fmtBRL(d.lucro)}</small></div>
       </li>`).join('')}</ol>
   </div>`;
 }
@@ -3667,8 +3769,15 @@ async function syncReq(metodo, caminho, corpo){
   if(r.status===401) throw new ErroSync('senha', 'Senha da sincronização incorreta: ela precisa ser igual à SENHA_SYNC cadastrada no Worker.');
   if(r.status===403 && j && j.erro==='revogado'){
     // outro aparelho removeu este da sincronização: esquece o endereço e a senha (os dados continuam aqui)
+    const limitado = nivelMaximo()!=='gerente';
     clearTimeout(syncTimer); Sync.gravar(null); Sync.gravarBase(null);
     aparelhoIdMem = null; try{ localStorage.removeItem(APARELHO_CHAVE); }catch(e){}   // ao conectar de novo, entra como aparelho novo
+    if(limitado){   // Caixa ou Só consulta removido: os dados da loja saem deste aparelho
+      estado = normalizarEstado({ categorias:[], produtos:[] }); Armazenamento.gravar(estado);
+      pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar();
+      setTimeout(()=>{ syncAtualizarTela(); aplicarNivel(); }, 0);
+      throw new ErroSync('revogado', 'Este aparelho foi removido da sincronização pelo gerente. Os dados da loja foram apagados dele; para voltar, peça um novo QR code ao gerente.');
+    }
     setTimeout(()=>{ syncFase = { tipo:'', msg:'' }; if(viewAtual==='config') renderConfig(); }, 0);
     throw new ErroSync('revogado', 'Este aparelho foi removido da sincronização por outro aparelho. Os dados continuam aqui; para voltar, conecte de novo em Configurações.');
   }
@@ -3689,33 +3798,280 @@ function aparelhoId(){
   if(!aparelhoIdMem){ aparelhoIdMem = 'ap' + uid() + uid(); try{ localStorage.setItem(APARELHO_CHAVE, aparelhoIdMem); }catch(e){} }
   return aparelhoIdMem;
 }
-/* ----- Aparelhos conectados (Configurações, 2.11.0) -----
-   Lista os aparelhos que usam a sincronização, com o último acesso. Remover pede a senha do gerente;
-   o aparelho removido se desconecta sozinho na próxima vez que falar com a nuvem.
-   Caminho preparado para níveis de acesso: cada aparelho já tem "nivel" (hoje sempre 'total'). */
-const NIVEIS_ACESSO = { total:'Acesso total' };
+/* =========================================================
+   NÍVEIS DE ACESSO (2.14.0) — Gerente, Caixa e Só consulta
+   - Nível máximo do aparelho: quem conecta com a senha da sincronização (SENHA_SYNC) é Gerente;
+     quem conecta pelo QR code / código de 6 dígitos recebe o nível que o gerente escolheu.
+   - Aparelho Gerente pode passar para o modo Caixa (ex.: funcionário usando o PC) e voltar
+     ao modo Gerente com a senha do gerente.
+   - Caixa: PDV e Histórico do dia, sem custo nem lucro; descontos e edições pedem a senha.
+   - Só consulta: Métricas e Histórico, só leitura; não envia nada para a nuvem.
+   Esta é a fase 1: os dados chegam completos a todos os aparelhos; o app é que esconde.
+   ========================================================= */
+const NIVEIS = { gerente:'Gerente', caixa:'Caixa', consulta:'Só consulta' };
+const NIVEIS_DESC = {
+  gerente:'Acesso total.',
+  caixa:'PDV e Histórico do dia, sem custos nem lucro. Descontos e edições pedem a senha do gerente.',
+  consulta:'Métricas e Histórico, só para ver. Não registra vendas nem altera nada.'
+};
+const MODO_CHAVE = 'chinatown_modo_local';
+const NIVEL_FIXO_CHAVE = 'chinatown_nivel_fixo';   // nível de um aparelho conectado pelo QR (continua valendo se ele for removido)
+function nivelNormal(n){ return n==='caixa' || n==='consulta' ? n : 'gerente'; }   // 'total' (até a 2.13.0) = gerente
+function nivelFixo(n){
+  if(n===undefined){ try{ return localStorage.getItem(NIVEL_FIXO_CHAVE); }catch(e){ return null; } }
+  try{ if(n && n!=='gerente') localStorage.setItem(NIVEL_FIXO_CHAVE, n); else localStorage.removeItem(NIVEL_FIXO_CHAVE); }catch(e){}
+}
+function nivelMaximo(){
+  const d = Sync.ler();
+  if(d && d.pareado) return nivelNormal(d.nivel);
+  const f = nivelFixo(); return f ? nivelNormal(f) : 'gerente';
+}
+function nivelAtual(){
+  const max = nivelMaximo();
+  if(max!=='gerente') return max;
+  let m = null; try{ m = localStorage.getItem(MODO_CHAVE); }catch(e){}
+  return m==='caixa' ? 'caixa' : 'gerente';
+}
+function ehGerente(){ return nivelAtual()==='gerente'; }
+const VIEWS_DO_NIVEL = { caixa:['pdv','historico','alertas','config'], consulta:['desempenho','historico','alertas','config'] };
+function viewPermitida(v){ const l = VIEWS_DO_NIVEL[nivelAtual()]; return !l || l.includes(v); }
+function viewInicial(){ return nivelAtual()==='consulta' ? 'desempenho' : 'pdv'; }
+function aplicarNivel(){
+  const n = nivelAtual();
+  Object.keys(NIVEIS).forEach(k=>document.body.classList.toggle('nivel-'+k, k===n));
+  document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('acesso-oculto', !viewPermitida(b.dataset.nav)));
+  const selo = document.getElementById('nivelSelo');
+  if(selo){ selo.hidden = n==='gerente'; selo.textContent = 'Modo ' + NIVEIS[n]; }
+  if(n!=='gerente' && sandbox.ativo) sandboxDesligar();   // Faz-de-Conta é só do gerente
+  nivelRenderPe();
+  if(typeof viewAtual!=='undefined' && !viewPermitida(viewAtual)) mostrarView(viewInicial());
+  if(typeof ajustarNav==='function') ajustarNav();
+}
+/* O gerente mudou o nível deste aparelho na lista (vale na próxima conversa com a nuvem) */
+function nivelDoServidor(v){
+  const d = Sync.ler();
+  if(!d || !d.pareado || !v || !v.nivel) return;
+  const n = nivelNormal(v.nivel);
+  if(n===nivelNormal(d.nivel)) return;
+  Sync.atualizar({ nivel:n }); nivelFixo(n);
+  aplicarNivel(); renderViewAtual();
+  toast(`O gerente mudou este aparelho para o nível ${NIVEIS[n]}.`);
+}
+function nivelParaCaixa(){
+  if(nivelMaximo()!=='gerente' || !ehGerente()) return;
+  pedirConfirmacao('Passar este aparelho para o modo Caixa? O funcionário vê só o PDV e o Histórico de hoje, sem custos nem lucro. Para voltar ao modo Gerente, é preciso a senha do gerente.', ()=>{
+    try{ localStorage.setItem(MODO_CHAVE, 'caixa'); }catch(e){}
+    document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
+    aplicarNivel(); mostrarView('pdv');
+    toast('Modo Caixa ligado neste aparelho.');
+  }, 'Passar para o modo Caixa');
+}
+function nivelParaGerente(){
+  if(nivelMaximo()!=='gerente' || ehGerente()) return;
+  pedirSenha(()=>{
+    try{ localStorage.removeItem(MODO_CHAVE); }catch(e){}
+    aplicarNivel(); renderViewAtual();
+    toast('Modo Gerente ligado neste aparelho.');
+  }, 'Voltar ao modo Gerente neste aparelho. Digite a senha do gerente.');
+}
+/* Pé do menu lateral (PC): troca rápida Gerente ⇄ Caixa */
+function nivelRenderPe(){
+  const el = document.getElementById('navNivel'); if(!el) return;
+  const n = nivelAtual(), max = nivelMaximo();
+  const ic = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
+  if(max!=='gerente'){ el.innerHTML = `<div class="nav-nivel-in">${ic}<span><b>${NIVEIS[n]}</b><small>Nível deste aparelho</small></span></div>`; return; }
+  el.innerHTML = n==='gerente'
+    ? `<button class="nav-nivel-in" onclick="nivelParaCaixa()" title="Passar para o modo Caixa">${ic}<span><b>Modo Gerente</b><small>Passar para o Caixa</small></span></button>`
+    : `<button class="nav-nivel-in caixa" onclick="nivelParaGerente()" title="Voltar ao modo Gerente (pede a senha)">${ic}<span><b>Modo Caixa</b><small>Voltar ao Gerente</small></span></button>`;
+}
+/* Configurações → Nível de acesso deste aparelho */
+function nivelRenderConfig(){
+  const el = document.getElementById('cfgNivel'); if(!el) return;
+  const n = nivelAtual(), max = nivelMaximo();
+  let acoes = '';
+  if(max==='gerente') acoes = n==='gerente'
+    ? '<button class="btn btn-escuro" onclick="nivelParaCaixa()">Passar para o modo Caixa</button>'
+    : '<button class="btn btn-amarelo" onclick="nivelParaGerente()">Voltar ao modo Gerente</button>';
+  el.innerHTML = `<div class="sy-status ${n==='gerente'?'ok':'aviso'}"><b>${NIVEIS[n]}</b> · ${escapar(NIVEIS_DESC[n])}${max!=='gerente'
+      ? '<small>Este aparelho foi conectado pelo QR code. Só o gerente muda o nível dele (Configurações → Aparelhos conectados).</small>'
+      : n==='caixa' ? '<small>Voltar ao modo Gerente pede a senha do gerente.</small>' : ''}</div>
+    ${acoes ? `<div class="cfg-acoes">${acoes}</div>` : ''}`;
+}
+
+/* ----- Aparelhos conectados (Configurações, 2.11.0; níveis e QR code na 2.14.0) -----
+   Lista os aparelhos que usam a sincronização, com o último acesso e o nível. Só o Gerente vê.
+   Remover pede a senha do gerente; o aparelho removido se desconecta sozinho na próxima vez que falar com a nuvem. */
 async function dispositivosRender(forcar){
   const bloco = document.getElementById('cfgAparelhosBloco'), el = document.getElementById('cfgAparelhos');
   if(!bloco || !el) return;
-  bloco.hidden = !Sync.conectado();
-  if(!Sync.conectado()) return;
+  bloco.hidden = !Sync.conectado() || nivelMaximo()!=='gerente';
+  if(bloco.hidden) return;
   if(!forcar && el.dataset.carregado) return;
   el.innerHTML = '<li class="pm-vazia">Carregando…</li>';
   try{
     const j = await syncReq('GET', '/aparelhos');
     const lista = j.aparelhos || [];
     el.dataset.carregado = '1';
-    el.innerHTML = lista.length ? lista.map(a=>`
+    el.innerHTML = lista.length ? lista.map(a=>{
+      const nv = nivelNormal(a.nivel), nomeJs = escapar(a.nome).replace(/'/g,'&#39;');
+      const nivelHtml = a.pareado && !a.atual
+        ? `<select class="ap-nivel" onchange="dispositivoNivel('${a.id}', '${nomeJs}', this)" data-antes="${nv}" aria-label="Nível de ${escapar(a.nome)}">${Object.keys(NIVEIS).map(k=>`<option value="${k}"${k===nv?' selected':''}>${NIVEIS[k]}</option>`).join('')}</select>`
+        : `<span class="ap-nivel-fixo">${NIVEIS[nv]}${a.pareado?'':' · senha da sincronização'}</span>`;
+      return `
       <li class="ap-item">
         <span class="ap-ic"><svg viewBox="0 0 24 24">${/celular|android|iphone|moto|samsung|xiaomi|redmi|tablet/i.test(a.nome)
           ? '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>' : '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'}</svg></span>
         <div class="ap-info"><b>${escapar(a.nome)}${a.atual?' <em class="ap-este">este aparelho</em>':''}</b>
-          <small>Último acesso ${a.vistoEm ? quandoFoi(a.vistoEm) : '—'} · ${NIVEIS_ACESSO[a.nivel]||a.nivel}${a.push?' · recebe notificações':''}</small></div>
-        ${a.atual ? '' : `<button class="btn btn-claro btn-mini" onclick="dispositivoRemover('${a.id}', '${escapar(a.nome).replace(/'/g,'&#39;')}')">Remover</button>`}
-      </li>`).join('') : '<li class="pm-vazia">Nenhum aparelho registrado ainda. Cada aparelho aparece aqui depois de sincronizar com esta versão do app.</li>';
+          <small>Último acesso ${a.vistoEm ? quandoFoi(a.vistoEm) : '—'}${a.push?' · recebe notificações':''}</small>
+          ${nivelHtml}</div>
+        ${a.atual ? '' : `<button class="btn btn-claro btn-mini" onclick="dispositivoRemover('${a.id}', '${nomeJs}')">Remover</button>`}
+      </li>`; }).join('') : '<li class="pm-vazia">Nenhum aparelho registrado ainda. Cada aparelho aparece aqui depois de sincronizar com esta versão do app.</li>';
   }catch(e){
     el.innerHTML = `<li class="pm-vazia">${escapar(e.codigo==='rota' ? 'Para ver os aparelhos, publique no Cloudflare a versão nova do sync-worker.js.' : e.message)}</li>`;
   }
+}
+function dispositivoNivel(id, nome, sel){
+  const novo = sel.value, antes = sel.dataset.antes;
+  sel.value = antes;   // só muda de verdade depois da senha
+  pedirSenha(async ()=>{
+    try{
+      await syncReq('PATCH', '/aparelhos/' + encodeURIComponent(id), { nivel:novo });
+      toast(`“${nome}” agora é ${NIVEIS[novo]}. Vale na próxima sincronização dele.`);
+      dispositivosRender(true);
+    }catch(e){ toast(e.message); }
+  }, `Mudar “${nome}” para o nível ${NIVEIS[novo]}. Digite a senha do gerente.`);
+}
+
+/* ----- Conectar um aparelho novo pelo QR code (só o Gerente gera) -----
+   O QR leva um link do próprio app com o endereço do Worker e um código de 6 dígitos de uso único,
+   válido por 2 minutos. A SENHA_SYNC nunca vai no QR: o aparelho novo troca o código por uma chave
+   só dele, com o nível escolhido. Remover o aparelho desliga essa chave. */
+let parearTimer = null, parearNivel = 'caixa';
+function parearAbrir(){
+  if(emSandbox('conectar aparelhos')) return;
+  if(!Sync.conectado() || nivelMaximo()!=='gerente'){ toast('Só um aparelho Gerente, já conectado à sincronização, gera o QR code.'); return; }
+  parearNivel = 'caixa';
+  parearRenderNivel();
+  document.getElementById('parQr').innerHTML = '';
+  document.getElementById('parPasso1').hidden = false;
+  document.getElementById('parPasso2').hidden = true;
+  abrir('modalParear');
+}
+function parearRenderNivel(){
+  document.getElementById('parNiveis').innerHTML = Object.keys(NIVEIS).map(k=>`
+    <button type="button" class="par-nivel${parearNivel===k?' ativo':''}" onclick="parearNivel='${k}';parearRenderNivel()">
+      <b>${NIVEIS[k]}</b><small>${escapar(NIVEIS_DESC[k])}</small></button>`).join('');
+}
+function parearGerar(){
+  pedirSenha(async ()=>{
+    try{
+      const r = await syncReq('POST', '/pareamento', { nivel:parearNivel });
+      const d = Sync.ler();
+      const app = location.origin + location.pathname.replace(/index\.html$/, '');
+      const link = app + '?parear=' + b64urlDe(JSON.stringify({ u:d.url, c:r.codigo }));
+      await carregarQrLib();
+      const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
+      document.getElementById('parQr').innerHTML = qr.createSvgTag({ cellSize:6, margin:2, scalable:true });
+      document.getElementById('parCodigo').textContent = r.codigo.slice(0,3) + ' ' + r.codigo.slice(3);
+      document.getElementById('parUrl').textContent = d.url;
+      document.getElementById('parNivelRot').textContent = NIVEIS[nivelNormal(r.nivel)];
+      document.getElementById('parPasso1').hidden = true;
+      document.getElementById('parPasso2').hidden = false;
+      const fim = Date.now() + (r.validadeSeg||120)*1000;
+      clearInterval(parearTimer);
+      const tic = ()=>{
+        const seg = Math.max(0, Math.round((fim-Date.now())/1000));
+        const el = document.getElementById('parTempo');
+        el.textContent = seg ? `Vale por ${Math.floor(seg/60)}:${String(seg%60).padStart(2,'0')}` : 'Código vencido. Gere outro.';
+        el.classList.toggle('vencido', !seg);
+        document.getElementById('parQr').classList.toggle('vencido', !seg);
+        if(!seg) clearInterval(parearTimer);
+      };
+      tic(); parearTimer = setInterval(tic, 1000);
+    }catch(e){ toast(e.codigo==='rota' ? 'Publique no Cloudflare a versão nova do sync-worker.js para conectar pelo QR code.' : e.message); }
+  }, `Gerar o QR code para conectar um aparelho como ${NIVEIS[parearNivel]}. Digite a senha do gerente.`);
+}
+function parearFechar(){
+  clearInterval(parearTimer); parearTimer = null;
+  fechar('modalParear');
+  const el = document.getElementById('cfgAparelhos'); if(el) delete el.dataset.carregado;
+  if(viewAtual==='config') dispositivosRender(true);
+}
+let qrLibPromessa = null;
+function carregarQrLib(){
+  if(window.qrcode) return Promise.resolve();
+  if(!qrLibPromessa) qrLibPromessa = new Promise((ok, falha)=>{
+    const sc = document.createElement('script'); sc.src = 'bibliotecas/qrcode.js';
+    sc.onload = ok; sc.onerror = ()=>{ qrLibPromessa = null; falha(new Error('Não foi possível carregar o gerador de QR code.')); };
+    document.head.appendChild(sc);
+  });
+  return qrLibPromessa;
+}
+function b64urlDe(txt){ return btoa(unescape(encodeURIComponent(txt))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function deB64url(t){ t = String(t).replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t += '='; return decodeURIComponent(escape(atob(t))); }
+
+/* Aparelho novo: abre pelo link do QR (câmera do celular), lê o QR pelo app, ou digita endereço + código */
+function conectarCodigoAbrir(dados){
+  if(emSandbox('conectar a sincronização')) return;
+  document.getElementById('ccUrl').value = (dados && dados.u) || (Sync.ler() && Sync.ler().url) || '';
+  document.getElementById('ccCodigo').value = (dados && dados.c) || '';
+  document.getElementById('ccNome').value = (Sync.ler() && Sync.ler().aparelho) || syncNomePadrao();
+  document.getElementById('ccLerQr').hidden = !('BarcodeDetector' in window);
+  document.getElementById('ccAviso').hidden = !(estado.produtos.length || (estado.avulsas||[]).length);
+  abrir('modalConectarCodigo');
+  setTimeout(()=>document.getElementById(dados && dados.c ? 'ccNome' : 'ccCodigo').focus(), 80);
+}
+function conectarCodigoLerQr(){ fechar('modalConectarCodigo'); scanModoQr = true; abrirScanner(); }
+function conectarQrLido(raw){
+  const d = lerLinkPareamento(raw);
+  if(!d){ toast('Este QR code não é de conexão do China Engine.'); conectarCodigoAbrir(); return; }
+  conectarCodigoAbrir(d);
+}
+function lerLinkPareamento(texto){
+  try{
+    const u = new URL(String(texto), location.href);
+    const p = u.searchParams.get('parear'); if(!p) return null;
+    const d = JSON.parse(deB64url(p));
+    return d && d.u && /^\d{6}$/.test(String(d.c)) ? { u:String(d.u), c:String(d.c) } : null;
+  }catch(e){ return null; }
+}
+async function conectarCodigoConfirmar(){
+  const url = normalizarUrlWorker(val('ccUrl')), codigo = val('ccCodigo').replace(/\D/g,''), nome = val('ccNome').trim() || syncNomePadrao();
+  if(!url){ toast('Informe o endereço do Worker.'); return; }
+  if(codigo.length!==6){ toast('O código tem 6 números.'); document.getElementById('ccCodigo').focus(); return; }
+  const btn = document.getElementById('ccConfirmar'); btn.disabled = true;
+  try{
+    let r, j = null;
+    try{
+      r = await fetch(url + '/pareamento/usar', { method:'POST', cache:'no-store', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ codigo, nome, aparelhoId:aparelhoId() }) });
+      try{ j = await r.json(); }catch(e){}
+    }catch(e){ toast('Não foi possível falar com o Worker da sincronização. Confira o endereço e a internet.'); return; }
+    if(!r.ok || !j || !j.chave){ toast((j && j.mensagem) || `O Worker respondeu com erro (${r.status}).`); return; }
+    const nivel = nivelNormal(j.nivel);
+    Sync.gravar({ url, senha:j.chave, pareado:true, nivel, aparelho:nome, conectado:false, versao:0 });
+    Sync.gravarBase(null); nivelFixo(nivel);
+    try{ localStorage.removeItem(MODO_CHAVE); }catch(e){}
+    fechar('modalConectarCodigo');
+    const rem = await syncReq('GET', '/dados');
+    Sync.atualizar({ conectado:true });
+    if(rem.dados) syncAdotarRemoto(rem); else Sync.atualizar({ pendente:false });
+    syncStatus('ok');
+    aplicarNivel(); mostrarView(viewInicial());
+    mostrarAviso('Aparelho conectado', `<p>Este aparelho entrou na sincronização da loja como <b>${NIVEIS[nivel]}</b>.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">${escapar(NIVEIS_DESC[nivel])}</p>`);
+  }catch(e){ toast(e.message); }
+  finally{ btn.disabled = false; }
+}
+/* Link do QR aberto pela câmera do celular: ...?parear=... */
+function parearPeloLink(){
+  const d = lerLinkPareamento(location.href);
+  if(!/[?&]parear=/.test(location.search)) return;
+  try{ history.replaceState(null, '', location.pathname); }catch(e){}   // o código não fica no endereço
+  if(!d){ toast('Link de conexão inválido.'); return; }
+  if(Sync.conectado() && !Sync.ler().pareado && nivelMaximo()==='gerente'){
+    toast('Este aparelho já está conectado à sincronização como Gerente.'); return;
+  }
+  conectarCodigoAbrir(d);
 }
 function quandoFoi(iso){
   const min = Math.round((Date.now() - Date.parse(iso))/60000);
@@ -3746,7 +4102,7 @@ const modalAberto = ()=> !!document.querySelector('.overlay.aberto');
 
 /* Chamada pelo salvar(): marca alteração local e agenda o envio */
 function syncMarcarAlteracao(){
-  try{ if(sandbox.ativo || !Sync.conectado()) return; }catch(e){ return; }   // sandbox, ou chamado antes do módulo carregar: ignora
+  try{ if(sandbox.ativo || !Sync.conectado() || nivelMaximo()==='consulta') return; }catch(e){ return; }   // Só consulta: não envia nada   // sandbox, ou chamado antes do módulo carregar: ignora
   const d = Sync.ler();
   if(!d.pendente) syncPendenteDesde = Date.now();
   Sync.atualizar({ pendente:true, modificadoEm:Date.now() });
@@ -3768,6 +4124,7 @@ async function sincronizar(){
   try{
     for(let tentativa=0; tentativa<4; tentativa++){
       const d = Sync.ler();
+      if(d.pendente && nivelMaximo()==='consulta'){ Sync.atualizar({ pendente:false }); d.pendente = false; }
       if(d.pendente){
         if(syncFase.tipo!=='rodando') syncStatus('rodando');
         const marca = d.modificadoEm;
@@ -3785,6 +4142,7 @@ async function sincronizar(){
         syncAplicarJuncao(r);
       } else {
         const v = await syncReq('GET', '/versao');
+        nivelDoServidor(v);
         if(v.versao===(d.versao||0)){ Sync.atualizar({ sincronizadoEm:Date.now(), remotoEm:v.atualizadoEm, remotoAparelho:v.aparelho }); break; }
         if(modalAberto()){ adiado = true; break; }
         const rem = await syncReq('GET', '/dados');
@@ -3841,6 +4199,7 @@ async function syncConectar(){
   if(senha==='••••••••' && atual) senha = atual.senha;
   const aparelho = val('cfgSyncAparelho').trim() || syncNomePadrao();
   if(!url || !senha){ syncStatus('erro', 'Informe o endereço do Worker e a senha da sincronização.'); return; }
+  if(nivelMaximo()!=='gerente'){ toast('Este aparelho só pode entrar pelo código do gerente.'); return; }
   Sync.gravar({ url, senha, aparelho, conectado:false, versao:0 });
   Sync.gravarBase(null);
   syncStatus('rodando', 'Conectando…');
@@ -3936,6 +4295,7 @@ function syncRenderConfig(){
   const d = Sync.ler(), lig = Sync.conectado();
   document.getElementById('cfgSyncForm').style.display = lig ? 'none' : '';
   document.getElementById('cfgSyncLigado').style.display = lig ? '' : 'none';
+  document.getElementById('cfgSyncCodigo').style.display = lig ? 'none' : '';
   if(!lig){
     document.getElementById('cfgSyncUrl').value = d && d.url || '';
     document.getElementById('cfgSyncSenha').value = d && d.senha ? '••••••••' : '';
@@ -4707,7 +5067,11 @@ definirMascara(document.getElementById('pmValor'), 'pct');
 document.getElementById('versao').textContent = VERSAO;   // a versão aparece só em Configurações
 render();
 atualizarAlertas();
-mostrarView('pdv');
+olhoAtualizar();
+aplicarNivel();
+mostrarView(viewInicial());
+migrarSenhaGerente();
+parearPeloLink();
 ajustarNav();
 syncIniciar();
 pushIniciar();
