@@ -32,6 +32,26 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.14.2] - 2026-11-24
+
+### Alterado
+
+- Estoque → aviso do Inventário: novo botão **Próximo →** para pular para o item seguinte da lista (depois do último, volta ao primeiro). O aviso mostra qual item está na vez ("Agora: Teclado Y (3 un.) · 2 de 5"). **Cadastrar** e **Ver lista** continuam como estavam. Depois de cadastrar um item, o aviso já mostra o seguinte.
+
+---
+
+## [2.14.1] - 2026-11-24
+
+### Alterado
+
+- **Configurações → Sincronização na nuvem** ficou só com o botão **Conectar com o aparelho do gerente** (e o status). Os campos de endereço e senha saíram da tela.
+- **Conectar com o aparelho do gerente** agora começa pela câmera: o QR code é lido dentro da própria janela e, lido o QR, falta só confirmar o nome do aparelho e tocar em Conectar (nada para digitar). Link do QR aberto pela câmera do celular vai direto para essa confirmação.
+- **"Tentar de outro jeito"**: endereço do Worker + código de 6 números + nome do aparelho, para quem não tem câmera ou quando a leitura não funciona. Aparelho sem leitor de QR (ex.: Chrome no Windows) ou sem câmera abre direto nessa opção, com um aviso.
+- Conectar com a senha da sincronização (SENHA_SYNC) continua possível só no aparelho Gerente, pelo link "Sou o gerente: conectar com a senha da sincronização" dentro de "Tentar de outro jeito".
+- A câmera desliga sozinha ao ler o QR, ao trocar de opção ou ao fechar a janela.
+
+---
+
 ## [2.14.0] - 2026-11-23
 
 > **Importante:** publique no Cloudflare a versão nova de `cloudflare/sync-worker.js` (Worker → Edit code → colar → Deploy).

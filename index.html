@@ -352,19 +352,10 @@
 
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Sincronização na nuvem</h3>
-      <small>Mantém os dados iguais no PC e no celular, pelo seu Cloudflare (Worker + banco D1). Alterações feitas em aparelhos diferentes são juntadas automaticamente. O endereço e a senha ficam salvos <b>só neste aparelho</b> (fora do GitHub e do backup).</small></div>
-    <div class="cfg-acoes" id="cfgSyncCodigo" style="margin-bottom:14px">
-      <button class="btn btn-amarelo" onclick="conectarCodigoAbrir()">Conectar com o código do gerente</button>
-    </div>
-    <div class="cfg-form so-gerente" id="cfgSyncForm">
-      <div class="dica" style="margin:0 0 10px">Ou, no aparelho do gerente, conecte com o endereço do Worker e a senha da sincronização (SENHA_SYNC):</div>
-      <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgSyncUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-      <div class="linha-campos">
-        <div class="campo"><label>Senha da sincronização</label><input type="password" id="cfgSyncSenha" autocomplete="new-password" placeholder="A SENHA_SYNC do Worker"></div>
-        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="cfgSyncAparelho" maxlength="40" placeholder="Ex: PC da loja" onkeydown="if(event.key==='Enter')syncConectar()"></div>
-      </div>
-      <button class="btn btn-escuro" onclick="syncConectar()">Conectar</button>
-      <div class="sy-status" id="cfgSyncStatusForm"></div>
+      <small>Mantém os dados iguais em todos os aparelhos da loja, pelo seu Cloudflare. As alterações de cada aparelho são juntadas automaticamente.</small></div>
+    <div id="cfgSyncCodigo">
+      <div class="cfg-acoes"><button class="btn btn-amarelo" onclick="conectarCodigoAbrir()">Conectar com o aparelho do gerente</button></div>
+      <div class="sy-status" id="cfgSyncStatusForm" style="margin-top:10px"></div>
     </div>
     <div id="cfgSyncLigado" style="display:none">
       <div class="sy-status" id="cfgSyncStatus"></div>
@@ -885,7 +876,7 @@
         </div>
       </div>
       <div id="parPasso2" hidden>
-        <p class="par-instr">No aparelho novo, aponte a câmera para o QR code (ou abra Configurações → Sincronização → <b>Conectar com o código do gerente</b>).</p>
+        <p class="par-instr">No aparelho novo, aponte a câmera para o QR code (lá, abra Configurações → Sincronização → <b>Conectar com o aparelho do gerente</b>).</p>
         <div class="par-qr" id="parQr"></div>
         <div class="par-codigo"><small>Ou digite o código</small><b id="parCodigo"></b><span id="parTempo"></span></div>
         <p class="dica par-info">Nível: <b id="parNivelRot"></b> · Endereço do Worker: <span id="parUrl"></span><br>O código vale uma vez só. A senha da sincronização não vai no QR code.</p>
@@ -897,25 +888,66 @@
     </div>
   </div>
 </div>
-<!-- ===== Modal: aparelho novo entrando com o código do gerente (2.14.0) ===== -->
+<!-- ===== Modal: conectar este aparelho (2.14.1: QR code primeiro; "Tentar de outro jeito" = endereço + código;
+     e, só em aparelho Gerente, a senha da sincronização) ===== -->
 <div class="overlay" id="modalConectarCodigo">
   <div class="modal" style="max-width:440px">
     <div class="modal-cabecalho">
-      <h2>Conectar à sincronização</h2>
+      <h2>Conectar com o aparelho do gerente</h2>
       <button class="fechar" onclick="fechar('modalConectarCodigo')">&times;</button>
     </div>
     <div class="modal-corpo">
-      <p style="margin-bottom:12px">Use o QR code ou o código de 6 números que aparece no aparelho do gerente (Configurações → Aparelhos conectados).</p>
-      <div class="cfg-acoes" id="ccLerQr" style="margin-bottom:12px"><button class="btn btn-escuro" onclick="conectarCodigoLerQr()">Ler QR code com a câmera</button></div>
-      <div class="campo"><label>Endereço do Worker</label><input type="url" id="ccUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-      <div class="linha-campos">
-        <div class="campo"><label>Código</label><input type="text" id="ccCodigo" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="one-time-code"></div>
-        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="ccNome" maxlength="40" placeholder="Ex: Celular do caixa" onkeydown="if(event.key==='Enter')conectarCodigoConfirmar()"></div>
+      <!-- 1. Ler o QR code (padrão) -->
+      <div id="ccPassoQr">
+        <p class="cc-instr">No aparelho do gerente, abra Configurações → Aparelhos conectados → <b>Conectar novo aparelho</b> e aponte esta câmera para o QR code.</p>
+        <div class="cc-camera"><video id="ccVideo" playsinline muted></video><i class="cc-mira"></i><span id="ccCamMsg">Abrindo a câmera…</span></div>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="fechar('modalConectarCodigo')">Cancelar</button>
+          <button class="btn btn-claro" onclick="conectarPasso('manual')">Tentar de outro jeito</button>
+        </div>
       </div>
-      <div class="sy-status aviso" id="ccAviso" hidden>Os dados que estão neste aparelho serão substituídos pelos da loja.</div>
-      <div class="rodape-modal">
-        <button class="btn btn-claro" onclick="fechar('modalConectarCodigo')">Cancelar</button>
-        <button class="btn btn-amarelo" id="ccConfirmar" onclick="conectarCodigoConfirmar()">Conectar</button>
+      <!-- 2. QR code lido: só confirmar -->
+      <div id="ccPassoLido" hidden>
+        <div class="sy-status ok" style="margin-bottom:14px">✓ QR code lido. Falta só confirmar.</div>
+        <div class="campo"><label>Nome deste aparelho</label><input type="text" id="ccNomeQr" maxlength="40" placeholder="Ex: Celular do caixa" onkeydown="if(event.key==='Enter')conectarCodigoConfirmar()"></div>
+        <div class="sy-status aviso cc-aviso" hidden>Os dados que estão neste aparelho serão substituídos pelos da loja.</div>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="conectarPasso('manual')">Tentar de outro jeito</button>
+          <button class="btn btn-amarelo cc-confirmar" onclick="conectarCodigoConfirmar()">Conectar</button>
+        </div>
+      </div>
+      <!-- 3. Outro jeito: endereço do Worker + código de 6 números -->
+      <div id="ccPassoManual" hidden>
+        <div class="sy-status aviso" id="ccSemCamera" hidden style="margin-bottom:12px"></div>
+        <p class="cc-instr">Digite o endereço do Worker e o código de 6 números que aparece no aparelho do gerente.</p>
+        <div class="campo"><label>Endereço do Worker</label><input type="url" id="ccUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="linha-campos">
+          <div class="campo"><label>Código</label><input type="text" id="ccCodigo" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="one-time-code"></div>
+          <div class="campo"><label>Nome deste aparelho</label><input type="text" id="ccNome" maxlength="40" placeholder="Ex: Celular do caixa" onkeydown="if(event.key==='Enter')conectarCodigoConfirmar()"></div>
+        </div>
+        <div class="sy-status aviso cc-aviso" hidden>Os dados que estão neste aparelho serão substituídos pelos da loja.</div>
+        <div class="cc-links">
+          <button type="button" id="ccVoltarQr" onclick="conectarPasso('qr')">Ler o QR code com a câmera</button>
+          <button type="button" id="ccIrSenha" onclick="conectarPasso('senha')">Sou o gerente: conectar com a senha da sincronização</button>
+        </div>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="fechar('modalConectarCodigo')">Cancelar</button>
+          <button class="btn btn-amarelo cc-confirmar" onclick="conectarCodigoConfirmar()">Conectar</button>
+        </div>
+      </div>
+      <!-- 4. Só aparelho Gerente: senha da sincronização (SENHA_SYNC) -->
+      <div id="ccPassoSenha" hidden>
+        <p class="cc-instr">Para o aparelho do gerente: o endereço do Worker e a senha da sincronização (SENHA_SYNC) cadastrada no Cloudflare. O endereço e a senha ficam salvos <b>só neste aparelho</b>.</p>
+        <div class="campo"><label>Endereço do Worker</label><input type="url" id="cfgSyncUrl" placeholder="https://china-sync.seu-nome.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="linha-campos">
+          <div class="campo"><label>Senha da sincronização</label><input type="password" id="cfgSyncSenha" autocomplete="new-password" placeholder="A SENHA_SYNC do Worker"></div>
+          <div class="campo"><label>Nome deste aparelho</label><input type="text" id="cfgSyncAparelho" maxlength="40" placeholder="Ex: PC da loja" onkeydown="if(event.key==='Enter')conectarComSenha()"></div>
+        </div>
+        <div class="cc-links"><button type="button" onclick="conectarPasso('manual')">Voltar ao código</button></div>
+        <div class="rodape-modal">
+          <button class="btn btn-claro" onclick="fechar('modalConectarCodigo')">Cancelar</button>
+          <button class="btn btn-amarelo" id="ccSenhaConectar" onclick="conectarComSenha()">Conectar</button>
+        </div>
       </div>
     </div>
   </div>

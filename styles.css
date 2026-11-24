@@ -1646,3 +1646,19 @@ body.nivel-consulta .hx-linha[data-mid]{cursor:default}
 .par-codigo span{font-size:14px;font-weight:600;color:var(--verde)}
 .par-codigo span.vencido{color:var(--vermelho)}
 .par-info{text-align:center;overflow-wrap:anywhere}
+
+/* ===== 2.14.1 ===== */
+/* Conectar com o aparelho do gerente: câmera do QR code dentro do modal */
+.cc-instr{margin-bottom:12px}
+.cc-camera{
+  position:relative;width:min(100%,300px);aspect-ratio:1/1;margin:0 auto;border-radius:16px;overflow:hidden;
+  background:var(--preto);display:flex;align-items:center;justify-content:center;
+}
+.cc-camera video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cc-mira{position:absolute;inset:16%;border:3px solid var(--amarelo);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.28);pointer-events:none}
+.cc-camera span{position:relative;z-index:1;max-width:80%;text-align:center;color:#fff;font-size:15px;font-weight:600;background:rgba(0,0,0,.55);padding:6px 12px;border-radius:10px}
+.cc-camera span[hidden]{display:none}
+.cc-links{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:12px 0 4px}
+.cc-links button{border:none;background:none;padding:4px 0;font-size:15px;font-weight:600;color:var(--texto);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.cc-links button[hidden]{display:none}
+#modalConectarCodigo .cc-aviso{margin-top:4px}

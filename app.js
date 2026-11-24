@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.14.0';
+const VERSAO = '2.14.2';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -1185,21 +1185,20 @@ document.addEventListener('keydown', e=>{
 
 /* ===== Leitor de código de barras por câmera (BarcodeDetector) ===== */
 let scanStream = null, scanTimer = null, scanDetector = null, scanAlvo = 'pCodigoBarras';
-let scanModoQr = false;   // 2.14.0: ler o QR code de conexão de um aparelho novo
 async function abrirScanner(alvo){
   if(typeof alvo==='string') scanAlvo = alvo; else if(!vendaScanAtivo) scanAlvo = 'pCodigoBarras';
   if(!('BarcodeDetector' in window)){
-    toast(scanModoQr ? 'Este navegador não lê QR code. Digite o endereço e o código.' : 'Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
-    vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false; return;
+    toast('Câmera não suportada neste navegador. Use o leitor USB ou digite o código.');
+    vendaScanAtivo = false; compraScanIdx = null; return;
   }
   try{
-    scanDetector = new window.BarcodeDetector({formats: scanModoQr ? ['qr_code'] : ['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
+    scanDetector = new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39']});
   }catch(e){ scanDetector = new window.BarcodeDetector(); }
   try{
     scanStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
   }catch(e){
     toast('Não foi possível acessar a câmera. Verifique a permissão.');
-    vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false; return;
+    vendaScanAtivo = false; compraScanIdx = null; return;
   }
   const v = document.getElementById('scanVideo');
   v.srcObject = scanStream;
@@ -1215,11 +1214,9 @@ async function loopScan(){
     if(codes && codes.length){
       const raw = codes[0].rawValue;
       const paraVenda = vendaScanAtivo;   // guarda o contexto antes de fecharScanner() zerar a flag
-      const paraCompra = compraScanIdx, paraQr = scanModoQr;
+      const paraCompra = compraScanIdx;
       fecharScanner();
-      if(paraQr){
-        conectarQrLido(raw);
-      } else if(paraCompra!==null){
+      if(paraCompra!==null){
         compraCodigoLido(paraCompra, raw);
       } else if(paraVenda){
         pdvCodigoLido(raw);   // PDV: adiciona à venda ou consulta o preço
@@ -1235,7 +1232,7 @@ async function loopScan(){
 function fecharScanner(){
   if(scanTimer){ clearTimeout(scanTimer); scanTimer=null; }
   if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
-  vendaScanAtivo = false; compraScanIdx = null; scanModoQr = false;
+  vendaScanAtivo = false; compraScanIdx = null;
   fechar('modalScanner');
 }
 
@@ -2619,6 +2616,7 @@ const CORPO_DE = {
 function abrir(id){ document.getElementById(id).classList.add('aberto'); }
 function fechar(id){
   document.getElementById(id).classList.remove('aberto');
+  if(id==='modalConectarCodigo') ccCameraParar();   // desliga a câmera do QR code
   if(CORPO_DE[id]) document.getElementById(CORPO_DE[id]).innerHTML = '';
 }
 document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
@@ -4010,22 +4008,79 @@ function carregarQrLib(){
 function b64urlDe(txt){ return btoa(unescape(encodeURIComponent(txt))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 function deB64url(t){ t = String(t).replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t += '='; return decodeURIComponent(escape(atob(t))); }
 
-/* Aparelho novo: abre pelo link do QR (câmera do celular), lê o QR pelo app, ou digita endereço + código */
+/* Aparelho novo (2.14.1): o padrão é ler o QR code com a câmera, dentro do próprio modal.
+   "Tentar de outro jeito": endereço do Worker + código de 6 números (PC sem câmera, navegador sem leitor de QR).
+   Só em aparelho Gerente: link para conectar com a senha da sincronização (SENHA_SYNC).
+   Link do QR aberto pela câmera do celular (?parear=...): vai direto para a confirmação. */
+let ccDados = null, ccStream = null, ccTimer = null, ccDetector = null;
+const CC_PASSOS = { qr:'ccPassoQr', lido:'ccPassoLido', manual:'ccPassoManual', senha:'ccPassoSenha' };
 function conectarCodigoAbrir(dados){
   if(emSandbox('conectar a sincronização')) return;
-  document.getElementById('ccUrl').value = (dados && dados.u) || (Sync.ler() && Sync.ler().url) || '';
+  ccDados = dados || null;
+  const d = Sync.ler(), nome = (d && d.aparelho) || syncNomePadrao();
+  ['ccNome','ccNomeQr','cfgSyncAparelho'].forEach(id=>{ document.getElementById(id).value = nome; });
+  document.getElementById('ccUrl').value = (dados && dados.u) || (d && d.url) || '';
   document.getElementById('ccCodigo').value = (dados && dados.c) || '';
-  document.getElementById('ccNome').value = (Sync.ler() && Sync.ler().aparelho) || syncNomePadrao();
-  document.getElementById('ccLerQr').hidden = !('BarcodeDetector' in window);
-  document.getElementById('ccAviso').hidden = !(estado.produtos.length || (estado.avulsas||[]).length);
+  const temDados = estado.produtos.length || (estado.avulsas||[]).length;
+  document.querySelectorAll('#modalConectarCodigo .cc-aviso').forEach(el=>{ el.hidden = !temDados; });
+  document.getElementById('ccIrSenha').hidden = nivelMaximo()!=='gerente';
   abrir('modalConectarCodigo');
-  setTimeout(()=>document.getElementById(dados && dados.c ? 'ccNome' : 'ccCodigo').focus(), 80);
+  conectarPasso(dados ? 'lido' : 'qr');
 }
-function conectarCodigoLerQr(){ fechar('modalConectarCodigo'); scanModoQr = true; abrirScanner(); }
-function conectarQrLido(raw){
-  const d = lerLinkPareamento(raw);
-  if(!d){ toast('Este QR code não é de conexão do China Engine.'); conectarCodigoAbrir(); return; }
-  conectarCodigoAbrir(d);
+function conectarPasso(passo, motivo){
+  ccCameraParar();
+  Object.entries(CC_PASSOS).forEach(([k,id])=>{ document.getElementById(id).hidden = k!==passo; });
+  const sem = document.getElementById('ccSemCamera');
+  sem.hidden = !motivo; sem.textContent = motivo || '';
+  document.getElementById('ccVoltarQr').hidden = !('BarcodeDetector' in window);
+  if(passo==='qr'){ ccCameraLigar(); return; }
+  const pc = window.matchMedia && matchMedia('(pointer:fine)').matches;   // no celular, não abre o teclado sozinho
+  const foco = passo==='manual' ? (val('ccUrl') ? 'ccCodigo' : 'ccUrl') : passo==='senha' ? 'cfgSyncUrl' : null;
+  if(pc && foco) setTimeout(()=>document.getElementById(foco).focus(), 80);
+}
+async function ccCameraLigar(){
+  const msg = document.getElementById('ccCamMsg');
+  msg.hidden = false; msg.textContent = 'Abrindo a câmera…';
+  const semQr = 'Este aparelho não lê QR code pela câmera. Digite o código que aparece no aparelho do gerente.';
+  if(!('BarcodeDetector' in window)){ conectarPasso('manual', semQr); return; }
+  try{ ccDetector = new window.BarcodeDetector({ formats:['qr_code'] }); }catch(e){ conectarPasso('manual', semQr); return; }
+  let stream;
+  try{ stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } }); }
+  catch(e){ if(!document.getElementById('ccPassoQr').hidden) conectarPasso('manual', 'Não foi possível usar a câmera (sem câmera ou sem permissão). Digite o código que aparece no aparelho do gerente.'); return; }
+  ccStream = stream;
+  if(document.getElementById('ccPassoQr').hidden || !aberto('modalConectarCodigo')){ ccCameraParar(); return; }   // saiu do passo enquanto pedia a permissão
+  const v = document.getElementById('ccVideo');
+  v.srcObject = stream;
+  try{ await v.play(); }catch(e){}
+  msg.hidden = true;
+  ccLoop();
+}
+async function ccLoop(){
+  if(!ccStream) return;
+  try{
+    const r = await ccDetector.detect(document.getElementById('ccVideo'));
+    if(r && r.length){
+      const d = lerLinkPareamento(r[0].rawValue);
+      if(d){
+        ccDados = d;
+        document.getElementById('ccUrl').value = d.u; document.getElementById('ccCodigo').value = d.c;
+        conectarPasso('lido'); return;
+      }
+      const msg = document.getElementById('ccCamMsg'); msg.hidden = false; msg.textContent = 'Este QR code não é de conexão do China Engine.';
+    }
+  }catch(e){}
+  if(ccStream) ccTimer = setTimeout(ccLoop, 250);
+}
+function ccCameraParar(){
+  clearTimeout(ccTimer); ccTimer = null;
+  if(ccStream){ ccStream.getTracks().forEach(t=>t.stop()); ccStream = null; }
+  const v = document.getElementById('ccVideo'); if(v) v.srcObject = null;
+}
+/* Aparelho do gerente: conectar com a senha da sincronização (antes ficava direto em Configurações) */
+async function conectarComSenha(){
+  const b = document.getElementById('ccSenhaConectar'); b.disabled = true;
+  try{ await syncConectar(); } finally{ b.disabled = false; }
+  if(Sync.conectado() || aberto('modalAviso')) fechar('modalConectarCodigo');
 }
 function lerLinkPareamento(texto){
   try{
@@ -4036,10 +4091,14 @@ function lerLinkPareamento(texto){
   }catch(e){ return null; }
 }
 async function conectarCodigoConfirmar(){
-  const url = normalizarUrlWorker(val('ccUrl')), codigo = val('ccCodigo').replace(/\D/g,''), nome = val('ccNome').trim() || syncNomePadrao();
+  const peloQr = !document.getElementById('ccPassoLido').hidden && ccDados;
+  const url = normalizarUrlWorker(peloQr ? ccDados.u : val('ccUrl'));
+  const codigo = String(peloQr ? ccDados.c : val('ccCodigo')).replace(/\D/g,'');
+  const nome = val(peloQr ? 'ccNomeQr' : 'ccNome').trim() || syncNomePadrao();
   if(!url){ toast('Informe o endereço do Worker.'); return; }
   if(codigo.length!==6){ toast('O código tem 6 números.'); document.getElementById('ccCodigo').focus(); return; }
-  const btn = document.getElementById('ccConfirmar'); btn.disabled = true;
+  const btns = document.querySelectorAll('#modalConectarCodigo .cc-confirmar');
+  btns.forEach(b=>{ b.disabled = true; });
   try{
     let r, j = null;
     try{
@@ -4060,7 +4119,7 @@ async function conectarCodigoConfirmar(){
     aplicarNivel(); mostrarView(viewInicial());
     mostrarAviso('Aparelho conectado', `<p>Este aparelho entrou na sincronização da loja como <b>${NIVEIS[nivel]}</b>.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">${escapar(NIVEIS_DESC[nivel])}</p>`);
   }catch(e){ toast(e.message); }
-  finally{ btn.disabled = false; }
+  finally{ btns.forEach(b=>{ b.disabled = false; }); }
 }
 /* Link do QR aberto pela câmera do celular: ...?parear=... */
 function parearPeloLink(){
@@ -4293,13 +4352,12 @@ async function syncBaixarCopia(dia){
 }
 function syncRenderConfig(){
   const d = Sync.ler(), lig = Sync.conectado();
-  document.getElementById('cfgSyncForm').style.display = lig ? 'none' : '';
   document.getElementById('cfgSyncLigado').style.display = lig ? '' : 'none';
   document.getElementById('cfgSyncCodigo').style.display = lig ? 'none' : '';
   if(!lig){
     document.getElementById('cfgSyncUrl').value = d && d.url || '';
     document.getElementById('cfgSyncSenha').value = d && d.senha ? '••••••••' : '';
-    document.getElementById('cfgSyncAparelho').value = d && d.aparelho || '';
+    document.getElementById('cfgSyncAparelho').value = d && d.aparelho || syncNomePadrao();
     document.getElementById('cfgSyncCopias').innerHTML = '';
   }
   syncRenderStatus();
@@ -4814,16 +4872,22 @@ function fecharInventarioDefinitivo(){
       toast('Inventário fechado.');
     }, 'Fechar inventário'), 'Fechar o inventário. Digite a senha do gerente.');
 }
-/* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar (some quando o inventário é fechado) */
+/* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar (some quando o inventário é fechado).
+   "Próximo" (2.14.2) pula para o item seguinte da lista (volta ao primeiro depois do último). */
+let invAvisoIdx = 0;
 function inventarioAviso(){
   const el = document.getElementById('esInventario'); if(!el) return;
   const pend = inventarioFechado() ? [] : inventarioPendentes();
   el.hidden = !pend.length;
-  if(!pend.length) return;
-  el.innerHTML = `<span><b>Inventário:</b> ${pend.length} produto(s) para cadastrar no Estoque. Próximo: <b>${escapar(pend[0].nome)}</b> (${pend[0].qtd} un.).</span>
-    <button class="btn btn-amarelo btn-mini" onclick="inventarioCadastrar('${pend[0].id}')">Cadastrar</button>
+  if(!pend.length){ invAvisoIdx = 0; return; }
+  invAvisoIdx = ((invAvisoIdx % pend.length) + pend.length) % pend.length;   // item cadastrado sai da lista: fica no seguinte
+  const it = pend[invAvisoIdx];
+  el.innerHTML = `<span><b>Inventário:</b> ${pend.length} produto(s) para cadastrar no Estoque. Agora: <b>${escapar(it.nome)}</b> (${it.qtd} un.)${pend.length>1 ? ` · ${invAvisoIdx+1} de ${pend.length}` : ''}.</span>
+    <button class="btn btn-amarelo btn-mini" onclick="inventarioCadastrar('${it.id}')">Cadastrar</button>
+    ${pend.length>1 ? '<button class="btn btn-claro btn-mini" onclick="inventarioProximo()">Próximo →</button>' : ''}
     <button class="btn btn-claro btn-mini" onclick="abrirInventario()">Ver lista</button>`;
 }
+function inventarioProximo(){ invAvisoIdx++; inventarioAviso(); }
 /* Abre o cadastro de Novo produto já preenchido com o item do inventário (nome, preço e quantidade);
    o custo por unidade é informado aqui, no cadastro */
 function inventarioCadastrar(id){
