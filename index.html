@@ -309,7 +309,7 @@
 <section class="view" id="viewConfig" hidden>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Nível de acesso deste aparelho</h3>
-      <small>Gerente tem acesso total. No modo Caixa, o funcionário usa o PDV sem ver custos nem lucro. Só consulta mostra as Métricas e o Histórico, sem alterar nada.</small></div>
+      <small>Gerente e Administrador têm acesso total (só o Gerente decide sobre os aparelhos Gerente). No modo Caixa, o funcionário usa o PDV sem ver custos nem lucro. Só consulta mostra as Métricas e o Histórico, sem alterar nada.</small></div>
     <div id="cfgNivel"></div>
   </div>
   <div class="cfg-bloco so-gerente">
@@ -326,7 +326,7 @@
 
   <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Promoções</h3>
-      <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede a senha do gerente.</small></div>
+      <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede senha.</small></div>
     <ul class="pm-lista" id="cfgPromoLista"></ul>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirPromocao()">+ Nova promoção</button></div>
   </div>
@@ -370,7 +370,7 @@
 
   <div class="cfg-bloco" id="cfgAparelhosBloco" hidden>
     <div class="cfg-cab"><h3>Aparelhos conectados</h3>
-      <small>Aparelhos que usam a sincronização desta loja, com o último acesso e o nível. Para conectar um aparelho novo, gere um QR code: ele vale por 2 minutos e uma vez só. Mudar o nível ou remover pede a senha do gerente.</small></div>
+      <small>Aparelhos que usam a sincronização desta loja, com o último acesso e o nível. Para conectar um aparelho novo, gere um QR code: ele vale por 2 minutos e uma vez só. Mudar o nível ou remover pede senha. O nível de um aparelho Gerente só ele mesmo muda, e só outro Gerente o remove.</small></div>
     <ul class="ap-lista" id="cfgAparelhos"></ul>
     <div class="cfg-acoes">
       <button class="btn btn-escuro" onclick="parearAbrir()">Conectar novo aparelho (QR code)</button>
@@ -388,9 +388,9 @@
     <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
   </div>
 
-  <div class="cfg-bloco so-gerente">
+  <div class="cfg-bloco so-gerente so-topo">
     <div class="cfg-cab"><h3>Senha do gerente</h3>
-      <small>Libera o modo Gerente, configurações sensíveis e, no modo Caixa, descontos e edições. A senha em si não fica guardada: o app guarda só um resumo protegido dela, que vai para os outros aparelhos pela sincronização e entra no backup.</small></div>
+      <small>A senha mais alta da loja: libera tudo, inclusive o que só o Gerente faz. A senha em si não fica guardada: o app guarda só um resumo protegido dela, que vai para os outros aparelhos pela sincronização e entra no backup.</small></div>
     <div class="sy-status erro" id="cfgSenhaPadrao" hidden>A loja ainda usa a senha padrão de fábrica, que aparecia no código público do app. Troque agora por uma senha só sua.</div>
     <div class="cfg-form">
       <div class="campo"><label>Senha atual</label><input type="password" id="cfgSenhaAtual" autocomplete="current-password"></div>
@@ -403,6 +403,20 @@
     </div>
   </div>
 
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Senha do administrador</h3>
+      <small>Senha dos Administradores: libera o modo Administrador, descontos, edições e as configurações sensíveis dos aparelhos Administrador. Não serve para o que é do Gerente. Precisa ser diferente da senha do gerente.</small></div>
+    <div class="sy-status" id="cfgAdmStatus" style="margin-bottom:14px"></div>
+    <div class="cfg-form">
+      <div class="campo"><label id="cfgAdmAtualRot">Senha do gerente</label><input type="password" id="cfgAdmAtual" autocomplete="current-password"></div>
+      <div class="linha-campos">
+        <div class="campo"><label>Nova senha do administrador</label><input type="password" id="cfgAdmNova" autocomplete="new-password"></div>
+        <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgAdmRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenhaAdmin()"></div>
+      </div>
+      <div class="dica" style="margin:-6px 0 12px">Mínimo de 6 caracteres.</div>
+      <button class="btn btn-escuro" onclick="alterarSenhaAdmin()">Salvar senha do administrador</button>
+    </div>
+  </div>
   <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Modo Faz-de-Conta</h3>
       <small>Para testar vendas, entradas e saídas sem medo (modo sandbox). Com ele ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
@@ -785,7 +799,6 @@
         <div class="campo">
           <label>Preço de venda (R$)</label>
           <input type="number" id="pPreco" min="0" step="0.01" placeholder="0,00">
-          <div class="dica">Alterar exige senha do gerente.</div>
         </div>
         <div class="campo">
           <label>Estoque mínimo</label>
@@ -959,9 +972,9 @@
       <button class="fechar" onclick="cancelarSenha()">&times;</button>
     </div>
     <div class="modal-corpo">
-      <p id="senhaTexto" style="margin-bottom:14px">Digite a senha de administrador para confirmar.</p>
+      <p id="senhaTexto" style="margin-bottom:14px">Digite a senha do gerente ou do administrador para confirmar.</p>
       <div class="campo">
-        <input type="password" id="senhaInput" placeholder="Senha do administrador" onkeydown="if(event.key==='Enter')confirmarSenha()">
+        <input type="password" id="senhaInput" placeholder="Senha do gerente ou do administrador" onkeydown="if(event.key==='Enter')confirmarSenha()">
       </div>
       <div class="rodape-modal">
         <button class="btn btn-claro" onclick="cancelarSenha()">Cancelar</button>

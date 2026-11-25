@@ -1592,9 +1592,10 @@ body:has(#viewDesempenho:not([hidden])) #infoCorpo .ds-barra-rot small{display:n
 
 /* ----- Níveis de acesso (Gerente / Caixa / Só consulta) ----- */
 .acesso-oculto{display:none !important}
-body:not(.nivel-gerente) .so-gerente{display:none !important}
+body:not(.acesso-total) .so-gerente{display:none !important}
+body:not(.nivel-gerente) .so-topo{display:none !important}   /* só o aparelho Gerente (2.15.0) */
 body.nivel-consulta .nao-consulta{display:none !important}
-body:not(.nivel-gerente) #avCustoCampo{display:none !important}
+body:not(.acesso-total) #avCustoCampo{display:none !important}
 /* Caixa: Histórico só do dia de hoje */
 body.nivel-caixa #viewHistorico .hx-seta{visibility:hidden}
 body.nivel-caixa #hxPeriodoRotulo{pointer-events:none}

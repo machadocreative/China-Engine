@@ -20,7 +20,7 @@
    Quem pode entrar (2.14.0):
      - a SENHA_SYNC (senha mestra) → nível Gerente;
      - a chave própria de um aparelho conectado pelo QR code / código de 6 dígitos → o nível que o
-       gerente escolheu para ele (Gerente, Caixa ou Só consulta). A chave nunca é guardada aqui:
+       Gerente ou o Administrador escolheu (Gerente, Administrador, Caixa ou Só consulta). A chave nunca é guardada aqui:
        o banco só tem o "resumo" dela (SHA-256). Remover o aparelho desliga a chave na hora.
 
    Rotas (todas exigem o cabeçalho  Authorization: Bearer <SENHA_SYNC ou chave do aparelho>):
@@ -44,11 +44,15 @@
      GET    /aparelhos       lista os aparelhos (id, nome, criado, último acesso, nível, tem push)
      DELETE /aparelhos/{id}  remove o aparelho (e as notificações dele)
      PATCH  /aparelhos/{id}  muda o nível de um aparelho conectado pelo QR: { nivel }
-     Só o nível Gerente vê e altera a lista. Aparelho conectado com a SENHA_SYNC é sempre Gerente:
+     Níveis (2.15.0): Gerente > Administrador > Caixa > Só consulta. Gerente e Administrador veem e
+     mexem na lista; o nível de um aparelho Gerente só ele mesmo muda; só outro Gerente o remove;
+     só um Gerente dá o nível Gerente.
+     Gerente e Administrador veem e alteram a lista. Aparelho conectado com a SENHA_SYNC é sempre Gerente:
      para impedir que ele volte a conectar, troque também a SENHA_SYNC.
 
    Conectar um aparelho novo pelo QR code (2.14.0):
-     POST /pareamento        (Gerente) cria um código de 6 dígitos de uso único, válido por 2 minutos: { nivel }
+     POST /pareamento        (Gerente ou Administrador; só o Gerente cria Gerente) cria um código de
+                             6 dígitos de uso único, válido por 2 minutos: { nivel }
      POST /pareamento/usar   (sem senha: o próprio código é a credencial) { codigo, nome, aparelhoId }
                              → { chave, nivel }. Depois de 10 tentativas erradas, os códigos abertos
                              deixam de valer (é preciso gerar outro).
@@ -70,10 +74,10 @@ const ORIGENS_PADRAO = ['https://machadocreative.github.io'];
 const DIAS_COPIAS = 30;
 const LIMITE_LINHA = 1_900_000;   // margem abaixo dos 2 MB do D1
 const FUSO = 'America/Sao_Paulo';
-const NIVEIS = ['gerente', 'caixa', 'consulta'];
+const NIVEIS = ['gerente', 'admin', 'caixa', 'consulta'];   // 2.15.0: Administrador entre Gerente e Caixa
 const PAREAMENTO_MIN = 2;          // validade do código de 6 dígitos
 const PAREAMENTO_TENTATIVAS = 10;  // erros seguidos que invalidam os códigos abertos
-const nivelNormal = n => NIVEIS.includes(n) ? n : 'gerente';   // 'total' (até a 2.13.0) = gerente
+const nivelNormal = n => NIVEIS.includes(n) ? n : 'consulta';   // chave com nível desconhecido: o mínimo
 
 let tabelasProntas = false;
 
@@ -125,7 +129,8 @@ export default {
       }
       if (!nivel) return await negar();
       const gerente = nivel === 'gerente';
-      const soGerente = () => responder(403, { erro: 'nivel', mensagem: 'Só um aparelho com nível Gerente pode fazer isso.' });
+      const total = nivel === 'gerente' || nivel === 'admin';   // Gerente e Administrador
+      const soTotal = () => responder(403, { erro: 'nivel', mensagem: 'Só um aparelho Gerente ou Administrador pode fazer isso.' });
 
       // ----- Aparelho que está chamando (registro, último acesso e remoção) -----
       const apId = apChave || (url.searchParams.get('ap') || '').slice(0, 64);   // com chave própria, vale o aparelho da chave
@@ -143,27 +148,35 @@ export default {
       }
 
       if (req.method === 'GET' && caminho === '/aparelhos') {
-        if (!gerente) return soGerente();
+        if (!total) return soTotal();
         const { results } = await env.DB.prepare(
           'SELECT a.id, a.nome, a.criado_em, a.visto_em, a.nivel, a.chave_hash IS NOT NULL AS pareado, ' +
           '(SELECT COUNT(*) FROM push_inscricoes p WHERE p.aparelho_id = a.id) AS push ' +
           'FROM aparelhos a WHERE a.revogado = 0 ORDER BY a.visto_em DESC'
         ).all();
-        return responder(200, { aparelhos: results.map(a => ({ id: a.id, nome: a.nome, criadoEm: a.criado_em, vistoEm: a.visto_em, nivel: nivelNormal(a.nivel), pareado: !!a.pareado, push: a.push > 0, atual: a.id === apId })) });
+        return responder(200, { aparelhos: results.map(a => ({ id: a.id, nome: a.nome, criadoEm: a.criado_em, vistoEm: a.visto_em, nivel: a.pareado ? nivelNormal(a.nivel) : 'gerente', pareado: !!a.pareado, push: a.push > 0, atual: a.id === apId })) });
       }
       const ma = caminho.match(/^\/aparelhos\/([A-Za-z0-9_-]{4,64})$/);
-      if (ma && (req.method === 'DELETE' || req.method === 'PATCH') && !gerente) return soGerente();
+      if (ma && (req.method === 'DELETE' || req.method === 'PATCH') && !total) return soTotal();
+      // nível do aparelho alvo: sem chave própria = entrou com a SENHA_SYNC = Gerente
+      const alvo = ma ? await env.DB.prepare('SELECT chave_hash, nivel FROM aparelhos WHERE id = ? AND revogado = 0').bind(ma[1]).first() : null;
+      const alvoNivel = alvo ? (alvo.chave_hash ? nivelNormal(alvo.nivel) : 'gerente') : null;
       if (req.method === 'PATCH' && ma) {
         let corpo;
         try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
         if (!NIVEIS.includes(corpo && corpo.nivel)) return responder(400, { erro: 'nivel', mensagem: 'Nível inválido.' });
-        const a = await env.DB.prepare('SELECT chave_hash FROM aparelhos WHERE id = ? AND revogado = 0').bind(ma[1]).first();
-        if (!a) return responder(404, { erro: 'aparelho', mensagem: 'Aparelho não encontrado.' });
-        if (!a.chave_hash) return responder(400, { erro: 'senha-mestra', mensagem: 'Este aparelho entrou com a senha da sincronização e é sempre Gerente. Para limitar, remova e conecte de novo pelo QR code.' });
+        if (!alvo) return responder(404, { erro: 'aparelho', mensagem: 'Aparelho não encontrado.' });
+        if (!alvo.chave_hash) return responder(400, { erro: 'senha-mestra', mensagem: 'Este aparelho entrou com a senha da sincronização e é sempre Gerente.' });
+        // Gerente: ninguém muda o nível dele, só ele mesmo
+        if (alvoNivel === 'gerente' && ma[1] !== apId) return responder(403, { erro: 'nivel', mensagem: 'Só o próprio aparelho Gerente pode mudar o nível dele.' });
+        // Administrador não dá nem tira o nível Gerente
+        if (corpo.nivel === 'gerente' && !gerente) return responder(403, { erro: 'nivel', mensagem: 'Só um Gerente pode dar o nível Gerente.' });
         await env.DB.prepare('UPDATE aparelhos SET nivel = ? WHERE id = ?').bind(corpo.nivel, ma[1]).run();
         return responder(200, { ok: true });
       }
       if (req.method === 'DELETE' && ma) {
+        // aparelho Gerente só sai por outro Gerente (perda ou roubo)
+        if (alvoNivel === 'gerente' && !gerente) return responder(403, { erro: 'nivel', mensagem: 'Só outro Gerente pode remover um aparelho Gerente.' });
         await env.DB.batch([
           env.DB.prepare('UPDATE aparelhos SET revogado = 1 WHERE id = ?').bind(ma[1]),
           env.DB.prepare('DELETE FROM push_inscricoes WHERE aparelho_id = ?').bind(ma[1])
@@ -172,10 +185,11 @@ export default {
       }
 
       if (req.method === 'POST' && caminho === '/pareamento') {
-        if (!gerente) return soGerente();
+        if (!total) return soTotal();
         let corpo = {};
         try { corpo = await req.json(); } catch (e) {}
         const nivelNovo = NIVEIS.includes(corpo.nivel) ? corpo.nivel : 'caixa';
+        if (nivelNovo === 'gerente' && !gerente) return responder(403, { erro: 'nivel', mensagem: 'Só um Gerente pode conectar outro aparelho como Gerente.' });
         const agora = Date.now();
         await env.DB.prepare('DELETE FROM pareamentos WHERE expira_em < ? OR usado = 1').bind(agora).run();
         let codigo = '';
@@ -241,7 +255,7 @@ export default {
         return responder(200, { ok: true, versao: base + 1, atualizadoEm: agora, aparelho });
       }
 
-      if (caminho.startsWith('/copias') && !gerente) return soGerente();
+      if (caminho.startsWith('/copias') && !total) return soTotal();
       if (req.method === 'GET' && caminho === '/copias') {
         const { results } = await env.DB.prepare(
           'SELECT dia, versao, atualizado_em, aparelho, length(dados) AS tamanho FROM copias ORDER BY dia DESC'
@@ -335,8 +349,18 @@ async function prepararTabelas(db) {
   try { await db.prepare('ALTER TABLE aparelhos ADD COLUMN chave_hash TEXT').run(); } catch (e) { /* a coluna já existe */ }
   await db.batch([
     db.prepare('CREATE TABLE IF NOT EXISTS pareamentos (codigo TEXT PRIMARY KEY, nivel TEXT NOT NULL, expira_em INTEGER NOT NULL, criado_por TEXT, usado INTEGER DEFAULT 0, falhas INTEGER DEFAULT 0)'),
-    db.prepare('CREATE INDEX IF NOT EXISTS aparelhos_chave ON aparelhos (chave_hash)')
+    db.prepare('CREATE INDEX IF NOT EXISTS aparelhos_chave ON aparelhos (chave_hash)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT)')
   ]);
+  // 2.15.0: o "Gerente" conectado pelo QR na 2.14.0 vira Administrador (uma vez só). Quem usa a SENHA_SYNC continua Gerente.
+  const migrado = await db.prepare("SELECT valor FROM meta WHERE chave = 'niveis'").first();
+  if (!migrado) {
+    await db.batch([
+      db.prepare("UPDATE aparelhos SET nivel = 'admin' WHERE chave_hash IS NOT NULL AND nivel IN ('gerente', 'total')"),
+      db.prepare("UPDATE pareamentos SET nivel = 'admin' WHERE nivel = 'gerente' AND usado = 0"),
+      db.prepare("INSERT OR IGNORE INTO meta (chave, valor) VALUES ('niveis', '2.15')")
+    ]);
+  }
   tabelasProntas = true;
 }
 

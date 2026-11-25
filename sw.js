@@ -1,7 +1,5 @@
-/* China Engine — service worker
-   Serve só para as notificações push (avisos de venda entre aparelhos).
-   De propósito, NÃO guarda arquivos do app em cache: assim uma versão nova publicada
-   no GitHub Pages aparece na hora, sem precisar limpar nada. */
+/* China Engine — service worker — Notificações push */
+
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 

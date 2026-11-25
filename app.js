@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.14.2';
+const VERSAO = '2.15.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -388,7 +388,7 @@ function salvarProduto(){
     const precoMudou = Math.abs((dados.preco||0) - (p.preco||0)) > 0.001;
     const aplicar = ()=>{ Object.assign(p, dados); salvar(); fechar('modalProduto'); render(); toast('Produto salvo.'); };
     if(precoMudou){
-      senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
+      senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente ou do administrador para confirmar a mudança.');
     } else {
       aplicar();
     }
@@ -417,7 +417,7 @@ function excluirProdutoId(id){
     pedirSenha(()=>{
       estado.produtos = estado.produtos.filter(x=>x.id!==id);
       salvar(); fechar('modalProduto'); fechar('modalMov'); render(); renderViewAtual(); toast('Produto excluído.');
-    }, 'Excluir um produto apaga o histórico dele. Digite a senha do gerente para confirmar.');
+    }, `Excluir um produto apaga o histórico dele. Digite ${nomeSenha(nivelDaSenha())} para confirmar.`, nivelDaSenha());
   }, 'Excluir produto');
 }
 
@@ -718,7 +718,7 @@ function descontoPrevia(){
    Item: margem do item depois da promoção e deste desconto. Venda: margem da venda toda depois do desconto. */
 const MARGEM_MINIMA = 40;
 function descontoAvisoMargem(c){
-  if(!ehGerente()) return '';   // Caixa não vê custo nem margem
+  if(!acessoTotal()) return '';   // Caixa não vê custo nem margem
   const r = pdvResumo();
   const linhas = dc.alvo==='venda' ? r.linhas : [r.linhas[dc.alvo]].filter(Boolean);
   if(!linhas.length) return '';
@@ -748,7 +748,7 @@ function descontoAplicar(){
     if(alvo==='venda') pdv.desconto = novo; else if(pdv.itens[alvo]) pdv.itens[alvo].desc = novo;
     fechar('modalDesconto'); pdvGuardar(); renderPdv(); pdvFocar();
     toast('Desconto aplicado.');
-  }, `Desconto de ${fmtBRL(c.d)} ${alvo==='venda'?'na venda':'no item'}. Digite a senha do gerente para confirmar.`);
+  }, `Desconto de ${fmtBRL(c.d)} ${alvo==='venda'?'na venda':'no item'}. Digite a senha do gerente ou do administrador para confirmar.`);
   if(!emPromo.length){ senha(); return; }
   // Desconto por cima de promoção: dupla confirmação antes da senha
   const nomes = [...new Set(emPromo.map(l=>`“${l.promo.titulo}”`))].join(', ');
@@ -893,7 +893,7 @@ function avulsaCusto(){ document.getElementById('avCustoCampo').style.display = 
 function avulsaTotais(){
   const el = document.getElementById('avTotal'); if(!el) return;
   const q = parseInt(val('avQtd'))||0, v = parseFloat(val('avValor')), c = parseFloat(val('avCusto'));
-  const temCusto = document.getElementById('avTemCusto').checked && c>0 && ehGerente();
+  const temCusto = document.getElementById('avTemCusto').checked && c>0 && acessoTotal();
   el.innerHTML = q>0 && v>0
     ? `<span>Total: <b>${fmtBRL(cent(q*v))}</b>${q>1 ? ` <small>(${q} × ${fmtBRL(v)})</small>` : ''}</span>${temCusto ? `<span>Custo total: <b>${fmtBRL(cent(q*c))}</b></span>` : ''}`
     : '';
@@ -960,7 +960,7 @@ function salvarAvulsa(){
 function pedirEdicaoAvulsa(id){
   const a = (estado.avulsas||[]).find(x=>x.id===id); if(!a) return;
   if(nivelAtual()==='consulta') return;
-  senhaSeNaoGerente(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente.`);
+  senhaSeNaoGerente(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente ou do administrador.`);
 }
 function excluirAvulsa(){
   const a = (estado.avulsas||[]).find(x=>x.id===avEditando); if(!a) return;
@@ -1274,7 +1274,7 @@ function blocoSaida(p){
       <label>Preço de venda (un.)</label>
       <input type="number" id="sPreco" min="0" step="0.01" value="${pr ? cent(p.preco-pr.descUnit) : (p.preco||'')}" placeholder="0,00">
       ${pr ? `<small style="color:var(--vermelho);font-size:14px;font-weight:600">Preço da promoção “${escapar(pr.promo.titulo)}” (cheio: ${fmtBRL(p.preco)}).</small>` : ''}
-      <small style="color:var(--texto-sec);font-size:14px">Alterar o preço base exige senha do gerente.</small>
+      <small style="color:var(--texto-sec);font-size:14px">Vender por um preço diferente do preço base pede senha.</small>
     </div>
     <div class="mini-campo" id="campoPagSaida">
       <label>Forma de pagamento</label>
@@ -1501,7 +1501,7 @@ const PP_ABAS = [
   { id:'fornecedores', nome:'Fornecedores' }
 ];
 function abrirMov(id, aba){
-  if(!ehGerente()) return;   // o Painel do Produto mostra custos e permite editar: só no modo Gerente
+  if(!acessoTotal()) return;   // o Painel do Produto mostra custos e permite editar: só Gerente e Administrador
   produtoAtivo = id;
   ppAba = aba || 'estoque';
   renderMov();
@@ -1638,7 +1638,7 @@ function ppMovimentacoes(p){
   movs.forEach(m=>{ const u = dias[dias.length-1]; if(u && u.data===m.data) u.itens.push(m); else dias.push({ data:m.data, itens:[m] }); });
   const sinal = v=> v>0 ? '+' : v<0 ? '−' : '';
   const sem = ['dom','seg','ter','qua','qui','sex','sáb'];
-  return `<p class="dica" style="margin:0 0 8px">Toque e segure uma movimentação para editar (exige a senha do gerente).</p>
+  return `<p class="dica" style="margin:0 0 8px">Toque e segure uma movimentação para editar.</p>
     <div class="pp-movs">` + dias.map(d=>`
     <div class="hx-dia">
       <div class="hx-data"><span>${fmtData(d.data)} <small>${sem[dataDe(d.data).getDay()]}</small></span><i></i></div>
@@ -1670,7 +1670,7 @@ function ppDados(p){
       <input type="url" id="dpFoto" value="${escapar(p.foto||'')}" placeholder="https://… — aparece no visor do PDV" autocapitalize="off" spellcheck="false"></div>
     <div class="linha-campos">
       <div class="campo"><label>Preço de venda (R$)</label><input type="number" id="dpPreco" min="0" step="0.01" value="${p.preco||''}" placeholder="0,00">
-        <div class="dica">Alterar exige senha do gerente.</div></div>
+</div>
       <div class="campo"><label>Estoque mínimo</label><input type="number" id="dpMinimo" min="0" value="${p.minimo||0}">
         <div class="dica">Abaixo disso, mostra aviso de estoque baixo.</div></div>
     </div>
@@ -1695,7 +1695,7 @@ function salvarDadosPainel(){
   if(foto && !/^https?:\/\//i.test(foto)){ toast('O link da foto precisa começar com http:// ou https://'); return; }
   const aplicar = ()=>{ Object.assign(p, dados); if(foto) p.foto = foto; else delete p.foto; salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
   if(Math.abs((dados.preco||0)-(p.preco||0)) > 0.001)
-    senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente para confirmar a mudança.');
+    senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente ou do administrador para confirmar a mudança.');
   else aplicar();
 }
 
@@ -1835,7 +1835,7 @@ function registrarSaida(){
       Object.assign(mov, { precoCheio:base, desconto:cent(pr.descUnit*qtd), promocaoId:pr.promo.id, promocaoTitulo:pr.promo.titulo, descPromo:cent(pr.descUnit*qtd) });
     } else if(base>0 && Math.abs(precoVenda-base)>0.001){
       pedirSenha(()=>efetivarSaida(p, mov),
-        'O preço de venda foi alterado em relação ao preço base. Digite a senha do gerente para confirmar a baixa.');
+        'O preço de venda foi alterado em relação ao preço base. Digite a senha do gerente ou do administrador para confirmar a baixa.');
       return;
     }
   } else if(motivo==='A receber'){
@@ -1859,9 +1859,12 @@ function efetivarSaida(p, mov){
    SENHA DO GERENTE (genérica)
    ========================================================= */
 let acaoSenha = null;
-function pedirSenha(callback, mensagem){
-  acaoSenha = callback;
-  document.getElementById('senhaTexto').textContent = mensagem || 'Digite a senha de administrador para confirmar.';
+/* nivel: 'admin' (padrão) aceita a senha do administrador ou a do gerente; 'gerente' aceita só a do gerente */
+let acaoSenhaNivel = 'admin';
+function pedirSenha(callback, mensagem, nivel){
+  acaoSenha = callback; acaoSenhaNivel = nivel==='gerente' ? 'gerente' : 'admin';
+  document.getElementById('senhaTexto').textContent = mensagem || 'Digite a senha do gerente ou do administrador para confirmar.';
+  document.getElementById('senhaInput').placeholder = acaoSenhaNivel==='gerente' ? 'Senha do gerente' : 'Senha do gerente ou do administrador';
   document.getElementById('senhaInput').value = '';
   abrir('modalSenha');
   setTimeout(()=>document.getElementById('senhaInput').focus(), 50);
@@ -1872,7 +1875,7 @@ async function confirmarSenha(){
   if(senhaConferindo) return;
   senhaConferindo = true;
   let ok = false;
-  try{ ok = await senhaConfere(document.getElementById('senhaInput').value); }
+  try{ ok = await senhaConfere(document.getElementById('senhaInput').value, acaoSenhaNivel); }
   finally{ senhaConferindo = false; }
   if(!ok){ toast('Senha incorreta.'); return; }
   fechar('modalSenha');
@@ -1880,7 +1883,7 @@ async function confirmarSenha(){
   if(cb) cb();
 }
 /* Gerente no aparelho: editar preço e movimentações não pede senha (2.14.0). Caixa: pede. */
-function senhaSeNaoGerente(cb, mensagem){ if(ehGerente()) cb(); else pedirSenha(cb, mensagem); }
+function senhaSeNaoGerente(cb, mensagem){ if(acessoTotal()) cb(); else pedirSenha(cb, mensagem); }
 
 /* ----- Resumo lento da senha (PBKDF2-SHA256, Web Crypto) ----- */
 const b64De = u8 => btoa(String.fromCharCode(...u8));
@@ -1893,15 +1896,21 @@ async function resumoSenha(senha, salB64, iter){
   return { s:b64De(sal), h:b64De(bits), i:it };
 }
 function senhaReferencia(){ const c = estado.config || {}; return c.senhaGerenteHash && c.senhaGerenteHash.h ? c.senhaGerenteHash : SENHA_PADRAO_HASH; }
+function senhaAdminReferencia(){ const c = estado.config || {}; return c.senhaAdminHash && c.senhaAdminHash.h ? c.senhaAdminHash : null; }   // 2.15.0
 function senhaEhPadrao(){ return senhaReferencia()===SENHA_PADRAO_HASH; }
-async function senhaConfere(senha){
+async function senhaBate(senha, ref){
+  if(!senha || !ref) return false;
+  const r = await resumoSenha(senha, ref.s, ref.i);
+  let dif = r.h.length ^ ref.h.length;
+  for(let i=0;i<Math.min(r.h.length, ref.h.length);i++) dif |= r.h.charCodeAt(i) ^ ref.h.charCodeAt(i);
+  return dif===0;
+}
+/* nivel 'gerente': só a senha do gerente. 'admin' (padrão): a do gerente ou a do administrador */
+async function senhaConfere(senha, nivel){
   if(!senha) return false;
-  const ref = senhaReferencia();
   try{
-    const r = await resumoSenha(senha, ref.s, ref.i);
-    let dif = r.h.length ^ ref.h.length;
-    for(let i=0;i<Math.min(r.h.length, ref.h.length);i++) dif |= r.h.charCodeAt(i) ^ ref.h.charCodeAt(i);
-    return dif===0;
+    if(await senhaBate(senha, senhaReferencia())) return true;
+    return nivel!=='gerente' && await senhaBate(senha, senhaAdminReferencia());
   }catch(e){ toast('Este navegador não conseguiu conferir a senha.'); return false; }
 }
 /* Senha antiga em texto (até a 2.13.0): vira resumo e o texto é apagado */
@@ -2249,7 +2258,7 @@ function copiarDiaHistorico(data){
 }
 function copiarDiaHistoricoTexto(data){
   const itens = hxDias[data] || []; if(!itens.length) return;
-  const semLucro = !ehGerente() && nivelAtual()!=='consulta';   // Caixa não vê lucro
+  const semLucro = nivelAtual()==='caixa';   // Caixa não vê lucro
   const custos = custosFIFO();
   let total = 0, lucroT = 0;
   const ds = dataDe(data);
@@ -2306,7 +2315,7 @@ function pedirEdicaoMov(pid, mid){
   if(!m) return;
   if(nivelAtual()==='consulta') return;
   senhaSeNaoGerente(()=>abrirEdicaoMov(pid, mid),
-    `Editar ${m.tipo==='entrada'?'a entrada':'a saída'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)}). Digite a senha do gerente.`);
+    `Editar ${m.tipo==='entrada'?'a entrada':'a saída'} de ${m.qtd} un. de “${p.nome}” (${fmtData(m.data)}). Digite a senha do gerente ou do administrador.`);
 }
 function abrirEdicaoMov(pid, mid){
   atualizarListaFornecedores();
@@ -2739,7 +2748,8 @@ function renderConfig(){
 async function alterarSenha(){
   if(emSandbox('alterar a senha')) return;
   const atual = val('cfgSenhaAtual'), nova = val('cfgSenhaNova'), rep = val('cfgSenhaRep');
-  if(!(await senhaConfere(atual))){ toast('Senha atual incorreta.'); return; }
+  if(!(await senhaConfere(atual, 'gerente'))){ toast('Senha atual do gerente incorreta.'); return; }
+  if(await senhaBate(nova, senhaAdminReferencia())){ toast('A senha do gerente precisa ser diferente da senha do administrador.'); return; }
   if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
   if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
   if(nova === atual){ toast('A nova senha é igual à atual.'); return; }
@@ -2754,6 +2764,27 @@ async function alterarSenha(){
 }
 function senhaRenderAviso(){
   const el = document.getElementById('cfgSenhaPadrao'); if(el) el.hidden = !senhaEhPadrao();
+  const st = document.getElementById('cfgAdmStatus'); if(!st) return;
+  const definida = !!senhaAdminReferencia();
+  st.className = 'sy-status ' + (definida ? 'ok' : 'aviso');
+  st.textContent = definida ? '✓ Senha do administrador definida.' : 'Ainda não definida: enquanto isso, só a senha do gerente libera as ações.';
+  document.getElementById('cfgAdmAtualRot').textContent = nivelDaSenha()==='gerente' ? 'Senha do gerente' : 'Senha atual do administrador';
+}
+/* Senha do administrador (2.15.0): no aparelho Gerente, define ou troca com a senha do gerente;
+   no aparelho Administrador, troca com a senha atual do administrador */
+async function alterarSenhaAdmin(){
+  if(emSandbox('alterar a senha')) return;
+  const atual = val('cfgAdmAtual'), nova = val('cfgAdmNova'), rep = val('cfgAdmRep'), nv = nivelDaSenha();
+  if(!(await senhaConfere(atual, nv))){ toast(nv==='gerente' ? 'Senha do gerente incorreta.' : 'Senha atual incorreta.'); return; }
+  if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
+  if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
+  if(await senhaBate(nova, senhaReferencia())){ toast('A senha do administrador precisa ser diferente da senha do gerente.'); return; }
+  estado.config = estado.config || {};
+  estado.config.senhaAdminHash = await resumoSenha(nova);
+  salvar();
+  ['cfgAdmAtual','cfgAdmNova','cfgAdmRep'].forEach(id=>document.getElementById(id).value='');
+  senhaRenderAviso();
+  mostrarAviso('Senha do administrador salva', '<p>A senha do administrador foi salva e vai para os outros aparelhos pela sincronização.</p><p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Ela libera descontos, edições e as configurações dos aparelhos Administrador. O que é do Gerente continua pedindo a senha do gerente.</p>');
 }
 
 /* A consulta de produtos pela API GTIN foi removida na 2.0.0 (não encontrava os produtos da loja).
@@ -3797,24 +3828,30 @@ function aparelhoId(){
   return aparelhoIdMem;
 }
 /* =========================================================
-   NÍVEIS DE ACESSO (2.14.0) — Gerente, Caixa e Só consulta
-   - Nível máximo do aparelho: quem conecta com a senha da sincronização (SENHA_SYNC) é Gerente;
-     quem conecta pelo QR code / código de 6 dígitos recebe o nível que o gerente escolheu.
-   - Aparelho Gerente pode passar para o modo Caixa (ex.: funcionário usando o PC) e voltar
-     ao modo Gerente com a senha do gerente.
-   - Caixa: PDV e Histórico do dia, sem custo nem lucro; descontos e edições pedem a senha.
+   NÍVEIS DE ACESSO (2.14.0; Gerente acima de Administrador na 2.15.0)
+   - Gerente: acesso total e a palavra final sobre os aparelhos. Quem conecta com a senha da
+     sincronização (SENHA_SYNC) é Gerente. Ninguém muda o nível de um aparelho Gerente: só ele mesmo
+     (se entrou pelo QR code). Só outro Gerente remove um aparelho Gerente (perda ou roubo).
+   - Administrador: acesso total (era o "Gerente" da 2.14.0), exceto mexer em aparelhos Gerente.
+     Conecta, muda e remove Administradores, Caixas e Só consulta.
+   - Gerente e Administrador podem passar para o modo Caixa e voltar com a senha do próprio nível.
+   - Caixa: PDV e Histórico do dia, sem custo nem lucro; descontos e edições pedem senha.
    - Só consulta: Métricas e Histórico, só leitura; não envia nada para a nuvem.
+   Senhas: a do Gerente vale para tudo; a do Administrador vale para tudo, menos o que é do Gerente
+   (voltar um aparelho Gerente do modo Caixa e as configurações sensíveis de um aparelho Gerente).
    Esta é a fase 1: os dados chegam completos a todos os aparelhos; o app é que esconde.
    ========================================================= */
-const NIVEIS = { gerente:'Gerente', caixa:'Caixa', consulta:'Só consulta' };
+const NIVEIS = { gerente:'Gerente', admin:'Administrador', caixa:'Caixa', consulta:'Só consulta' };
 const NIVEIS_DESC = {
-  gerente:'Acesso total.',
-  caixa:'PDV e Histórico do dia, sem custos nem lucro. Descontos e edições pedem a senha do gerente.',
+  gerente:'Acesso total. Ninguém muda o nível de um aparelho Gerente, só ele mesmo.',
+  admin:'Acesso total, menos mexer nos aparelhos Gerente.',
+  caixa:'PDV e Histórico do dia, sem custos nem lucro. Descontos e edições pedem a senha.',
   consulta:'Métricas e Histórico, só para ver. Não registra vendas nem altera nada.'
 };
+const NIVEIS_TOTAL = ['gerente','admin'];
 const MODO_CHAVE = 'chinatown_modo_local';
 const NIVEL_FIXO_CHAVE = 'chinatown_nivel_fixo';   // nível de um aparelho conectado pelo QR (continua valendo se ele for removido)
-function nivelNormal(n){ return n==='caixa' || n==='consulta' ? n : 'gerente'; }   // 'total' (até a 2.13.0) = gerente
+function nivelNormal(n){ return NIVEIS[n] ? n : (n==='total' ? 'gerente' : 'consulta'); }   // 'total' (até a 2.13.0) = gerente
 function nivelFixo(n){
   if(n===undefined){ try{ return localStorage.getItem(NIVEL_FIXO_CHAVE); }catch(e){ return null; } }
   try{ if(n && n!=='gerente') localStorage.setItem(NIVEL_FIXO_CHAVE, n); else localStorage.removeItem(NIVEL_FIXO_CHAVE); }catch(e){}
@@ -3826,26 +3863,31 @@ function nivelMaximo(){
 }
 function nivelAtual(){
   const max = nivelMaximo();
-  if(max!=='gerente') return max;
+  if(!NIVEIS_TOTAL.includes(max)) return max;
   let m = null; try{ m = localStorage.getItem(MODO_CHAVE); }catch(e){}
-  return m==='caixa' ? 'caixa' : 'gerente';
+  return m==='caixa' ? 'caixa' : max;
 }
-function ehGerente(){ return nivelAtual()==='gerente'; }
+function acessoTotal(){ return NIVEIS_TOTAL.includes(nivelAtual()); }
+function maximoTotal(){ return NIVEIS_TOTAL.includes(nivelMaximo()); }
+/* senha que este aparelho exige para as ações sensíveis: aparelho Gerente → só a do Gerente */
+function nivelDaSenha(){ return nivelMaximo()==='gerente' ? 'gerente' : 'admin'; }
+function nomeSenha(nv){ return nv==='gerente' ? 'a senha do gerente' : 'a senha do administrador (ou do gerente)'; }
 const VIEWS_DO_NIVEL = { caixa:['pdv','historico','alertas','config'], consulta:['desempenho','historico','alertas','config'] };
 function viewPermitida(v){ const l = VIEWS_DO_NIVEL[nivelAtual()]; return !l || l.includes(v); }
 function viewInicial(){ return nivelAtual()==='consulta' ? 'desempenho' : 'pdv'; }
 function aplicarNivel(){
   const n = nivelAtual();
   Object.keys(NIVEIS).forEach(k=>document.body.classList.toggle('nivel-'+k, k===n));
+  document.body.classList.toggle('acesso-total', NIVEIS_TOTAL.includes(n));
   document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.toggle('acesso-oculto', !viewPermitida(b.dataset.nav)));
   const selo = document.getElementById('nivelSelo');
-  if(selo){ selo.hidden = n==='gerente'; selo.textContent = 'Modo ' + NIVEIS[n]; }
-  if(n!=='gerente' && sandbox.ativo) sandboxDesligar();   // Faz-de-Conta é só do gerente
+  if(selo){ selo.hidden = NIVEIS_TOTAL.includes(n); selo.textContent = 'Modo ' + NIVEIS[n]; }
+  if(!NIVEIS_TOTAL.includes(n) && sandbox.ativo) sandboxDesligar();   // Faz-de-Conta é só de Gerente e Administrador
   nivelRenderPe();
   if(typeof viewAtual!=='undefined' && !viewPermitida(viewAtual)) mostrarView(viewInicial());
   if(typeof ajustarNav==='function') ajustarNav();
 }
-/* O gerente mudou o nível deste aparelho na lista (vale na próxima conversa com a nuvem) */
+/* Mudaram o nível deste aparelho na lista (vale na próxima conversa com a nuvem) */
 function nivelDoServidor(v){
   const d = Sync.ler();
   if(!d || !d.pareado || !v || !v.nivel) return;
@@ -3853,67 +3895,78 @@ function nivelDoServidor(v){
   if(n===nivelNormal(d.nivel)) return;
   Sync.atualizar({ nivel:n }); nivelFixo(n);
   aplicarNivel(); renderViewAtual();
-  toast(`O gerente mudou este aparelho para o nível ${NIVEIS[n]}.`);
+  toast(`Este aparelho agora é ${NIVEIS[n]}.`);
 }
 function nivelParaCaixa(){
-  if(nivelMaximo()!=='gerente' || !ehGerente()) return;
-  pedirConfirmacao('Passar este aparelho para o modo Caixa? O funcionário vê só o PDV e o Histórico de hoje, sem custos nem lucro. Para voltar ao modo Gerente, é preciso a senha do gerente.', ()=>{
+  if(!maximoTotal() || !acessoTotal()) return;
+  const max = NIVEIS[nivelMaximo()];
+  pedirConfirmacao(`Passar este aparelho para o modo Caixa? O funcionário vê só o PDV e o Histórico de hoje, sem custos nem lucro. Para voltar ao modo ${max}, é preciso ${nomeSenha(nivelDaSenha())}.`, ()=>{
     try{ localStorage.setItem(MODO_CHAVE, 'caixa'); }catch(e){}
     document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
     aplicarNivel(); mostrarView('pdv');
     toast('Modo Caixa ligado neste aparelho.');
   }, 'Passar para o modo Caixa');
 }
-function nivelParaGerente(){
-  if(nivelMaximo()!=='gerente' || ehGerente()) return;
+function nivelVoltar(){
+  if(!maximoTotal() || acessoTotal()) return;
+  const max = NIVEIS[nivelMaximo()], nv = nivelDaSenha();
   pedirSenha(()=>{
     try{ localStorage.removeItem(MODO_CHAVE); }catch(e){}
     aplicarNivel(); renderViewAtual();
-    toast('Modo Gerente ligado neste aparelho.');
-  }, 'Voltar ao modo Gerente neste aparelho. Digite a senha do gerente.');
+    toast(`Modo ${max} ligado neste aparelho.`);
+  }, `Voltar ao modo ${max} neste aparelho. Digite ${nomeSenha(nv)}.`, nv);
 }
-/* Pé do menu lateral (PC): troca rápida Gerente ⇄ Caixa */
+/* Pé do menu lateral (PC): troca rápida Gerente/Administrador ⇄ Caixa */
 function nivelRenderPe(){
   const el = document.getElementById('navNivel'); if(!el) return;
   const n = nivelAtual(), max = nivelMaximo();
   const ic = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
-  if(max!=='gerente'){ el.innerHTML = `<div class="nav-nivel-in">${ic}<span><b>${NIVEIS[n]}</b><small>Nível deste aparelho</small></span></div>`; return; }
-  el.innerHTML = n==='gerente'
-    ? `<button class="nav-nivel-in" onclick="nivelParaCaixa()" title="Passar para o modo Caixa">${ic}<span><b>Modo Gerente</b><small>Passar para o Caixa</small></span></button>`
-    : `<button class="nav-nivel-in caixa" onclick="nivelParaGerente()" title="Voltar ao modo Gerente (pede a senha)">${ic}<span><b>Modo Caixa</b><small>Voltar ao Gerente</small></span></button>`;
+  if(!NIVEIS_TOTAL.includes(max)){ el.innerHTML = `<div class="nav-nivel-in">${ic}<span><b>${NIVEIS[n]}</b><small>Nível deste aparelho</small></span></div>`; return; }
+  el.innerHTML = n!=='caixa'
+    ? `<button class="nav-nivel-in" onclick="nivelParaCaixa()" title="Passar para o modo Caixa">${ic}<span><b>Modo ${NIVEIS[max]}</b><small>Passar para o Caixa</small></span></button>`
+    : `<button class="nav-nivel-in caixa" onclick="nivelVoltar()" title="Voltar ao modo ${NIVEIS[max]} (pede a senha)">${ic}<span><b>Modo Caixa</b><small>Voltar ao ${NIVEIS[max]}</small></span></button>`;
 }
 /* Configurações → Nível de acesso deste aparelho */
 function nivelRenderConfig(){
   const el = document.getElementById('cfgNivel'); if(!el) return;
   const n = nivelAtual(), max = nivelMaximo();
   let acoes = '';
-  if(max==='gerente') acoes = n==='gerente'
+  if(NIVEIS_TOTAL.includes(max)) acoes = n!=='caixa'
     ? '<button class="btn btn-escuro" onclick="nivelParaCaixa()">Passar para o modo Caixa</button>'
-    : '<button class="btn btn-amarelo" onclick="nivelParaGerente()">Voltar ao modo Gerente</button>';
-  el.innerHTML = `<div class="sy-status ${n==='gerente'?'ok':'aviso'}"><b>${NIVEIS[n]}</b> · ${escapar(NIVEIS_DESC[n])}${max!=='gerente'
-      ? '<small>Este aparelho foi conectado pelo QR code. Só o gerente muda o nível dele (Configurações → Aparelhos conectados).</small>'
-      : n==='caixa' ? '<small>Voltar ao modo Gerente pede a senha do gerente.</small>' : ''}</div>
+    : `<button class="btn btn-amarelo" onclick="nivelVoltar()">Voltar ao modo ${NIVEIS[max]}</button>`;
+  const d = Sync.ler();
+  const nota = n==='caixa' && NIVEIS_TOTAL.includes(max) ? `<small>Voltar ao modo ${NIVEIS[max]} pede ${nomeSenha(nivelDaSenha())}.</small>`
+    : max==='gerente' && d && d.pareado ? '<small>Só este aparelho pode mudar o próprio nível (Configurações → Aparelhos conectados).</small>'
+    : max==='gerente' ? '<small>Conectado com a senha da sincronização: é sempre Gerente.</small>'
+    : '<small>Este aparelho foi conectado pelo QR code. O nível dele é mudado em Aparelhos conectados, por um Gerente ou Administrador.</small>';
+  el.innerHTML = `<div class="sy-status ${NIVEIS_TOTAL.includes(n)?'ok':'aviso'}"><b>${NIVEIS[n]}</b> · ${escapar(NIVEIS_DESC[n])}${nota}</div>
     ${acoes ? `<div class="cfg-acoes">${acoes}</div>` : ''}`;
 }
 
-/* ----- Aparelhos conectados (Configurações, 2.11.0; níveis e QR code na 2.14.0) -----
-   Lista os aparelhos que usam a sincronização, com o último acesso e o nível. Só o Gerente vê.
-   Remover pede a senha do gerente; o aparelho removido se desconecta sozinho na próxima vez que falar com a nuvem. */
+/* ----- Aparelhos conectados (Configurações, 2.11.0; níveis e QR code na 2.14.0; Gerente/Administrador na 2.15.0) -----
+   Gerente e Administrador veem a lista. Aparelho Gerente: ninguém muda o nível (só ele mesmo, se entrou pelo QR);
+   só outro Gerente remove. Administrador mexe em Administradores, Caixas e Só consulta. */
+function niveisQuePossoDar(){ return nivelMaximo()==='gerente' ? Object.keys(NIVEIS) : ['admin','caixa','consulta']; }
 async function dispositivosRender(forcar){
   const bloco = document.getElementById('cfgAparelhosBloco'), el = document.getElementById('cfgAparelhos');
   if(!bloco || !el) return;
-  bloco.hidden = !Sync.conectado() || nivelMaximo()!=='gerente';
+  bloco.hidden = !Sync.conectado() || !maximoTotal();
   if(bloco.hidden) return;
   if(!forcar && el.dataset.carregado) return;
   el.innerHTML = '<li class="pm-vazia">Carregando…</li>';
   try{
     const j = await syncReq('GET', '/aparelhos');
     const lista = j.aparelhos || [];
+    const eu = nivelMaximo();
     el.dataset.carregado = '1';
     el.innerHTML = lista.length ? lista.map(a=>{
-      const nv = nivelNormal(a.nivel), nomeJs = escapar(a.nome).replace(/'/g,'&#39;');
-      const nivelHtml = a.pareado && !a.atual
-        ? `<select class="ap-nivel" onchange="dispositivoNivel('${a.id}', '${nomeJs}', this)" data-antes="${nv}" aria-label="Nível de ${escapar(a.nome)}">${Object.keys(NIVEIS).map(k=>`<option value="${k}"${k===nv?' selected':''}>${NIVEIS[k]}</option>`).join('')}</select>`
+      const nv = a.pareado ? nivelNormal(a.nivel) : 'gerente', nomeJs = escapar(a.nome).replace(/'/g,'&#39;');
+      // quem pode mudar o nível: aparelho Gerente só ele mesmo (pelo QR); os outros, Gerente ou Administrador
+      const podeMudar = a.pareado && (nv==='gerente' ? a.atual : !a.atual);
+      const opcoes = nv==='gerente' ? Object.keys(NIVEIS) : niveisQuePossoDar();
+      const podeRemover = !a.atual && (nv!=='gerente' || eu==='gerente');
+      const nivelHtml = podeMudar
+        ? `<select class="ap-nivel" onchange="dispositivoNivel('${a.id}', '${nomeJs}', this, ${a.atual?'true':'false'})" data-antes="${nv}" aria-label="Nível de ${escapar(a.nome)}">${opcoes.map(k=>`<option value="${k}"${k===nv?' selected':''}>${NIVEIS[k]}</option>`).join('')}</select>`
         : `<span class="ap-nivel-fixo">${NIVEIS[nv]}${a.pareado?'':' · senha da sincronização'}</span>`;
       return `
       <li class="ap-item">
@@ -3922,32 +3975,36 @@ async function dispositivosRender(forcar){
         <div class="ap-info"><b>${escapar(a.nome)}${a.atual?' <em class="ap-este">este aparelho</em>':''}</b>
           <small>Último acesso ${a.vistoEm ? quandoFoi(a.vistoEm) : '—'}${a.push?' · recebe notificações':''}</small>
           ${nivelHtml}</div>
-        ${a.atual ? '' : `<button class="btn btn-claro btn-mini" onclick="dispositivoRemover('${a.id}', '${nomeJs}')">Remover</button>`}
+        ${podeRemover ? `<button class="btn btn-claro btn-mini" onclick="dispositivoRemover('${a.id}', '${nomeJs}')">Remover</button>` : ''}
       </li>`; }).join('') : '<li class="pm-vazia">Nenhum aparelho registrado ainda. Cada aparelho aparece aqui depois de sincronizar com esta versão do app.</li>';
   }catch(e){
     el.innerHTML = `<li class="pm-vazia">${escapar(e.codigo==='rota' ? 'Para ver os aparelhos, publique no Cloudflare a versão nova do sync-worker.js.' : e.message)}</li>`;
   }
 }
-function dispositivoNivel(id, nome, sel){
-  const novo = sel.value, antes = sel.dataset.antes;
+function dispositivoNivel(id, nome, sel, proprio){
+  const novo = sel.value, antes = sel.dataset.antes, nv = nivelDaSenha();
   sel.value = antes;   // só muda de verdade depois da senha
+  const msg = proprio
+    ? `Mudar ESTE aparelho de ${NIVEIS[antes]} para ${NIVEIS[novo]}. ${antes==='gerente' ? 'Depois disso, só um Gerente consegue devolver o nível Gerente a ele. ' : ''}Digite ${nomeSenha(nv)}.`
+    : `Mudar “${nome}” para o nível ${NIVEIS[novo]}. Digite ${nomeSenha(nv)}.`;
   pedirSenha(async ()=>{
     try{
       await syncReq('PATCH', '/aparelhos/' + encodeURIComponent(id), { nivel:novo });
-      toast(`“${nome}” agora é ${NIVEIS[novo]}. Vale na próxima sincronização dele.`);
+      if(proprio){ Sync.atualizar({ nivel:novo }); nivelFixo(novo); aplicarNivel(); toast(`Este aparelho agora é ${NIVEIS[novo]}.`); }
+      else toast(`“${nome}” agora é ${NIVEIS[novo]}. Vale na próxima sincronização dele.`);
       dispositivosRender(true);
     }catch(e){ toast(e.message); }
-  }, `Mudar “${nome}” para o nível ${NIVEIS[novo]}. Digite a senha do gerente.`);
+  }, msg, nv);
 }
 
-/* ----- Conectar um aparelho novo pelo QR code (só o Gerente gera) -----
+/* ----- Conectar um aparelho novo pelo QR code (Gerente: qualquer nível; Administrador: até Administrador) -----
    O QR leva um link do próprio app com o endereço do Worker e um código de 6 dígitos de uso único,
    válido por 2 minutos. A SENHA_SYNC nunca vai no QR: o aparelho novo troca o código por uma chave
    só dele, com o nível escolhido. Remover o aparelho desliga essa chave. */
 let parearTimer = null, parearNivel = 'caixa';
 function parearAbrir(){
   if(emSandbox('conectar aparelhos')) return;
-  if(!Sync.conectado() || nivelMaximo()!=='gerente'){ toast('Só um aparelho Gerente, já conectado à sincronização, gera o QR code.'); return; }
+  if(!Sync.conectado() || !maximoTotal()){ toast('Só um aparelho Gerente ou Administrador, já conectado à sincronização, gera o QR code.'); return; }
   parearNivel = 'caixa';
   parearRenderNivel();
   document.getElementById('parQr').innerHTML = '';
@@ -3956,7 +4013,7 @@ function parearAbrir(){
   abrir('modalParear');
 }
 function parearRenderNivel(){
-  document.getElementById('parNiveis').innerHTML = Object.keys(NIVEIS).map(k=>`
+  document.getElementById('parNiveis').innerHTML = niveisQuePossoDar().map(k=>`
     <button type="button" class="par-nivel${parearNivel===k?' ativo':''}" onclick="parearNivel='${k}';parearRenderNivel()">
       <b>${NIVEIS[k]}</b><small>${escapar(NIVEIS_DESC[k])}</small></button>`).join('');
 }
@@ -3987,7 +4044,7 @@ function parearGerar(){
       };
       tic(); parearTimer = setInterval(tic, 1000);
     }catch(e){ toast(e.codigo==='rota' ? 'Publique no Cloudflare a versão nova do sync-worker.js para conectar pelo QR code.' : e.message); }
-  }, `Gerar o QR code para conectar um aparelho como ${NIVEIS[parearNivel]}. Digite a senha do gerente.`);
+  }, `Gerar o QR code para conectar um aparelho como ${NIVEIS[parearNivel]}. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 function parearFechar(){
   clearInterval(parearTimer); parearTimer = null;
@@ -4143,7 +4200,7 @@ function dispositivoRemover(id, nome){
   pedirSenha(()=>pedirConfirmacao(`Remover “${nome}” da sincronização? Ele para de receber e enviar dados e de receber notificações. Os dados que já estão nele não são apagados. Para impedir que alguém conecte esse aparelho de novo, troque também a senha da sincronização (SENHA_SYNC) no Cloudflare.`, async ()=>{
     try{ await syncReq('DELETE', '/aparelhos/' + encodeURIComponent(id)); toast(`“${nome}” foi removido.`); dispositivosRender(true); }
     catch(e){ toast(e.message); }
-  }, 'Remover aparelho'), `Remover o aparelho “${nome}” da sincronização. Digite a senha do gerente.`);
+  }, 'Remover aparelho'), `Remover o aparelho “${nome}” da sincronização. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 
 /* ----- Status (aparece em Configurações) ----- */
@@ -4679,7 +4736,7 @@ function promoAlternar(id, ligar, chk){
   if(!ligar){ pr.ativa = false; salvar(); renderPromocoes(); renderViewAtual(); toast(`Promoção “${pr.titulo}” desligada.`); return; }
   chk.checked = false;   // só liga depois da senha
   pedirSenha(()=>{ pr.ativa = true; salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
-    `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite a senha do gerente.`);
+    `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 
 /* ----- Desempenho de uma promoção: tudo o que foi vendido com ela (desde o início) ----- */
@@ -4757,7 +4814,7 @@ function salvarPromocao(){
     toast(pmEditando ? 'Promoção atualizada.' : 'Promoção criada.');
   };
   // promoção ligada: exige a senha do gerente
-  if(ativa) pedirSenha(gravar, `Salvar a promoção ligada “${dados.titulo}” (${frasePromo(dados)}). Digite a senha do gerente.`);
+  if(ativa) pedirSenha(gravar, `Salvar a promoção ligada “${dados.titulo}” (${frasePromo(dados)}). Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
   else gravar();
 }
 function excluirPromocao(){
@@ -4870,7 +4927,7 @@ function fecharInventarioDefinitivo(){
       estado.config.inventarioFechado = hoje();
       salvar(); renderInventario(); inventarioResumo(); inventarioAviso();
       toast('Inventário fechado.');
-    }, 'Fechar inventário'), 'Fechar o inventário. Digite a senha do gerente.');
+    }, 'Fechar inventário'), `Fechar o inventário. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 /* Aviso no topo do Estoque enquanto houver itens do inventário para cadastrar (some quando o inventário é fechado).
    "Próximo" (2.14.2) pula para o item seguinte da lista (volta ao primeiro depois do último). */
