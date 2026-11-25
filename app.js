@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.15.1';
+const VERSAO = '2.16.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -489,17 +489,17 @@ function ehVendaMov(m){ return m.tipo==='avulsa' || (m.tipo==='saida' && (m.moti
 const PDV_CHAVE = 'chinatown_pdv_v1';
 let vendaScanAtivo = false;   // a câmera foi aberta pelo PDV
 let compraScanIdx = null;     // linha da compra em lote que abriu a câmera
-function pdvVazio(){ return { ativa:false, itens:[], desconto:null, consulta:false }; }
+function pdvVazio(){ return { ativa:false, itens:[], desconto:null, consulta:false, combos:[] }; }
 function pdvCarregar(){
   try{
     const d = JSON.parse(sessionStorage.getItem(PDV_CHAVE));
-    if(d && d.ativa && Array.isArray(d.itens)) return { ...pdvVazio(), ativa:true, itens:d.itens, desconto:d.desconto||null };
+    if(d && d.ativa && Array.isArray(d.itens)) return { ...pdvVazio(), ativa:true, itens:d.itens, desconto:d.desconto||null, combos:Array.isArray(d.combos) ? d.combos : [] };
   }catch(e){}
   return pdvVazio();
 }
 function pdvGuardar(){
   try{
-    if(pdv.ativa && !sandbox.ativo) sessionStorage.setItem(PDV_CHAVE, JSON.stringify({ ativa:true, itens:pdv.itens, desconto:pdv.desconto }));
+    if(pdv.ativa && !sandbox.ativo) sessionStorage.setItem(PDV_CHAVE, JSON.stringify({ ativa:true, itens:pdv.itens, desconto:pdv.desconto, combos:pdv.combos||[] }));
     else sessionStorage.removeItem(PDV_CHAVE);
   }catch(e){}
 }
@@ -516,6 +516,17 @@ function servicoComoProduto(sid){
 }
 function itemDaVenda(it){ return it.sid ? servicoComoProduto(it.sid) : prod(it.pid); }
 
+/* ----- Combos (2.16.0): estado.combos = [{ id, titulo, itens:[{pid|sid, qtd}], preco }]
+   preco = null → o combo custa a soma dos itens; com preço próprio, a diferença vira a linha "Ajuste do combo"
+   (para mais ou para menos). Na venda, os itens do combo entram como linhas próprias marcadas com cb (instância)
+   e cbQtd (quantidade do combo). Tirar um item ou baixar a quantidade abaixo da do combo desfaz o combo. */
+function comboDe(id){ return (estado.combos||[]).find(c=>c.id===id); }
+function comboItemProd(it){ return it.sid ? servicoComoProduto(it.sid) : prod(it.pid); }
+function comboSoma(c){ return cent((c.itens||[]).reduce((s,it)=>{ const p = comboItemProd(it); return s + (p ? (p.preco||0)*it.qtd : 0); }, 0)); }
+function comboPreco(c){ return c.preco!=null ? c.preco : comboSoma(c); }
+function comboResumo(c){ return (c.itens||[]).map(it=>{ const p = comboItemProd(it); return (it.qtd>1 ? it.qtd+'× ' : '') + (p ? p.nome : 'item removido'); }).join(' + '); }
+function qtdNaVenda(pid, excetoI){ return pdv.itens.reduce((s,x,i)=>s + (x.pid===pid && i!==excetoI ? x.qtd : 0), 0); }
+
 /* Contas da venda em andamento */
 function pdvResumo(){
   pdv.itens = pdv.itens.filter(it=>itemDaVenda(it));   // produto/serviço excluído em outro aparelho sai da lista
@@ -529,10 +540,20 @@ function pdvResumo(){
     const desc = cent(descPromo + descManual);
     return { i, it, p, unit, bruto, promo: pr ? pr.promo : null, unitPromo: pr ? cent(unit-pr.descUnit) : unit, descPromo, base, descManual, desc, liquido:cent(bruto-desc) };
   });
-  const bruto = cent(linhas.reduce((s,l)=>s+l.bruto,0)), subtotal = cent(linhas.reduce((s,l)=>s+l.liquido,0));
+  // combos: a diferença entre o preço do combo e a soma dos itens (pelo preço do dia, já com promoção) vira o ajuste
+  pdv.combos = (pdv.combos||[]).filter(cb=>comboDe(cb.cid) && pdv.itens.some(x=>x.cb===cb.iid));
+  pdv.itens.forEach(x=>{ if(x.cb && !pdv.combos.some(cb=>cb.iid===x.cb)){ delete x.cb; delete x.cbQtd; } });
+  const ajustes = pdv.combos.map(cb=>{
+    const c = comboDe(cb.cid), ls = linhas.filter(l=>l.it.cb===cb.iid);
+    const somaItens = cent(ls.reduce((s,l)=>s + l.unitPromo*(l.it.cbQtd||l.it.qtd), 0));
+    return { iid:cb.iid, cid:cb.cid, titulo:c.titulo, valor: c.preco!=null ? cent(c.preco - somaItens) : 0, preco: c.preco!=null ? c.preco : somaItens };
+  });
+  const ajuste = cent(ajustes.reduce((s,a)=>s+a.valor,0));
+  const bruto = cent(linhas.reduce((s,l)=>s+l.bruto,0)), liquidoItens = cent(linhas.reduce((s,l)=>s+l.liquido,0));
+  const subtotal = cent(liquidoItens + ajuste);
   const d = pdv.desconto;
   const descVenda = d ? Math.min(subtotal, cent(d.tipo==='pct' ? subtotal*d.v/100 : d.v)) : 0;
-  return { linhas, bruto, subtotal, descVenda, total:cent(subtotal-descVenda), unidades:linhas.reduce((s,l)=>s+l.it.qtd,0) };
+  return { linhas, bruto, subtotal, liquidoItens, ajustes, ajuste, descVenda, total:cent(subtotal-descVenda), unidades:linhas.reduce((s,l)=>s+l.it.qtd,0) };
 }
 /* Desconto em % mostra a porcentagem entre parênteses; em R$ não repete o valor */
 function rotuloDesconto(d){ return d && d.tipo==='pct' ? ` (${String(d.v).replace('.',',')}%)` : ''; }
@@ -572,20 +593,43 @@ function pdvBuscarServicos(q){
   if(!q || !servicosAtivos()) return [];
   return (estado.servicos||[]).filter(sv=>sv.nome.toLowerCase().includes(q)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).slice(0,5);
 }
+function pdvBuscarCombos(q){
+  q = q.toLowerCase().trim();
+  if(!q) return [];
+  return (estado.combos||[]).filter(c=>c.titulo.toLowerCase().includes(q)).sort((a,b)=>a.titulo.localeCompare(b.titulo,'pt-BR')).slice(0,5);
+}
+/* O combo cabe no estoque? (conta o que já está nesta venda) → '' ou o motivo */
+function comboFalta(c){
+  for(const it of c.itens||[]){
+    if(it.sid){ if(!servicoDe(it.sid)) return 'serviço removido'; continue; }
+    const p = prod(it.pid);
+    if(!p || p.arquivado) return 'produto removido';
+    if(!(p.preco>0)) return `${p.nome} sem preço`;
+    const naVenda = pdv.ativa ? qtdNaVenda(p.id) : 0;
+    if(it.qtd > estoqueDe(p) - naVenda) return `sem estoque de ${p.nome}`;
+  }
+  return '';
+}
 function pdvFiltrar(){
   const res = document.getElementById('pdvResultados');
   const q = val('pdvBusca');
-  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q);
+  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q), combos = pdvBuscarCombos(q);
   if(!q.trim()){ res.innerHTML = ''; return; }
+  const htmlCombos = combos.map(c=>{ const falta = comboFalta(c); return `
+    <div class="pdv-res pdv-res-combo${falta?' esgotado':''}"${falta?' aria-disabled="true"':''} onmousedown="event.preventDefault();pdvAdicionarCombo('${c.id}')">
+      <span class="pdv-res-nome">${escapar(c.titulo)}<small>Combo · ${escapar(comboResumo(c))}</small></span>
+      <span class="pdv-res-est${falta?' zero':''}">${falta ? escapar(falta) : 'combo'}</span>
+      <b>${fmtBRL(comboPreco(c))}</b>
+    </div>`; }).join('');
   const htmlServ = servs.map(sv=>`
     <div class="pdv-res pdv-res-serv" onmousedown="event.preventDefault();pdvAdicionarServico('${sv.id}')">
       <span class="pdv-res-nome">${escapar(sv.nome)}<small>Serviço</small></span>
       <span class="pdv-res-est">serviço</span>
       <b>${fmtBRL(sv.valor)}</b>
     </div>`).join('');
-  res.innerHTML = (lista.length || servs.length) ? lista.map(p=>{
+  res.innerHTML = (lista.length || servs.length || combos.length) ? htmlCombos + lista.map(p=>{
     // disponível = estoque − o que já está nesta venda; sem unidade disponível, a linha fica cinza e não pode ser escolhida
-    const est = estoqueDe(p), naVenda = pdv.ativa ? ((pdv.itens.find(x=>x.pid===p.id)||{}).qtd||0) : 0, disp = est - naVenda;
+    const est = estoqueDe(p), naVenda = pdv.ativa ? qtdNaVenda(p.id) : 0, disp = est - naVenda;
     const esgotado = disp<=0;
     return `
     <div class="pdv-res${esgotado?' esgotado':''}"${esgotado?' aria-disabled="true"':''} onmousedown="event.preventDefault();pdvEscolher('${p.id}')">
@@ -604,10 +648,13 @@ function pdvEnter(){
   const ql = q.toLowerCase();
   const exato = estado.produtos.find(p=>!p.arquivado && ((p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql)));
   if(exato){ pdvProdutoLido(exato); return; }
-  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q);
-  if(lista.length===1 && !servs.length){ pdvProdutoLido(lista[0]); return; }
-  if(!lista.length && servs.length===1){ pdvLimparBusca(); pdvAdicionarServico(servs[0].id); return; }
-  if(lista.length + servs.length > 1){ toast('Mais de um resultado: escolha na lista.'); return; }
+  const lista = pdvBuscar(q), servs = pdvBuscarServicos(q), combos = pdvBuscarCombos(q);
+  const comboExato = (estado.combos||[]).find(c=>c.titulo.toLowerCase()===ql);
+  if(comboExato){ pdvAdicionarCombo(comboExato.id); return; }
+  if(lista.length===1 && !servs.length && !combos.length){ pdvProdutoLido(lista[0]); return; }
+  if(!lista.length && servs.length===1 && !combos.length){ pdvLimparBusca(); pdvAdicionarServico(servs[0].id); return; }
+  if(!lista.length && !servs.length && combos.length===1){ pdvAdicionarCombo(combos[0].id); return; }
+  if(lista.length + servs.length + combos.length > 1){ toast('Mais de um resultado: escolha na lista.'); return; }
   pdvLimparBusca();
   pdvVisor = { tipo:'erro', titulo:'Código não encontrado', texto:q };
   renderPdv();
@@ -634,9 +681,9 @@ function pdvAdicionar(pid){
   if(!pdv.ativa) pdv = { ...pdvVazio(), ativa:true };
   const erro = (titulo, texto)=>{ pdvVisor = { tipo:'erro', titulo, texto, pid }; renderPdv(); pdvFocar(); };
   if(!(p.preco>0)) return erro('Produto sem preço de venda', `Cadastre o preço de “${p.nome}” no Estoque antes de vender.`);
-  const est = estoqueDe(p), it = pdv.itens.find(x=>x.pid===pid), qtd = (it ? it.qtd : 0) + 1;
+  const est = estoqueDe(p), it = pdv.itens.find(x=>x.pid===pid && !x.cb), qtd = qtdNaVenda(pid) + 1;
   if(qtd>est) return erro(est<=0 ? 'Sem estoque' : 'Estoque insuficiente', est<=0 ? p.nome : `${p.nome}: só há ${est} un. em estoque.`);
-  if(it) it.qtd = qtd; else pdv.itens.push({ pid, qtd:1 });
+  if(it) it.qtd += 1; else pdv.itens.push({ pid, qtd:1 });
   pdvVisor = { tipo:'produto', pid, modo:'adicionado' };
   pdvGuardar(); renderPdv(); pdvFocar();
 }
@@ -646,9 +693,38 @@ function pdvAdicionarServico(sid){
   pdvLimparBusca();
   if(!pdv.ativa) pdv = { ...pdvVazio(), ativa:true };
   pdv.consulta = false;
-  const it = pdv.itens.find(x=>x.sid===sid);
+  const it = pdv.itens.find(x=>x.sid===sid && !x.cb);
   if(it) it.qtd += 1; else pdv.itens.push({ sid, qtd:1 });
   pdvVisor = { tipo:'servico', sid, modo:'adicionado' };
+  pdvGuardar(); renderPdv(); pdvFocar();
+}
+/* Combo na venda: os itens entram juntos (escolher um combo já inicia a venda, se preciso) */
+function pdvAdicionarCombo(cid){
+  const c = comboDe(cid); if(!c) return;
+  pdvLimparBusca();
+  if(!pdv.ativa) pdv = { ...pdvVazio(), ativa:true };
+  pdv.consulta = false;
+  const falta = comboFalta(c);
+  if(falta){ pdvVisor = { tipo:'erro', titulo:'Combo indisponível', texto:`${c.titulo}: ${falta}.` }; renderPdv(); pdvFocar(); return; }
+  const iid = uid();
+  pdv.combos = pdv.combos || [];
+  pdv.combos.push({ iid, cid });
+  c.itens.forEach(it=>pdv.itens.push(it.sid ? { sid:it.sid, qtd:it.qtd, cb:iid, cbQtd:it.qtd } : { pid:it.pid, qtd:it.qtd, cb:iid, cbQtd:it.qtd }));
+  pdvVisor = { tipo:'combo', cid };
+  pdvGuardar(); renderPdv(); pdvFocar();
+}
+/* Desfaz o combo (os itens ficam na venda pelo preço normal) */
+function pdvDesfazerCombo(iid, aviso){
+  pdv.itens.forEach(x=>{ if(x.cb===iid){ delete x.cb; delete x.cbQtd; } });
+  pdv.combos = (pdv.combos||[]).filter(cb=>cb.iid!==iid);
+  if(aviso) toast('Combo desfeito: os outros itens continuam na venda pelo preço normal.');
+}
+/* × no cabeçalho do combo: tira o combo inteiro da venda */
+function pdvRemoverCombo(iid){
+  pdv.itens = pdv.itens.filter(x=>x.cb!==iid);
+  pdv.combos = (pdv.combos||[]).filter(cb=>cb.iid!==iid);
+  if(!pdv.itens.length) pdv.desconto = null;
+  pdvVisor = { tipo:'livre' };
   pdvGuardar(); renderPdv(); pdvFocar();
 }
 function pdvIniciarCom(pid){ pdv = { ...pdvVazio(), ativa:true }; pdvAdicionar(pid); }
@@ -659,15 +735,18 @@ function pdvDefinirQtd(i, q){
   q = parseInt(q);
   if(!q || q<1) q = 1;
   if(!it.sid){   // serviço não tem estoque
-    const est = estoqueDe(prod(it.pid));
-    if(q>est){ q = est; toast(`Estoque máximo: ${est} un.`); }
+    const est = estoqueDe(prod(it.pid)) - qtdNaVenda(it.pid, i);
+    if(q>est){ q = Math.max(1, est); toast(`Estoque máximo: ${est} un.`); }
   }
+  if(it.cb && q < (it.cbQtd||1)) pdvDesfazerCombo(it.cb, true);
   it.qtd = q;
   pdvVisor = it.sid ? { tipo:'servico', sid:it.sid, modo:'adicionado' } : { tipo:'produto', pid:it.pid, modo:'adicionado' };
   pdvGuardar(); renderPdv();
 }
 function pdvQtd(i, delta){ const it = pdv.itens[i]; if(it) pdvDefinirQtd(i, it.qtd + delta); }
 function pdvRemover(i){
+  const it = pdv.itens[i];
+  if(it && it.cb) pdvDesfazerCombo(it.cb, true);
   pdv.itens.splice(i,1);
   if(!pdv.itens.length) pdv.desconto = null;
   pdvVisor = { tipo:'livre' };
@@ -769,11 +848,12 @@ function pdvFinalizar(){
   if(!pdv.ativa || !pdv.itens.length){ toast('Adicione ao menos um produto à venda.'); return; }
   const r = pdvResumo();
   for(const l of r.linhas){
-    if(!l.p.servico && l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
+    if(!l.p.servico && qtdNaVenda(l.p.id)>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
   }
-  const desc = cent(r.bruto - r.total);
+  const desc = cent(r.bruto + r.ajuste - r.total);
   document.getElementById('finResumo').innerHTML = `
     <div><span>${r.linhas.length} ${r.linhas.some(l=>l.p.servico)?"item(ns)":"produto(s)"} · ${r.unidades} un.</span><b>${fmtBRL(r.bruto)}</b></div>
+    ${r.ajustes.filter(a=>a.valor).map(a=>`<div><span>Combo ${escapar(a.titulo)}</span><b>${a.valor<0?'−':'+'}${fmtBRL(Math.abs(a.valor))}</b></div>`).join('')}
     ${desc>0 ? `<div><span>Descontos</span><b>−${fmtBRL(desc)}</b></div>` : ''}
     <div class="pdv-fin-total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
   finPag = null; pdvRenderPags();
@@ -822,29 +902,37 @@ function pdvConfirmar(){
   const pg = pdvPagamentoEscolhido(r.total); if(!pg) return;
   if(!r.linhas.length){ fechar('modalFinalizar'); return; }
   for(const l of r.linhas){
-    if(!l.p.servico && l.it.qtd>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
+    if(!l.p.servico && qtdNaVenda(l.p.id)>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
   }
   const data = val('finData') || hoje(), hora = new Date().toTimeString().slice(0,5), vendaId = uid();
+  const comboDaLinha = l=>{ const a = l.it.cb && r.ajustes.find(x=>x.iid===l.it.cb); return a ? { comboId:a.cid, comboTitulo:a.titulo } : {}; };
   const antesEst = estoquesAntes(r.linhas.filter(l=>!l.p.servico).map(l=>l.p.id));
   // Desconto da venda repartido entre as linhas na proporção de cada uma (a última leva o resto dos centavos).
   // Assim o preço unitário gravado já é o preço real cobrado, e o lucro das Métricas continua certo.
-  let resto = Math.round(r.total*100);
+  // O ajuste dos combos fica numa linha própria; o resto do total é repartido entre os itens.
+  const totalItens = cent(r.total - r.ajuste);
+  let resto = Math.round(totalItens*100);
   r.linhas.forEach((l,i)=>{
-    let liq = i===r.linhas.length-1 ? resto : Math.min(resto, Math.round((r.subtotal>0 ? l.liquido/r.subtotal : 0)*r.total*100));
+    let liq = i===r.linhas.length-1 ? resto : Math.min(resto, Math.round((r.liquidoItens>0 ? l.liquido/r.liquidoItens : 0)*totalItens*100));
     resto -= liq;
     const liquido = liq/100;
     if(l.p.servico){   // serviço: vira uma movimentação avulsa ligada a esta venda (aparece junto no Histórico)
-      const a = { id:uid(), data, hora, descricao:l.p.nome, tipo:'servico', qtd:l.it.qtd, valor:liquido, ...pg, vendaId, servicoId:l.p.sid };
+      const a = { id:uid(), data, hora, descricao:l.p.nome, tipo:'servico', qtd:l.it.qtd, valor:liquido, ...pg, vendaId, servicoId:l.p.sid, ...comboDaLinha(l) };
       if(l.p.custo>0) a.custo = cent(l.p.custo*l.it.qtd);
       if(liquido < l.bruto - 0.004){ a.precoCheio = l.unit; a.desconto = cent(l.bruto - liquido); }
       estado.avulsas = estado.avulsas || []; estado.avulsas.push(a);
       return;
     }
     // venda dividida: cada linha guarda as duas formas com os valores da venda toda (as Métricas repartem na proporção)
-    const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, ...pg, vendaId };
+    const mov = { id:uid(), tipo:'saida', data, hora, qtd:l.it.qtd, motivo:'Venda', precoVenda:liquido/l.it.qtd, ...pg, vendaId, ...comboDaLinha(l) };
     if(liquido < l.bruto - 0.004){ mov.precoCheio = l.unit; mov.desconto = cent(l.bruto - liquido); }
     if(l.promo){ mov.promocaoId = l.promo.id; mov.promocaoTitulo = l.promo.titulo; mov.descPromo = l.descPromo; }   // para as Métricas
     l.p.movimentacoes.push(mov);
+  });
+  // ajuste do combo (para mais ou para menos): linha própria da venda, sem estoque
+  r.ajustes.filter(a=>Math.abs(a.valor)>0.004).forEach(a=>{
+    estado.avulsas = estado.avulsas || [];
+    estado.avulsas.push({ id:uid(), data, hora, descricao:`Ajuste do combo ${a.titulo}`, tipo:'combo', qtd:1, valor:a.valor, ...pg, vendaId, comboId:a.cid, comboTitulo:a.titulo });
   });
   const feita = { total:r.total, unidades:r.unidades, produtos:r.linhas.length, ...pg, nomes:r.linhas.map(l=>l.p.nome) };
   pdv = pdvVazio();
@@ -868,7 +956,7 @@ function pdvConfirmar(){
    tipo:'servico'|'produto', valor, pagamento}] e entra no Histórico e nas Métricas (sem custo).
    ========================================================= */
 let avEditando = null, avTipoSel = 'servico', avPagSel = null;
-function rotuloTipoAvulsa(t){ return t==='produto' ? 'Produto avulso' : 'Serviço'; }
+function rotuloTipoAvulsa(t){ return t==='produto' ? 'Produto avulso' : t==='combo' ? 'Combo' : 'Serviço'; }
 function abrirAvulsa(id){
   const a = id ? (estado.avulsas||[]).find(x=>x.id===id) : null;
   avEditando = a ? a.id : null;
@@ -960,6 +1048,11 @@ function salvarAvulsa(){
 function pedirEdicaoAvulsa(id){
   const a = (estado.avulsas||[]).find(x=>x.id===id); if(!a) return;
   if(nivelAtual()==='consulta') return;
+  if(a.tipo==='combo'){   // o ajuste do combo só muda junto com a venda
+    if(a.vendaId && nivelAtual()==='gerente') editarVendaAbrir(a.vendaId);
+    else toast('O ajuste do combo só pode ser mudado pelo Gerente, na edição da venda.');
+    return;
+  }
   senhaSeNaoGerente(()=>abrirAvulsa(id), `Editar a movimentação avulsa “${a.descricao}” (${fmtData(a.data)}). Digite a senha do gerente ou do administrador.`);
 }
 function excluirAvulsa(){
@@ -979,6 +1072,20 @@ function pdvFotoHtml(p){
 }
 function pdvVisorHtml(){
   const v = pdvVisor;
+  if(v.tipo==='combo' && comboDe(v.cid)){   // combo lançado na venda
+    const c = comboDe(v.cid);
+    return `<div class="pdv-visor-in adicionado${pdv.ativa?' faixa':''}">
+      <div class="pdv-faixa">
+        <div class="pdv-foto pdv-foto-serv"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1.5S10 8 12 8zM12 8c2-4 6-4 6-1.5S14 8 12 8z"/></svg></div>
+        <div class="pdv-info">
+          <div class="pdv-marca">Combo</div>
+          <div class="pdv-nome">${escapar(c.titulo)}</div>
+          <div class="pdv-sub">${escapar(comboResumo(c))}</div>
+        </div>
+        <div class="pdv-precos"><div class="pdv-preco">${fmtBRL(comboPreco(c))}</div></div>
+      </div>
+    </div>`;
+  }
   if(v.tipo==='servico' && servicoDe(v.sid)){   // serviço lançado na venda
     const sv = servicoDe(v.sid), it = pdv.itens.find(x=>x.sid===sv.id);
     return `<div class="pdv-visor-in adicionado${pdv.ativa?' faixa':''}">
@@ -1096,8 +1203,21 @@ function renderPdv(){
   document.getElementById('pdvListaCab').innerHTML = `<span>Produto</span><span class="c">Qtd</span><span class="r pdv-col-unit">Unit.</span><span class="r">Total</span><span></span><span></span>`;
 
   // o item mais recente fica no topo, sem precisar rolar
-  document.getElementById('pdvLista').innerHTML = r.linhas.length ? [...r.linhas].reverse().map(l=>`
-    <div class="pdv-item${(pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado') || (pdvVisor.tipo==='servico' && l.p.sid===pdvVisor.sid) ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
+  const combosFeitos = new Set();
+  const cabCombo = l=>{   // cabeçalho do combo, antes do primeiro item dele na lista
+    if(!l.it.cb || combosFeitos.has(l.it.cb)) return '';
+    combosFeitos.add(l.it.cb);
+    const a = r.ajustes.find(x=>x.iid===l.it.cb); if(!a) return '';
+    return `<div class="pdv-item pdv-combo-cab">
+      <div class="pdv-item-nome"><span>${escapar(a.titulo)}</span><em class="pdv-combo-tag">Combo</em></div>
+      <div></div><div class="pdv-col-unit"></div>
+      <div class="pdv-item-total">${fmtBRL(a.preco)}${a.valor ? `<small>${a.valor<0?'−':'+'}${fmtBRL(Math.abs(a.valor))} no combo</small>` : ''}</div>
+      <span></span>
+      <button type="button" class="pdv-ico pdv-x" onclick="pdvRemoverCombo('${a.iid}')" title="Tirar o combo da venda" aria-label="Tirar o combo da venda">×</button>
+    </div>`;
+  };
+  document.getElementById('pdvLista').innerHTML = r.linhas.length ? [...r.linhas].reverse().map(l=>cabCombo(l) + `
+    <div class="pdv-item${l.it.cb?' pdv-item-combo':''}${(pdvVisor.tipo==='produto' && pdvVisor.pid===l.p.id && pdvVisor.modo==='adicionado') || (pdvVisor.tipo==='servico' && l.p.sid===pdvVisor.sid) ? ' atual':''}" title="${escapar(l.p.nome)}${l.p.marca?' · '+escapar(l.p.marca):''}">
       <div class="pdv-item-nome"><span>${escapar(l.p.nome)}</span>${l.p.servico?'<em class="pdv-serv-tag">Serviço</em>':''}${l.promo?`<em class="pdv-promo-tag" title="Promoção: ${escapar(l.promo.titulo)}">${escapar(rotuloPromoCurto(l.promo))}</em>`:''}</div>
       <div class="pdv-qtd">
         <button type="button" onclick="pdvQtd(${l.i},-1)" aria-label="Diminuir">−</button>
@@ -1112,10 +1232,11 @@ function renderPdv(){
     : `<div class="pdv-lista-vazia">${pdv.ativa ? 'Os produtos lidos aparecem aqui.' : 'Clique em “Iniciar venda” para começar.'}</div>`;
 
   // Subtotal = preços cheios; "Descontos" soma os dos itens e o da venda toda
-  const descontos = cent(r.bruto - r.total);
+  const descontos = cent(r.bruto + r.ajuste - r.total);
   document.getElementById('pdvTotais').innerHTML = `
     <div class="pdv-tl"><span>Itens</span><b>${r.linhas.length} produto(s) · ${r.unidades} un.</b></div>
     <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.bruto)}</b></div>
+    ${r.ajuste ? `<div class="pdv-tl${r.ajuste<0?' desc':''}"><span>Combos</span><b>${r.ajuste<0?'−':'+'}${fmtBRL(Math.abs(r.ajuste))}</b></div>` : ''}
     ${descontos>0 ? `<div class="pdv-tl desc"><span>Descontos</span><b>−${fmtBRL(descontos)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
   telaClienteEnviar();   // a tela do cliente (2º monitor) acompanha cada mudança
@@ -2201,7 +2322,7 @@ function renderHistorico(){
     return blocos;
   };
   const linhaHtml = (l, noGrupo)=>{ const c = classeMov(l.m); return `
-      <div class="hx-linha${noGrupo?' hx-item':''}" data-pid="${l.pid}" data-mid="${l.mid}"${l.avulsa?' data-avulsa="1"':''} title="Toque e segure para editar">
+      <div class="hx-linha${noGrupo?' hx-item':''}${l.m.vendaId && nivelAtual()==='gerente'?' hx-editavel':''}" data-pid="${l.pid}" data-mid="${l.mid}"${l.avulsa?' data-avulsa="1"':''}${l.m.vendaId?` data-venda="${l.m.vendaId}"`:''} title="${l.m.vendaId && nivelAtual()==='gerente' ? 'Toque para editar a venda; toque e segure para editar só este item' : 'Toque e segure para editar'}">
         <div class="hx-mov">${noGrupo ? '' : tagMov(l.m) + horaMov(l.m)}</div>
         <div class="hx-prod">${escapar(l.nome)}${l.arquivado?' <span class="badge-arquivado">Arquivado</span>':''}${l.marca?`<small>${escapar(l.marca)}</small>`:''}</div>
         <div class="col-cat"><span class="cat">${escapar(l.categoria)}</span></div>
@@ -2214,10 +2335,11 @@ function renderHistorico(){
     const total = b.itens.reduce((s,l)=>s+(l.v?l.v.total:0),0);
     const temValor = b.itens.some(l=>l.v);
     const sub = m0.tipo==='entrada' && m0.fornecedor ? escapar(m0.fornecedor) : '';   // o horário fica embaixo do selo
+    const editavel = m0.vendaId && nivelAtual()==='gerente';
     return `<div class="hx-grupo">
-      <div class="hx-linha hx-grupo-cab">
+      <div class="hx-linha hx-grupo-cab${editavel?' hx-editavel':''}"${editavel?` onclick="editarVendaAbrir('${m0.vendaId}')" title="Editar esta venda"`:''}>
         <div class="hx-mov">${tagMov(m0)}${horaMov(m0)}</div>
-        <div class="hx-prod">${b.itens.length} ${b.itens.some(l=>l.avulsa)?'itens':'produtos'}${sub?`<small>${sub}</small>`:''}</div>
+        <div class="hx-prod">${b.itens.length} ${b.itens.some(l=>l.avulsa)?'itens':'produtos'}${editavel?' <span class="hx-editar">Editar venda</span>':''}${sub?`<small>${sub}</small>`:''}</div>
         <div class="col-cat"></div>
         <div class="num col-qtd">${qtd}</div>
         <div class="num hx-valor ${temValor?c:''}">${temValor ? `<b>${total>0?'+':total<0?'−':''}${fmtSem(total)}</b>` : '<span class="hx-sem">—</span>'}<span class="hx-qtd-m">${qtd} un.</span></div>
@@ -2244,6 +2366,12 @@ function renderHistorico(){
   if(nivelAtual()!=='consulta')   // Só consulta: sem edição
     cont.querySelectorAll('.hx-linha[data-mid]').forEach(el=>
       toqueLongo(el, ()=> el.dataset.avulsa ? pedirEdicaoAvulsa(el.dataset.mid) : pedirEdicaoMov(el.dataset.pid, el.dataset.mid)));
+  // Gerente (2.16.0): tocar num item de uma venda do PDV abre a edição da venda inteira
+  if(nivelAtual()==='gerente')
+    cont.querySelectorAll('.hx-linha[data-venda]').forEach(el=>el.addEventListener('click', ()=>{
+      if(el._segurou){ el._segurou = false; return; }   // foi um toque longo (edição do item)
+      editarVendaAbrir(el.dataset.venda);
+    }));
 }
 
 /* Horário da movimentação, embaixo do selo do tipo e da forma de pagamento */
@@ -2297,7 +2425,7 @@ function copiarTexto(texto, aviso){
 /* Toque e segure genérico (mouse e toque) */
 function toqueLongo(el, aoSegurar){
   let t = null;
-  const iniciar = ()=>{ t = setTimeout(()=>{ t=null; aoSegurar(); }, 500); };
+  const iniciar = ()=>{ el._segurou = false; t = setTimeout(()=>{ t=null; el._segurou = true; aoSegurar(); }, 500); };
   const cancelar = ()=>{ if(t){ clearTimeout(t); t=null; } };
   el.addEventListener('mousedown', iniciar);
   el.addEventListener('touchstart', iniciar, {passive:true});
@@ -2679,14 +2807,15 @@ const VIEWS = {
   historico:  { secao:'viewHistorico',  titulo:'Histórico de movimentações' },
   financeiro: { secao:'viewFinanceiro', titulo:'Financeiro' },
   desempenho: { secao:'viewDesempenho', titulo:'Métricas' },   // módulo renomeado de Desempenho para Métricas (2.3.0)
-  config:     { secao:'viewConfig',     titulo:'Configurações' }
+  loja:       { secao:'viewLoja',       titulo:'Ajustes da Loja' },   // 2.16.0
+  config:     { secao:'viewConfig',     titulo:'Sistema' }   // antes "Configurações" (2.16.0)
 };
 let viewAtual = 'pdv', viewAnterior = 'pdv';
 function mostrarView(v){
   if(!VIEWS[v]) return;
   if(v==='servicos' && !servicosAtivos()) v = 'estoque';
   if(!viewPermitida(v)) v = viewInicial();   // níveis de acesso (2.14.0)
-  if(viewAtual!==v && viewAtual!=='alertas' && viewAtual!=='config') viewAnterior = viewAtual;
+  if(viewAtual!==v && !['alertas','config','loja'].includes(viewAtual)) viewAnterior = viewAtual;
   viewAtual = v;
   Object.entries(VIEWS).forEach(([k,cfg])=>{ document.getElementById(cfg.secao).hidden = (k!==v); });
   document.querySelectorAll('.nav-item[data-nav]').forEach(b=>{
@@ -2697,7 +2826,7 @@ function mostrarView(v){
   document.getElementById('tituloView').textContent = VIEWS[v].titulo;
   fecharFab();
   document.getElementById('notif').classList.toggle('ativo', v==='alertas');
-  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config');   // no PC a engrenagem some e Configurações fica no menu lateral
+  document.getElementById('btnAjustes').classList.toggle('ativo', v==='config' || v==='loja');   // no PC a engrenagem some e Configurações fica no menu lateral
   document.getElementById('fab').style.display = (v==='estoque' || v==='historico' || v==='servicos') && nivelAtual()!=='consulta' ? '' : 'none';   // ⊕ no Estoque e no Histórico (o ☰ do PDV aparece pelo CSS)
   document.querySelectorAll('#fabMenu [data-fab]').forEach(b=>b.style.display = b.dataset.fab===v ? '' : 'none');   // cada tela tem as suas ações
   document.body.classList.toggle('modo-historico', v==='historico');   // trava a rolagem da página: só a lista do histórico rola
@@ -2720,13 +2849,13 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(ajustarNav)
 /* Sininho: abre os pontos de atenção; tocar de novo volta para a tela anterior */
 function alternarAlertas(){ mostrarView(viewAtual==='alertas' ? viewAnterior : 'alertas'); }
 /* Engrenagem (Ajustes) no cabeçalho: mesma lógica do sininho */
-function alternarAjustes(){ mostrarView(viewAtual==='config' ? viewAnterior : 'config'); }
+function alternarAjustes(){ mostrarView(viewAtual==='config' || viewAtual==='loja' ? viewAnterior : 'config'); }
 function renderViewAtual(){
   if(viewAtual==='pdv')        renderPdv();
   if(viewAtual==='alertas')    renderAlertas();
   if(viewAtual==='historico')  prepararHistorico();
   if(viewAtual==='financeiro') renderFinanceiro();
-  if(viewAtual==='config')     renderConfig();
+  if(viewAtual==='config' || viewAtual==='loja') renderConfig();
   if(viewAtual==='servicos')   renderServicos();
   if(viewAtual==='desempenho') renderDesempenho();
 }
@@ -2736,7 +2865,7 @@ function renderViewAtual(){
    ========================================================= */
 function renderConfig(){
   nivelRenderConfig(); senhaRenderAviso();
-  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender(); renderCombos();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -2767,14 +2896,16 @@ function senhaRenderAviso(){
   const st = document.getElementById('cfgAdmStatus'); if(!st) return;
   const definida = !!senhaAdminReferencia();
   st.className = 'sy-status ' + (definida ? 'ok' : 'aviso');
-  st.textContent = definida ? '✓ Senha do administrador definida.' : 'Ainda não definida: enquanto isso, só a senha do gerente libera as ações.';
-  document.getElementById('cfgAdmAtualRot').textContent = nivelDaSenha()==='gerente' ? 'Senha do gerente' : 'Senha atual do administrador';
+  st.textContent = definida ? '✓ Senha do administrador criada.' : 'Ainda não criada: crie a sua abaixo. Só desta vez, é preciso a senha do gerente.';
+  document.getElementById('cfgAdmAtualRot').textContent = definida ? 'Senha atual do administrador' : 'Senha do gerente (só para criar)';
+  document.getElementById('cfgAdmBotao').textContent = definida ? 'Trocar a senha do administrador' : 'Criar a senha do administrador';
 }
 /* Senha do administrador (2.15.0): no aparelho Gerente, define ou troca com a senha do gerente;
    no aparelho Administrador, troca com a senha atual do administrador */
 async function alterarSenhaAdmin(){
   if(emSandbox('alterar a senha')) return;
-  const atual = val('cfgAdmAtual'), nova = val('cfgAdmNova'), rep = val('cfgAdmRep'), nv = nivelDaSenha();
+  // ainda não existe: o Administrador cria a dele com a senha do gerente (uma vez); depois troca com a própria
+  const atual = val('cfgAdmAtual'), nova = val('cfgAdmNova'), rep = val('cfgAdmRep'), nv = senhaAdminReferencia() ? 'admin' : 'gerente';
   if(!(await senhaConfere(atual, nv))){ toast(nv==='gerente' ? 'Senha do gerente incorreta.' : 'Senha atual incorreta.'); return; }
   if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
   if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
@@ -2986,10 +3117,11 @@ function vendasDe(de, ate){
   (estado.avulsas||[]).forEach(a=>{
     if(de && a.data<de) return;
     if(ate && a.data>ate) return;
-    const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : 'Produtos avulsos' };
+    const aj = a.tipo==='combo';   // ajuste do combo (2.16.0): entra no faturamento, mas não é item nem categoria
+    const p = { id:'avulsa:'+a.tipo, nome:a.descricao, categoria: a.tipo==='servico' ? 'Serviços' : aj ? 'Ajuste de combo' : 'Produtos avulsos' };
     const custo = a.custo || 0;   // "Houve custo?" (2.6.0); antes era sempre 0
     const sv = a.tipo==='servico';   // serviços contam à parte ("5 un. e 2 serviços")
-    lista.push({ p, m:{ ...a, tipo:'avulsa' }, avulsa:true, servico:sv, data:a.data, qtd:sv?0:(a.qtd||1), qtdS:sv?(a.qtd||1):0, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
+    lista.push({ p, m:{ ...a, tipo:'avulsa', tipoAvulsa:a.tipo }, avulsa:true, servico:sv, ajuste:aj, data:a.data, qtd:sv||aj?0:(a.qtd||1), qtdS:sv?(a.qtd||1):0, receita:a.valor, custo, lucro:a.valor-custo, pagamento:a.pagamento||'' });
   });
   return lista;
 }
@@ -3042,6 +3174,7 @@ function renderDesempenho(){
       <div class="ds-tile"><span>Margem</span><b class="${margem<0?'neg':''}">${fmtPctDs(margem)}</b></div>
     </div>
     ${dsBlocoEvolucao(vendas, de, ate)}
+    ${dsBlocoVendas(vendas, umDia)}
     ${umDia ? '' : `<div class="ds-grade">
       ${dsBlocoSemana(vendas, de, ate)}
       ${dsBlocoMelhoresDatas(vendas)}
@@ -3147,7 +3280,7 @@ function ligarCrosshair(){
 /* ----- Vendas por categoria (barras horizontais, uma cor) ----- */
 function dsCategoriasLista(vendas){
   const g = {};
-  vendas.forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0, qtdS:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; g[c].qtdS+=v.qtdS; });
+  vendas.filter(v=>!v.ajuste).forEach(v=>{ const c = v.p.categoria; g[c] = g[c] || { nome:c, fat:0, lucro:0, qtd:0, qtdS:0 }; g[c].fat+=v.receita; g[c].lucro+=v.lucro; g[c].qtd+=v.qtd; g[c].qtdS+=v.qtdS; });
   return Object.values(g).sort((a,b)=>b.fat-a.fat);
 }
 function dsBlocoCategorias(vendas){
@@ -3226,6 +3359,62 @@ function dsBlocoPagamentos(vendas){
 /* ----- Descontos: quanto foi dado (promoções + manuais) e quanto isso tirou do lucro -----
    Cada saída de venda com desconto guarda o preço cheio (precoCheio) e o desconto total da linha (desconto),
    que já inclui a promoção (descPromo) e a parte do desconto da venda toda. */
+/* ----- Vendas (2.16.0): cada venda do período com total, lucro e margem; tocar abre o lucro de cada item ----- */
+let dsVendasGrupos = [];
+function dsVendasLista(vendas){
+  const g = new Map();
+  vendas.forEach(v=>{
+    const k = v.m.vendaId || ('m:'+v.m.id);
+    let x = g.get(k);
+    if(!x){ x = { k, data:v.data, hora:v.m.hora||'', itens:[], receita:0, custo:0, lucro:0, combos:new Set(), m:v.m }; g.set(k, x); }
+    x.itens.push(v); x.receita += v.receita; x.custo += v.custo; x.lucro += v.lucro;
+    if(v.m.comboTitulo) x.combos.add(v.m.comboTitulo);
+  });
+  return [...g.values()].sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+}
+function dsVendaRotulo(x){
+  const itens = x.itens.filter(v=>!v.ajuste);
+  if(x.combos.size) return 'Combo ' + [...x.combos].join(' + ') + (itens.some(v=>!v.m.comboTitulo) ? ' + outros itens' : '');
+  if(itens.length<=1) return itens[0] ? itens[0].p.nome : 'Venda';
+  return `${itens[0].p.nome} + ${itens.length-1} ${itens.length-1===1?'item':'itens'}`;
+}
+function dsVendasHtml(lista, umDia){
+  return `<div class="ds-vendas">${lista.map(x=>{ const i = dsVendasGrupos.indexOf(x), mg = x.receita ? x.lucro/x.receita*100 : NaN; return `
+    <button type="button" class="ds-venda" onclick="dsVendaDetalhe(${i})">
+      <span class="ds-venda-quando">${umDia ? '' : fmtData(x.data).slice(0,5)+' '}${escapar(x.hora||'')}</span>
+      <span class="ds-venda-nome">${escapar(dsVendaRotulo(x))}<em>${escapar(textoPagamentos(x.m) || '')}</em></span>
+      <span class="ds-venda-num"><b>${fmtBRL(x.receita)}</b><i>total</i></span>
+      <span class="ds-venda-num${x.lucro<0?' neg':''}"><b>${fmtBRL(x.lucro)}</b><i>lucro · ${fmtPctDs(mg)}</i></span>
+    </button>`; }).join('')}</div>`;
+}
+function dsBlocoVendas(vendas, umDia){
+  dsVendasGrupos = dsVendasLista(vendas);
+  if(!dsVendasGrupos.length) return '';
+  const MAX = 8, n = dsVendasGrupos.length;
+  return `<div class="ds-card">
+    <div class="ds-cab"><div><h3>Vendas</h3><small>${n} venda(s) no período, da mais recente para a mais antiga · toque numa venda para ver o lucro de cada item</small></div></div>
+    ${dsVendasHtml(dsVendasGrupos.slice(0,MAX), umDia)}
+    ${n>MAX ? `<button class="ds-mais" onclick="dsVerVendas(${umDia?'true':'false'})">Ver todas as ${n} vendas →</button>` : ''}
+  </div>`;
+}
+function dsVerVendas(umDia){
+  abrirInfo(`Vendas · ${rotuloDe(dsPeriodo)}`, dsVendasHtml(dsVendasGrupos, umDia));
+}
+function dsVendaDetalhe(i){
+  const x = dsVendasGrupos[i]; if(!x) return;
+  const linhas = [...x.itens].sort((a,b)=>(a.ajuste?1:0)-(b.ajuste?1:0) || b.receita-a.receita);
+  const mg = x.receita ? x.lucro/x.receita*100 : NaN;
+  abrirInfo(dsVendaRotulo(x), `
+    <p class="dica" style="margin:0 0 10px">${fmtData(x.data)}${x.hora?' às '+escapar(x.hora):''}${textoPagamentos(x.m)?' · '+escapar(textoPagamentos(x.m)):''}</p>
+    <div class="ds-vd">
+      <div class="ds-vd-cab"><span>Item</span><span>Valor</span><span>Custo</span><span>Lucro</span></div>
+      ${linhas.map(v=>`<div class="ds-vd-linha${v.ajuste?' ajuste':''}">
+        <span>${escapar(v.p.nome)}<small>${v.ajuste ? 'ajuste do combo' : fmtQtd(v)}${v.m.comboTitulo && !v.ajuste ? ' · combo '+escapar(v.m.comboTitulo) : ''}</small></span>
+        <span>${fmtBRL(v.receita)}</span><span>${v.ajuste ? '—' : fmtBRL(v.custo)}</span><span class="${v.lucro<0?'neg':''}">${fmtBRL(v.lucro)}</span></div>`).join('')}
+      <div class="ds-vd-linha total"><span>Total da venda<small>margem ${fmtPctDs(mg)}</small></span><span>${fmtBRL(x.receita)}</span><span>${fmtBRL(x.custo)}</span><span class="${x.lucro<0?'neg':''}">${fmtBRL(x.lucro)}</span></div>
+    </div>`);
+}
+
 function dsBlocoDescontos(vendas){
   let cheio = 0, desc = 0;
   const vendasCom = new Set(), vendasTodas = new Set();
@@ -3238,7 +3427,7 @@ function dsBlocoDescontos(vendas){
   });
   if(desc<=0.004) return '';
   return `<div class="ds-card">
-    <div class="ds-cab"><div><h3>Descontos</h3><small>Descontos dados no período (promoções e descontos no caixa). O desempenho de cada promoção fica em Configurações → Promoções.</small></div></div>
+    <div class="ds-cab"><div><h3>Descontos</h3><small>Descontos dados no período (promoções e descontos no caixa). O desempenho de cada promoção fica em Ajustes da Loja → Promoções.</small></div></div>
     <div class="ds-tiles ds-desc-tiles">
       <div class="ds-tile"><span>Total de descontos dados</span><b>${fmtBRL(desc)}</b><small>${fmtPctDs(desc/(cheio||1)*100)} do valor cheio dos produtos</small></div>
       <div class="ds-tile"><span>Vendas com desconto</span><b>${vendasCom.size} de ${vendasTodas.size}</b><small>${fmtPctDs(vendasCom.size/(vendasTodas.size||1)*100)} das vendas</small></div>
@@ -3406,6 +3595,7 @@ function garantirFinanceiro(e){
   e.promocoes = Array.isArray(e.promocoes) ? e.promocoes : [];
   e.servicos = Array.isArray(e.servicos) ? e.servicos : [];   // cadastro de serviços (2.6.0)
   e.inventario = Array.isArray(e.inventario) ? e.inventario : [];   // inventário do primeiro dia (2.11.0)
+  e.combos = Array.isArray(e.combos) ? e.combos : [];   // combos de produtos e serviços (2.16.0)
   ordenarCategorias(e);
   return e;
 }
@@ -3872,7 +4062,7 @@ function maximoTotal(){ return NIVEIS_TOTAL.includes(nivelMaximo()); }
 /* senha que este aparelho exige para as ações sensíveis: aparelho Gerente → só a do Gerente */
 function nivelDaSenha(){ return nivelMaximo()==='gerente' ? 'gerente' : 'admin'; }
 function nomeSenha(nv){ return nv==='gerente' ? 'a senha do gerente' : 'a senha do administrador (ou do gerente)'; }
-const VIEWS_DO_NIVEL = { caixa:['pdv','historico','alertas','config'], consulta:['desempenho','historico','alertas','config'] };
+const VIEWS_DO_NIVEL = { caixa:['pdv','historico','alertas','config'], consulta:['desempenho','historico','alertas','config'] };   // "loja" (Ajustes da Loja) só Gerente e Administrador
 function viewPermitida(v){ const l = VIEWS_DO_NIVEL[nivelAtual()]; return !l || l.includes(v); }
 function viewInicial(){ return nivelAtual()==='consulta' ? 'desempenho' : 'pdv'; }
 function aplicarNivel(){
@@ -3936,7 +4126,7 @@ function nivelRenderConfig(){
     : `<button class="btn btn-amarelo" onclick="nivelVoltar()">Voltar ao modo ${NIVEIS[max]}</button>`;
   const d = Sync.ler();
   const nota = n==='caixa' && NIVEIS_TOTAL.includes(max) ? `<small>Voltar ao modo ${NIVEIS[max]} pede ${nomeSenha(nivelDaSenha())}.</small>`
-    : max==='gerente' && d && d.pareado ? '<small>Só este aparelho pode mudar o próprio nível (Configurações → Aparelhos conectados).</small>'
+    : max==='gerente' && d && d.pareado ? '<small>Só este aparelho pode mudar o próprio nível (Sistema → Aparelhos conectados).</small>'
     : max==='gerente' ? '<small>Conectado com a senha da sincronização: é sempre Gerente.</small>'
     : '<small>Este aparelho foi conectado pelo QR code. O nível dele é mudado em Aparelhos conectados, por um Gerente ou Administrador.</small>';
   el.innerHTML = `<div class="sy-status ${NIVEIS_TOTAL.includes(n)?'ok':'aviso'}"><b>${NIVEIS[n]}</b> · ${escapar(NIVEIS_DESC[n])}${nota}</div>
@@ -3967,7 +4157,7 @@ async function dispositivosRender(forcar){
       const podeRemover = !a.atual && (nv!=='gerente' || eu==='gerente');
       const nivelHtml = podeMudar
         ? `<select class="ap-nivel" onchange="dispositivoNivel('${a.id}', '${nomeJs}', this, ${a.atual?'true':'false'})" data-antes="${nv}" aria-label="Nível de ${escapar(a.nome)}">${opcoes.map(k=>`<option value="${k}"${k===nv?' selected':''}>${NIVEIS[k]}</option>`).join('')}</select>`
-        : `<span class="ap-nivel-fixo">${NIVEIS[nv]}${a.pareado?'':' · senha da sincronização'}</span>`;
+        : `<span class="ap-nivel-fixo">${NIVEIS[nv]}</span>`;
       return `
       <li class="ap-item">
         <span class="ap-ic"><svg viewBox="0 0 24 24">${/celular|android|iphone|moto|samsung|xiaomi|redmi|tablet/i.test(a.nome)
@@ -4328,7 +4518,7 @@ async function syncConectar(){
       if(Sync.ler().pendente) return;
       mostrarAviso('Sincronização ligada',
         `<p>Os dados deste aparelho (${contagemDados(estado)}) foram enviados para a nuvem.</p>
-         <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Agora, no outro aparelho, abra Configurações e conecte com o mesmo endereço e a mesma senha.</p>`);
+         <p style="margin-top:10px;color:var(--texto-sec);font-size:14px">Agora, no outro aparelho, abra Sistema e conecte com o mesmo endereço e a mesma senha.</p>`);
       return;
     }
     const rem = await syncReq('GET', '/dados');
@@ -4662,6 +4852,247 @@ async function pushEnviarFila(){
     catch(e){ if(e.tipo==='rede') restam.push(n); }   // sem internet: tenta de novo depois; outros erros: descarta
   }
   Sync.atualizar({ fila:restam });
+}
+
+/* =========================================================
+   COMBOS (Ajustes da Loja) — 2.16.0
+   Produtos e serviços vendidos juntos. No PDV, digitar o nome do combo coloca todos os itens na venda.
+   Preço: a soma dos itens ou um preço próprio (a diferença vira a linha "Ajuste do combo" na venda).
+   ========================================================= */
+let cbEditando = null, cbRascunho = [], cbTipoPreco = 'soma';
+function renderCombos(){
+  const el = document.getElementById('cfgCombos'); if(!el) return;
+  const lista = [...(estado.combos||[])].sort((a,b)=>a.titulo.localeCompare(b.titulo,'pt-BR'));
+  el.innerHTML = lista.length ? lista.map(c=>{
+    const soma = comboSoma(c), preco = comboPreco(c), dif = cent(preco - soma), falta = (c.itens||[]).some(it=>!comboItemProd(it) || (it.pid && prod(it.pid).arquivado));
+    return `<li class="pm-item" onclick="abrirCombo('${c.id}')" style="cursor:pointer">
+      <div class="pm-info"><b>${escapar(c.titulo)}</b><small>${escapar(comboResumo(c))}</small>
+        ${falta ? '<small style="color:var(--vermelho)">Tem item removido ou arquivado: o combo não pode ser vendido.</small>' : ''}</div>
+      <div class="cb-preco"><b>${fmtBRL(preco)}</b>${c.preco!=null && dif ? `<small>${dif<0?'−':'+'}${fmtBRL(Math.abs(dif))} da soma</small>` : '<small>soma dos itens</small>'}</div>
+    </li>`; }).join('') : '<li class="pm-vazia">Nenhum combo cadastrado.</li>';
+}
+function abrirCombo(id){
+  const c = id ? comboDe(id) : null;
+  cbEditando = c ? c.id : null;
+  cbRascunho = c ? c.itens.map(it=>({ ...it })) : [];
+  cbTipoPreco = c && c.preco!=null ? 'proprio' : 'soma';
+  document.getElementById('cbTituloModal').textContent = c ? 'Editar combo' : 'Novo combo';
+  document.getElementById('cbNome').value = c ? c.titulo : '';
+  document.getElementById('cbBusca').value = '';
+  document.getElementById('cbSugestoes').innerHTML = '';
+  document.getElementById('cbPreco').value = c && c.preco!=null ? c.preco : '';
+  document.getElementById('cbExcluir').style.display = c ? '' : 'none';
+  comboRenderItens(); comboPrecoTipo(cbTipoPreco);
+  abrir('modalCombo');
+  setTimeout(()=>document.getElementById('cbNome').focus(), 80);
+}
+/* busca de produtos e serviços (usada no combo e na edição de venda) */
+function buscaItens(q){
+  q = q.toLowerCase().trim(); if(!q) return [];
+  const ps = estado.produtos.filter(p=>!p.arquivado && `${p.nome} ${p.marca||''} ${p.codigo||''} ${p.codigoBarras||''}`.toLowerCase().includes(q)).slice(0,6)
+    .map(p=>({ pid:p.id, nome:p.nome, sub:(p.marca||'') + (p.marca?' · ':'') + estoqueDe(p)+' un.', preco:p.preco||0 }));
+  const ss = (estado.servicos||[]).filter(sv=>sv.nome.toLowerCase().includes(q)).slice(0,4)
+    .map(sv=>({ sid:sv.id, nome:sv.nome, sub:'Serviço', preco:sv.valor }));
+  return ps.concat(ss);
+}
+function comboBuscar(){
+  const lista = buscaItens(val('cbBusca'));
+  document.getElementById('cbSugestoes').innerHTML = lista.map(x=>`
+    <div class="av-sug" onmousedown="event.preventDefault();comboIncluir('${x.pid||''}','${x.sid||''}')"><span>${escapar(x.nome)}<small>${escapar(x.sub)}</small></span><b>${fmtBRL(x.preco)}</b></div>`).join('')
+    || (val('cbBusca').trim() ? '<div class="av-sug vazio"><span>Nada encontrado.</span></div>' : '');
+}
+function comboIncluir(pid, sid){
+  const ja = cbRascunho.find(x=>pid ? x.pid===pid : x.sid===sid);
+  if(ja) ja.qtd += 1; else cbRascunho.push(pid ? { pid, qtd:1 } : { sid, qtd:1 });
+  document.getElementById('cbBusca').value = ''; document.getElementById('cbSugestoes').innerHTML = '';
+  comboRenderItens(); comboPrevia();
+  document.getElementById('cbBusca').focus();
+}
+function comboRenderItens(){
+  document.getElementById('cbItens').innerHTML = cbRascunho.length ? cbRascunho.map((it,i)=>{
+    const p = comboItemProd(it);
+    return `<li class="cb-item"><span class="cb-item-nome">${escapar(p ? p.nome : 'Item removido')}${it.sid?'<em class="pdv-serv-tag">Serviço</em>':''}<small>${p ? fmtBRL(p.preco||0)+' cada' : ''}</small></span>
+      <input type="number" min="1" value="${it.qtd}" aria-label="Quantidade" onchange="cbRascunho[${i}].qtd=Math.max(1,parseInt(this.value)||1);this.value=cbRascunho[${i}].qtd;comboPrevia()">
+      <button type="button" class="pdv-ico pdv-x" onclick="cbRascunho.splice(${i},1);comboRenderItens();comboPrevia()" aria-label="Tirar do combo">×</button></li>`; }).join('')
+    : '<li class="pm-vazia">Busque acima os produtos e serviços do combo.</li>';
+}
+function comboPrecoTipo(t){
+  cbTipoPreco = t;
+  document.getElementById('cbPrecoSoma').classList.toggle('ativo', t==='soma');
+  document.getElementById('cbPrecoProprio').classList.toggle('ativo', t==='proprio');
+  document.getElementById('cbPrecoCampo').style.display = t==='proprio' ? '' : 'none';
+  comboPrevia();
+}
+function comboPrevia(){
+  const soma = comboSoma({ itens:cbRascunho }), el = document.getElementById('cbPrevia');
+  if(cbTipoPreco==='soma'){ el.innerHTML = `<span>Preço do combo (soma dos itens)</span><b>${fmtBRL(soma)}</b>`; return; }
+  const v = parseFloat(val('cbPreco'));
+  if(isNaN(v) || v<=0){ el.innerHTML = `<span>Soma dos itens: ${fmtBRL(soma)}</span><span>Informe o preço do combo.</span>`; return; }
+  const dif = cent(v - soma);
+  el.innerHTML = `<span>Soma dos itens: ${fmtBRL(soma)}</span><b>${fmtBRL(v)}</b>${dif ? `<small style="color:${dif<0?'var(--verde)':'var(--texto)'}">${dif<0?'−':'+'}${fmtBRL(Math.abs(dif))} em relação à soma (linha “Ajuste do combo” na venda)</small>` : ''}`;
+}
+function salvarCombo(){
+  const titulo = val('cbNome').trim();
+  if(!titulo){ toast('Dê um nome ao combo.'); document.getElementById('cbNome').focus(); return; }
+  if(cbRascunho.length<1 || cbRascunho.reduce((s,x)=>s+x.qtd,0)<2){ toast('O combo precisa de pelo menos 2 itens.'); return; }
+  if((estado.combos||[]).some(c=>c.id!==cbEditando && c.titulo.toLowerCase()===titulo.toLowerCase())){ toast('Já existe um combo com esse nome.'); return; }
+  let preco = null;
+  if(cbTipoPreco==='proprio'){
+    preco = cent(parseFloat(val('cbPreco')));
+    if(isNaN(preco) || preco<=0){ toast('Informe o preço do combo.'); document.getElementById('cbPreco').focus(); return; }
+  }
+  const dados = { titulo, itens:cbRascunho.map(x=>x.sid ? { sid:x.sid, qtd:x.qtd } : { pid:x.pid, qtd:x.qtd }), preco };
+  estado.combos = estado.combos || [];
+  if(cbEditando){ const c = comboDe(cbEditando); if(c) Object.assign(c, dados); }
+  else estado.combos.push({ id:uid(), ...dados });
+  salvar(); fechar('modalCombo'); renderCombos();
+  toast(cbEditando ? 'Combo atualizado.' : 'Combo criado.');
+}
+function excluirCombo(){
+  const c = comboDe(cbEditando); if(!c) return;
+  pedirConfirmacao(`Excluir o combo “${c.titulo}”? As vendas já feitas com ele não mudam.`, ()=>{
+    estado.combos = estado.combos.filter(x=>x.id!==c.id);
+    salvar(); fechar('modalCombo'); renderCombos(); toast('Combo excluído.');
+  }, 'Excluir combo');
+}
+
+/* =========================================================
+   EDITAR UMA VENDA JÁ FEITA (Histórico) — 2.16.0, só o Gerente (sem pedir senha de novo)
+   Tirar e acrescentar produtos ou serviços, mudar quantidades, preços e a forma de pagamento.
+   O estoque acompanha sozinho (ele é calculado pelas movimentações). Data e hora não mudam.
+   ========================================================= */
+let ev = null;
+function vendaPartes(vid){
+  const prods = [];
+  estado.produtos.forEach(p=>p.movimentacoes.forEach(m=>{ if(m.vendaId===vid && m.tipo==='saida') prods.push({ p, m }); }));
+  return { prods, avs:(estado.avulsas||[]).filter(a=>a.vendaId===vid) };
+}
+function editarVendaAbrir(vid){
+  if(nivelAtual()!=='gerente') return;
+  const { prods, avs } = vendaPartes(vid);
+  const m0 = (prods[0] && prods[0].m) || avs[0]; if(!m0) return;
+  ev = { vid, data:m0.data, hora:m0.hora||'', pagamento:m0.pagamento||null, pagamentos:m0.pagamentos ? m0.pagamentos.map(x=>({...x})) : null, totalOrig:0, linhas:[] };
+  prods.forEach(({p,m})=>ev.linhas.push({ k:'p', pid:p.id, mid:m.id, nome:p.nome, combo:m.comboTitulo||'', qtd:m.qtd, unit:cent(m.precoVenda||0), qtdOrig:m.qtd, unitOrig:cent(m.precoVenda||0) }));
+  avs.forEach(a=>{
+    if(a.tipo==='combo') ev.linhas.push({ k:'a', aid:a.id, nome:a.descricao, valor:a.valor });
+    else ev.linhas.push({ k:'s', aid:a.id, sid:a.servicoId||null, nome:a.descricao, combo:a.comboTitulo||'', qtd:a.qtd||1, unit:cent(a.valor/(a.qtd||1)), custoUnit:(a.custo||0)/(a.qtd||1) });
+  });
+  ev.totalOrig = evTotal();
+  document.getElementById('evSobre').textContent = `Venda de ${fmtData(ev.data)}${ev.hora?' às '+ev.hora:''}. O estoque é ajustado sozinho ao salvar. Data e hora ficam como estão.`;
+  document.getElementById('evBusca').value = '';
+  evRender();
+  abrir('modalEditarVenda');
+}
+function evTotal(){ return cent(ev.linhas.reduce((s,l)=>s + (l.k==='a' ? l.valor : l.qtd*l.unit), 0)); }
+function evRender(){
+  document.getElementById('evLista').innerHTML = ev.linhas.length ? ev.linhas.map((l,i)=> l.k==='a' ? `
+    <div class="ev-linha ev-ajuste"><span class="ev-nome">${escapar(l.nome)}<small>Ajuste do combo (− desconto, + acréscimo)</small></span>
+      <select aria-label="Sinal" onchange="ev.linhas[${i}].valor=cent(Math.abs(ev.linhas[${i}].valor)*(this.value==='-'?-1:1));evTotais()"><option value="-"${l.valor<0?' selected':''}>−</option><option value="+"${l.valor>=0?' selected':''}>+</option></select>
+      <input type="number" step="0.01" min="0" value="${Math.abs(l.valor)}" aria-label="Valor do ajuste" oninput="ev.linhas[${i}].valor=cent((parseFloat(this.value)||0)*(ev.linhas[${i}].valor<0?-1:1));evTotais()">
+      <span class="r ev-tot" id="evTot${i}">${l.valor<0?'−':'+'}${fmtBRL(Math.abs(l.valor))}</span>
+      <button type="button" class="pdv-ico pdv-x" onclick="ev.linhas.splice(${i},1);evRender()" aria-label="Tirar o ajuste">×</button></div>` : `
+    <div class="ev-linha"><span class="ev-nome">${escapar(l.nome)}${l.k==='s'?'<em class="pdv-serv-tag">Serviço</em>':''}${l.mid||l.aid?'':'<em class="ev-novo">novo</em>'}${l.combo?`<small>combo ${escapar(l.combo)}</small>`:''}</span>
+      <input type="number" min="1" value="${l.qtd}" aria-label="Quantidade" onchange="ev.linhas[${i}].qtd=Math.max(1,parseInt(this.value)||1);this.value=ev.linhas[${i}].qtd;evTotais()">
+      <input type="number" step="0.01" min="0" value="${l.unit}" aria-label="Preço por unidade" oninput="ev.linhas[${i}].unit=cent(parseFloat(this.value)||0);evTotais()">
+      <span class="r ev-tot" id="evTot${i}">${fmtBRL(cent(l.qtd*l.unit))}</span>
+      <button type="button" class="pdv-ico pdv-x" onclick="ev.linhas.splice(${i},1);evRender()" aria-label="Tirar da venda">×</button></div>`).join('')
+    : '<div class="pm-vazia">A venda precisa de pelo menos um item.</div>';
+  evRenderPags(); evTotais();
+}
+function evTotais(){
+  ev.linhas.forEach((l,i)=>{ const el = document.getElementById('evTot'+i); if(el) el.textContent = l.k==='a' ? (l.valor<0?'−':'+')+fmtBRL(Math.abs(l.valor)) : fmtBRL(cent(l.qtd*l.unit)); });
+  const t = evTotal(), dif = cent(t - ev.totalOrig);
+  document.getElementById('evTotais').innerHTML = `
+    <div><span>Total antes</span><b>${fmtBRL(ev.totalOrig)}</b></div>
+    <div class="pdv-fin-total"><span>Novo total</span><b>${fmtBRL(t)}</b></div>
+    ${dif ? `<div><span>Diferença</span><b style="color:${dif<0?'var(--vermelho)':'var(--verde)'}">${dif<0?'−':'+'}${fmtBRL(Math.abs(dif))}</b></div>` : ''}`;
+  evRenderPagNota();
+}
+function evRenderPags(){
+  document.getElementById('evPags').innerHTML = PAGAMENTOS.map(p=>`
+    <button type="button" class="pdv-pag${ev.pagamento===p.id?' ativo':''}" onclick="ev.pagamento='${p.id}';ev.pagamentos=null;evRenderPags();evRenderPagNota()">
+      <svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
+}
+function evRenderPagNota(){
+  const el = document.getElementById('evPagNota');
+  if(ev.pagamento!=='varios' || !ev.pagamentos){ el.innerHTML = ''; return; }
+  const p = evPagamentosAjustados();
+  el.innerHTML = `<div class="av-varios">Paga com duas formas: ${p ? escapar(p.map(x=>`${nomePagamento(x.id)} ${fmtBRL(x.valor)}`).join(' + ')) : 'a diferença do total não cabe na 2ª forma'}.${cent(evTotal()-ev.totalOrig) ? ' Com o novo total, a diferença fica na 2ª forma.' : ''} Escolha abaixo só se quiser trocar por uma forma só.</div>`;
+}
+/* venda paga com duas formas: a diferença do novo total vai para a 2ª forma */
+function evPagamentosAjustados(){
+  const t = evTotal(), ps = ev.pagamentos.map(x=>({ ...x }));
+  const primeiras = cent(ps.slice(0,-1).reduce((s,x)=>s+x.valor,0));
+  ps[ps.length-1].valor = cent(t - primeiras);
+  return ps[ps.length-1].valor > 0 ? ps : null;
+}
+function evBuscar(){
+  const lista = buscaItens(val('evBusca'));
+  document.getElementById('evSugestoes').innerHTML = lista.map(x=>`
+    <div class="av-sug" onmousedown="event.preventDefault();evIncluir('${x.pid||''}','${x.sid||''}')"><span>${escapar(x.nome)}<small>${escapar(x.sub)}</small></span><b>${fmtBRL(x.preco)}</b></div>`).join('')
+    || (val('evBusca').trim() ? '<div class="av-sug vazio"><span>Nada encontrado.</span></div>' : '');
+}
+function evIncluir(pid, sid){
+  if(pid){ const p = prod(pid); ev.linhas.push({ k:'p', pid, nome:p.nome, qtd:1, unit:cent(p.preco||0), qtdOrig:0 }); }
+  else { const sv = servicoDe(sid); ev.linhas.push({ k:'s', sid, nome:sv.nome, qtd:1, unit:cent(sv.valor||0), custoUnit:sv.custo||0 }); }
+  document.getElementById('evBusca').value = ''; document.getElementById('evSugestoes').innerHTML = '';
+  evRender();
+}
+function evSalvar(){
+  if(!ev || nivelAtual()!=='gerente') return;
+  if(!ev.linhas.some(l=>l.k!=='a')){ toast('A venda precisa de pelo menos um produto ou serviço.'); return; }
+  if(ev.linhas.some(l=>l.k!=='a' && !(l.unit>0))){ toast('Informe o preço de todos os itens.'); return; }
+  // estoque: o que a venda passa a levar a mais de cada produto precisa existir
+  const porProd = {};
+  ev.linhas.filter(l=>l.k==='p').forEach(l=>{ porProd[l.pid] = (porProd[l.pid]||0) + l.qtd; });
+  const { prods, avs } = vendaPartes(ev.vid);
+  const antes = {}; prods.forEach(({p,m})=>{ antes[p.id] = (antes[p.id]||0) + m.qtd; });
+  for(const pid of Object.keys(porProd)){
+    const p = prod(pid), extra = porProd[pid] - (antes[pid]||0);
+    if(p && extra > estoqueDe(p)){ toast(`Sem estoque suficiente de ${p.nome}: só há ${estoqueDe(p)} un.`); return; }
+  }
+  let pg;
+  if(ev.pagamento==='varios' && ev.pagamentos){
+    const ps = evPagamentosAjustados();
+    if(!ps){ toast('Com o novo total, as duas formas de pagamento não fecham. Escolha uma forma só.'); return; }
+    pg = { pagamento:'varios', pagamentos:ps };
+  } else if(ev.pagamento){ pg = { pagamento:ev.pagamento }; }
+  else { toast('Escolha a forma de pagamento.'); return; }
+  const base = { data:ev.data, hora:ev.hora, vendaId:ev.vid };
+  const aplicaPag = o=>{ o.pagamento = pg.pagamento; if(pg.pagamentos) o.pagamentos = pg.pagamentos.map(x=>({...x})); else delete o.pagamentos; };
+  const antesEst = estoquesAntes(Object.keys(porProd));
+  // produtos
+  const ficam = new Set(ev.linhas.filter(l=>l.mid).map(l=>l.mid));
+  prods.forEach(({p,m})=>{ if(!ficam.has(m.id)) p.movimentacoes = p.movimentacoes.filter(x=>x.id!==m.id); });
+  ev.linhas.filter(l=>l.k==='p').forEach(l=>{
+    const p = prod(l.pid); if(!p) return;
+    let m = l.mid && p.movimentacoes.find(x=>x.id===l.mid);
+    if(!m){ m = { id:uid(), tipo:'saida', qtd:l.qtd, motivo:'Venda', ...base }; p.movimentacoes.push(m); }
+    const mudouPreco = Math.abs(l.unit - (l.unitOrig ?? -1)) > 0.004;
+    if(mudouPreco){ delete m.promocaoId; delete m.promocaoTitulo; delete m.descPromo; }
+    else if(m.descPromo && l.qtdOrig) m.descPromo = cent(m.descPromo/l.qtdOrig*l.qtd);
+    m.qtd = l.qtd; m.precoVenda = l.unit;
+    const cheio = m.precoCheio || p.preco || 0;
+    if(cheio > l.unit + 0.004){ m.precoCheio = cheio; m.desconto = cent((cheio - l.unit)*l.qtd); } else { delete m.precoCheio; delete m.desconto; }
+    aplicaPag(m);
+  });
+  // serviços e ajustes do combo (movimentações avulsas da venda)
+  const ficamA = new Set(ev.linhas.filter(l=>l.aid).map(l=>l.aid));
+  estado.avulsas = (estado.avulsas||[]).filter(a=>a.vendaId!==ev.vid || ficamA.has(a.id));
+  ev.linhas.filter(l=>l.k!=='p').forEach(l=>{
+    let a = l.aid && estado.avulsas.find(x=>x.id===l.aid);
+    if(!a){ a = { id:uid(), ...base, descricao:l.nome, tipo:'servico', servicoId:l.sid||undefined }; if(!a.servicoId) delete a.servicoId; estado.avulsas.push(a); }
+    if(l.k==='a'){ a.valor = l.valor; a.qtd = 1; }
+    else {
+      a.qtd = l.qtd; a.valor = cent(l.qtd*l.unit);
+      if(l.custoUnit>0) a.custo = cent(l.custoUnit*l.qtd); else delete a.custo;
+      if(a.precoCheio && a.precoCheio > l.unit + 0.004) a.desconto = cent((a.precoCheio - l.unit)*l.qtd); else { delete a.precoCheio; delete a.desconto; }
+    }
+    aplicaPag(a);
+  });
+  salvar(); render(); renderViewAtual(); fechar('modalEditarVenda');
+  avisarEstoqueBaixo(antesEst);
+  toast('Venda atualizada.');
 }
 
 /* =========================================================
@@ -5069,8 +5500,9 @@ function telaClienteDados(){
     tipo:'estado', faz: sandbox.ativo,
     fase: v.tipo==='concluida' ? 'concluida' : pdv.ativa ? 'venda' : (prodVisor ? 'consulta' : 'livre'),
     produto: prodVisor,
-    itens: r.linhas.map(l=>({ nome:l.p.nome, qtd:l.it.qtd, unit:l.unitPromo, total:l.liquido, promo:!!l.promo })),
-    subtotal:r.bruto, descontos:cent(r.bruto-r.total), total:r.total, unidades:r.unidades,
+    itens: r.linhas.map(l=>({ nome:l.p.nome, qtd:l.it.qtd, unit:l.unitPromo, total:l.liquido, promo:!!l.promo }))
+      .concat(r.ajustes.filter(a=>a.valor).map(a=>({ nome:`Combo ${a.titulo}`, qtd:1, unit:a.valor, total:a.valor, promo:a.valor<0 }))),
+    subtotal:cent(r.bruto + r.ajuste), descontos:cent(r.bruto + r.ajuste - r.total), total:r.total, unidades:r.unidades,
     concluida: v.tipo==='concluida' ? { total:v.total, unidades:v.unidades, pagamento:textoPagamentos(v) } : null,
     promocoes: promosVigentes().map(pr=>({ titulo:pr.titulo, frase:frasePromo(pr) }))
   };

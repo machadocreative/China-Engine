@@ -32,6 +32,73 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.16.0] - 2026-11-25
+
+### Adicionado
+
+- **Combos** (Ajustes da Loja → Combos): produtos e serviços vendidos juntos.
+  - No PDV, digitar o nome do combo (ou escolher na lista da busca) coloca todos os itens na venda, cada um baixando o seu estoque. Serviços do combo não mexem no estoque.
+  - Preço: a soma dos itens ou um preço próprio, para mais ou para menos. A diferença aparece como **"Ajuste do combo"**: no PDV, no cabeçalho do combo e na linha "Combos" dos totais; no Histórico, como uma linha da venda; nas Métricas, entra no faturamento e no lucro, mas não conta como item nem categoria.
+  - Tirar um item do combo, ou baixar a quantidade dele, desfaz o combo (os outros itens ficam pelo preço normal). O × no cabeçalho do combo tira o combo inteiro.
+  - Itens de um combo não recebem promoção automática: o preço do combo é o que vale.
+- **Editar uma venda inteira** pelo Histórico (só o Gerente, sem pedir senha de novo): tocar em "N produtos" (ou em qualquer item de uma venda do PDV) abre a venda para tirar e acrescentar produtos ou serviços, mudar quantidades, preços e a forma de pagamento. O estoque acompanha sozinho; data e hora não mudam. Tocar e segurar continua editando só aquele item.
+- **Métricas → Vendas**: cada venda do período, da mais recente para a mais antiga, com total, lucro e margem (as 8 últimas no cartão e "Ver todas"). Tocar numa venda mostra valor, custo e lucro de cada item, com o ajuste do combo.
+- **Ajustes da Loja**, novo item do menu lateral: Combos · Promoções · Categorias de produtos · Inventário · Módulo Serviços · Modo Faz-de-Conta · Financeiro. No celular, fica num botão amarelo no topo de Sistema (engrenagem).
+
+### Alterado
+
+- **Configurações passa a se chamar Sistema**, com: Sincronização na nuvem · Notificações de venda · Nível de acesso · Aparelhos conectados · a senha do próprio nível · Backup dos dados.
+- **Senha:** o aparelho Gerente vê só "Senha do gerente"; o aparelho Administrador vê só "Senha do administrador". O próprio Administrador cria a senha dele (com a senha do gerente, só na primeira vez) e depois troca com a senha atual.
+- Aparelhos conectados: sai a observação "senha da sincronização" ao lado do nível.
+
+### Notas técnicas
+
+- `estado.combos = [{ id, titulo, itens:[{pid|sid, qtd}], preco|null }]` (sincroniza e entra no backup). Na venda em andamento, `pdv.combos = [{iid, cid}]` e os itens do combo levam `cb`/`cbQtd`. Movimentações de itens de combo levam `comboId`/`comboTitulo`; o ajuste é uma movimentação avulsa `tipo:'combo'` com `vendaId` (valor pode ser negativo).
+- Nova tela `viewLoja` (`mostrarView('loja')`, só Gerente e Administrador); `config` virou "Sistema". Classe `.so-admin` = só aparelho Administrador.
+
+---
+
+## [2.15.1] - 2026-11-25
+
+> Publique no Cloudflare a versão nova de `cloudflare/sync-worker.js`. No app, só mudou o número da versão.
+
+### Corrigido
+
+- Aparelho que tinha entrado pelo QR code (ex.: como Administrador) e depois foi conectado com a senha da sincronização aparecia na lista de Aparelhos conectados com o nível antigo, embora já funcionasse como Gerente. Agora, na primeira vez que ele fala com a nuvem usando a SENHA_SYNC, a lista passa a mostrar "Gerente · senha da sincronização" e a chave antiga dele (do QR code) deixa de valer.
+
+---
+
+## [2.15.0] - 2026-11-25
+
+> **Importante:** publique no Cloudflare a versão nova de `cloudflare/sync-worker.js` **antes** de subir o app.
+> Na primeira chamada, o Worker converte sozinho os aparelhos que eram "Gerente" pelo QR code em Administrador.
+
+### Adicionado
+
+- **Novo nível Gerente, acima de todos:**
+  - Quem conecta com a senha da sincronização (SENHA_SYNC) é Gerente (o PC da loja e os aparelhos que já entraram assim continuam Gerente).
+  - Ninguém muda o nível de um aparelho Gerente: só ele mesmo, em Aparelhos conectados (se entrou pelo QR code). Aparelho que entrou com a senha da sincronização é sempre Gerente.
+  - Só outro Gerente remove um aparelho Gerente (para casos de perda ou roubo).
+  - Só um Gerente conecta (pelo QR code) ou promove um aparelho a Gerente.
+- **Senha do administrador**, separada da senha do gerente (Configurações → Senha do administrador). No aparelho Gerente, é definida com a senha do gerente; no aparelho Administrador, trocada com a senha atual do administrador. As duas precisam ser diferentes.
+  - A senha do administrador libera descontos e edições no modo Caixa, a volta do modo Caixa num aparelho Administrador e as configurações sensíveis num aparelho Administrador.
+  - A senha do gerente libera tudo. Num aparelho Gerente, voltar do modo Caixa e as configurações sensíveis aceitam só a senha do gerente.
+  - Enquanto a senha do administrador não for definida, só a senha do gerente libera as ações.
+
+### Alterado
+
+- **O antigo nível "Gerente" passa a se chamar Administrador:** acesso total, menos mexer nos aparelhos Gerente. Administrador vê a lista de aparelhos, gera QR code e conecta, muda o nível e remove Administradores, Caixas e Só consulta.
+- Gerente e Administrador podem passar para o modo Caixa e voltar com a senha do próprio nível (pé do menu lateral no PC e Configurações → Nível de acesso).
+- O bloco "Senha do gerente" aparece só no aparelho Gerente.
+- Textos que ainda diziam que alterar o preço ou editar movimentações pedia senha (Painel do Produto e Novo produto) foram corrigidos: no modo Gerente/Administrador, não pede desde a 2.14.0.
+
+### Notas técnicas
+
+- Níveis internos: `gerente`, `admin`, `caixa`, `consulta`. `acessoTotal()` (Gerente ou Administrador) substitui `ehGerente()`; `nivelDaSenha()` diz qual senha o aparelho exige; `pedirSenha(cb, msg, 'gerente')` aceita só a senha do gerente. `config.senhaAdminHash` (PBKDF2, como a do gerente). Classe CSS `.so-topo` = só aparelho Gerente; `.so-gerente` = Gerente ou Administrador (`body.acesso-total`).
+- Worker: nível `admin`; tabela `meta` marca a conversão única dos níveis; `GET /aparelhos`, `POST /pareamento` e `/copias` para Gerente e Administrador; `PATCH`/`DELETE` com as regras de Gerente acima; chave com nível desconhecido vale como Só consulta.
+
+---
+
 ## [2.14.2] - 2026-11-24
 
 ### Alterado

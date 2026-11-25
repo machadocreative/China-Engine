@@ -305,51 +305,53 @@
   <p class="dica" style="margin-top:12px">Importe os XMLs de NF-e / NFC-e e também os XMLs de evento de cancelamento: a nota cancelada sai do total automaticamente.</p>
 </section>
 
-<!-- ===================== TELA: CONFIGURAÇÕES ===================== -->
-<section class="view" id="viewConfig" hidden>
+<!-- ===================== TELA: AJUSTES DA LOJA (2.16.0) ===================== -->
+<section class="view" id="viewLoja" hidden>
   <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Nível de acesso deste aparelho</h3>
-      <small>Gerente e Administrador têm acesso total (só o Gerente decide sobre os aparelhos Gerente). No modo Caixa, o funcionário usa o PDV sem ver custos nem lucro. Só consulta mostra as Métricas e o Histórico, sem alterar nada.</small></div>
-    <div id="cfgNivel"></div>
+    <div class="cfg-cab"><h3>Combos</h3>
+      <small>Produtos e serviços vendidos juntos. No PDV, digite o nome do combo e todos os itens entram na venda. O preço pode ser a soma dos itens ou um preço próprio (para mais ou para menos).</small></div>
+    <ul class="pm-lista" id="cfgCombos"></ul>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCombo()">+ Novo combo</button></div>
   </div>
-  <div class="cfg-bloco so-gerente">
-    <div class="cfg-cab"><h3>Módulo Serviços</h3>
-      <small>Para lojas que também cobram serviços (xerox, impressão, fichas, reparos…). Ligado, aparece o módulo Serviços (no celular, como aba dentro do Estoque) e os serviços podem ser vendidos no PDV junto com os produtos.</small></div>
-    <label class="sbx-chave"><input type="checkbox" id="cfgServicosAtivo" onchange="servicosAtivar(this.checked)"><i></i><span id="cfgServicosRotulo">Ligado</span></label>
-  </div>
-
-  <div class="cfg-bloco so-gerente">
-    <div class="cfg-cab"><h3>Categorias de produtos</h3>
-      <small>Crie, renomeie ou remova as categorias dos produtos. <span id="cfgCatTotal"></span></small></div>
-    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCategorias()">Gerenciar categorias</button></div>
-  </div>
-
   <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Promoções</h3>
       <small>Desconto automático no PDV, na loja toda ou em categorias, dentro do período escolhido. Se duas promoções valem para o mesmo produto, vale a de maior desconto. Ligar uma promoção pede senha.</small></div>
     <ul class="pm-lista" id="cfgPromoLista"></ul>
     <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirPromocao()">+ Nova promoção</button></div>
   </div>
-
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Categorias de produtos</h3>
+      <small>Crie, renomeie ou remova as categorias dos produtos. <span id="cfgCatTotal"></span></small></div>
+    <div class="cfg-acoes"><button class="btn btn-escuro" onclick="abrirCategorias()">Gerenciar categorias</button></div>
+  </div>
   <div class="cfg-bloco so-gerente">
     <div class="cfg-cab"><h3>Inventário</h3>
       <small>Lista rápida de tudo o que já está na loja no dia em que o app começa a ser usado: produto, quantidade e preço de venda. Depois, o Estoque sugere cadastrar cada item como produto (o custo é informado nesse cadastro). Ao terminar, feche o inventário.</small></div>
     <div class="sy-status" id="cfgInventarioResumo"></div>
     <div class="cfg-acoes"><button class="btn btn-escuro" id="cfgInventarioBtn" onclick="abrirInventario()">Abrir inventário</button></div>
   </div>
-
-  <div class="cfg-bloco">
-    <div class="cfg-cab"><h3>Notificações de venda</h3>
-      <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
-    <div class="sy-status" id="cfgPushStatus"></div>
-    <div class="cfg-acoes">
-      <button class="btn btn-escuro" id="cfgPushAtivar" onclick="pushAtivar()">Ativar neste aparelho</button>
-      <button class="btn btn-claro" id="cfgPushTestar" onclick="pushTestar()">Enviar teste</button>
-      <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
-    </div>
-    <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Módulo Serviços</h3>
+      <small>Para lojas que também cobram serviços (xerox, impressão, fichas, reparos…). Ligado, aparece o módulo Serviços (no celular, como aba dentro do Estoque) e os serviços podem ser vendidos no PDV junto com os produtos.</small></div>
+    <label class="sbx-chave"><input type="checkbox" id="cfgServicosAtivo" onchange="servicosAtivar(this.checked)"><i></i><span id="cfgServicosRotulo">Ligado</span></label>
   </div>
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Modo Faz-de-Conta</h3>
+      <small>Para testar vendas, entradas e saídas sem medo (modo sandbox). Com ele ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
+    <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Desligado</span></label>
+  </div>
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Financeiro (em pausa)</h3>
+      <small>O módulo de faturamento MEI saiu da navegação principal enquanto não está em uso. Os dados continuam salvos e entram no backup.</small></div>
+    <div class="cfg-acoes"><button class="btn btn-claro" onclick="mostrarView('financeiro')">Abrir o Financeiro →</button></div>
+  </div>
+</section>
 
+<!-- ===================== TELA: SISTEMA (antes "Configurações") ===================== -->
+<section class="view" id="viewConfig" hidden>
+  <button class="cfg-atalho so-movel so-gerente" onclick="mostrarView('loja')">
+    <span><b>Ajustes da Loja</b><small>Combos, promoções, categorias, inventário, serviços e Modo Faz-de-Conta</small></span><i>›</i>
+  </button>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Sincronização na nuvem</h3>
       <small>Mantém os dados iguais em todos os aparelhos da loja, pelo seu Cloudflare. As alterações de cada aparelho são juntadas automaticamente.</small></div>
@@ -367,7 +369,22 @@
       <div id="cfgSyncCopias"></div>
     </div>
   </div>
-
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Notificações de venda</h3>
+      <small>Avisa este aparelho quando uma venda é concluída em outro aparelho conectado à sincronização, mesmo com o app fechado. Precisa ser ativado em cada aparelho.</small></div>
+    <div class="sy-status" id="cfgPushStatus"></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-escuro" id="cfgPushAtivar" onclick="pushAtivar()">Ativar neste aparelho</button>
+      <button class="btn btn-claro" id="cfgPushTestar" onclick="pushTestar()">Enviar teste</button>
+      <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
+    </div>
+    <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
+  </div>
+  <div class="cfg-bloco">
+    <div class="cfg-cab"><h3>Nível de acesso deste aparelho</h3>
+      <small>Gerente e Administrador têm acesso total (só o Gerente decide sobre os aparelhos Gerente). No modo Caixa, o funcionário usa o PDV sem ver custos nem lucro. Só consulta mostra as Métricas e o Histórico, sem alterar nada.</small></div>
+    <div id="cfgNivel"></div>
+  </div>
   <div class="cfg-bloco" id="cfgAparelhosBloco" hidden>
     <div class="cfg-cab"><h3>Aparelhos conectados</h3>
       <small>Aparelhos que usam a sincronização desta loja, com o último acesso e o nível. Para conectar um aparelho novo, gere um QR code: ele vale por 2 minutos e uma vez só. Mudar o nível ou remover pede senha. O nível de um aparelho Gerente só ele mesmo muda, e só outro Gerente o remove.</small></div>
@@ -377,17 +394,6 @@
       <button class="btn btn-claro" onclick="dispositivosRender(true)">Atualizar lista</button>
     </div>
   </div>
-
-  <div class="cfg-bloco so-gerente">
-    <div class="cfg-cab"><h3>Backup dos dados</h3>
-      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
-    <div class="cfg-acoes">
-      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
-      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
-    </div>
-    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
-  </div>
-
   <div class="cfg-bloco so-gerente so-topo">
     <div class="cfg-cab"><h3>Senha do gerente</h3>
       <small>A senha mais alta da loja: libera tudo, inclusive o que só o Gerente faz. A senha em si não fica guardada: o app guarda só um resumo protegido dela, que vai para os outros aparelhos pela sincronização e entra no backup.</small></div>
@@ -402,10 +408,9 @@
       <button class="btn btn-escuro" onclick="alterarSenha()">Alterar senha</button>
     </div>
   </div>
-
-  <div class="cfg-bloco so-gerente">
+  <div class="cfg-bloco so-admin">
     <div class="cfg-cab"><h3>Senha do administrador</h3>
-      <small>Senha dos Administradores: libera o modo Administrador, descontos, edições e as configurações sensíveis dos aparelhos Administrador. Não serve para o que é do Gerente. Precisa ser diferente da senha do gerente.</small></div>
+      <small>A senha dos Administradores: libera o modo Administrador, descontos, edições e as configurações sensíveis. Não serve para o que é do Gerente e precisa ser diferente da senha do gerente.</small></div>
     <div class="sy-status" id="cfgAdmStatus" style="margin-bottom:14px"></div>
     <div class="cfg-form">
       <div class="campo"><label id="cfgAdmAtualRot">Senha do gerente</label><input type="password" id="cfgAdmAtual" autocomplete="current-password"></div>
@@ -414,21 +419,18 @@
         <div class="campo"><label>Repita a nova senha</label><input type="password" id="cfgAdmRep" autocomplete="new-password" onkeydown="if(event.key==='Enter')alterarSenhaAdmin()"></div>
       </div>
       <div class="dica" style="margin:-6px 0 12px">Mínimo de 6 caracteres.</div>
-      <button class="btn btn-escuro" onclick="alterarSenhaAdmin()">Salvar senha do administrador</button>
+      <button class="btn btn-escuro" id="cfgAdmBotao" onclick="alterarSenhaAdmin()">Salvar senha do administrador</button>
     </div>
   </div>
   <div class="cfg-bloco so-gerente">
-    <div class="cfg-cab"><h3>Modo Faz-de-Conta</h3>
-      <small>Para testar vendas, entradas e saídas sem medo (modo sandbox). Com ele ligado, nada é salvo, sincronizado ou notificado; ao desligar, os dados voltam a ser exatamente os de antes.</small></div>
-    <label class="sbx-chave"><input type="checkbox" id="cfgSandbox" onchange="sandboxAlternar(this.checked)"><i></i><span id="cfgSandboxRotulo">Desligado</span></label>
+    <div class="cfg-cab"><h3>Backup dos dados</h3>
+      <small>Os dados ficam salvos neste navegador (e na nuvem, se a sincronização estiver ligada). Baixe um backup com frequência: ele inclui estoque, histórico e financeiro.</small></div>
+    <div class="cfg-acoes">
+      <button class="btn btn-amarelo" onclick="exportar()">↓ Baixar backup</button>
+      <button class="btn btn-claro" onclick="document.getElementById('arquivoImport').click()">↑ Restaurar backup</button>
+    </div>
+    <div class="dica" id="cfgUltimoBackup" style="margin-top:10px"></div>
   </div>
-
-  <div class="cfg-bloco so-gerente">
-    <div class="cfg-cab"><h3>Financeiro (em pausa)</h3>
-      <small>O módulo de faturamento MEI saiu da navegação principal enquanto não está em uso. Os dados continuam salvos e entram no backup.</small></div>
-    <div class="cfg-acoes"><button class="btn btn-claro" onclick="mostrarView('financeiro')">Abrir o Financeiro →</button></div>
-  </div>
-
   <p class="cfg-versao">China Engine · versão <b id="versao"></b></p>
 </section>
 </main>
@@ -626,6 +628,69 @@
 
 <!-- ===== Modal: desconto (PDV) ===== -->
 <!-- ===== Modal: nova / editar promoção ===== -->
+<!-- ===== Modal: combo (Ajustes da Loja → Combos, 2.16.0) ===== -->
+<div class="overlay" id="modalCombo">
+  <div class="modal modal-rola" style="max-width:540px">
+    <div class="modal-cabecalho">
+      <h2 id="cbTituloModal">Novo combo</h2>
+      <button class="fechar" onclick="fechar('modalCombo')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <div class="campo">
+        <label>Nome do combo</label>
+        <input type="text" id="cbNome" maxlength="60" placeholder="Ex: Playstation 2 + Joystick">
+        <div class="dica">É por este nome que o combo aparece na busca do PDV.</div>
+      </div>
+      <label class="pdv-fin-rot">Itens do combo</label>
+      <div class="cb-busca">
+        <input type="text" id="cbBusca" placeholder="Buscar produto ou serviço para incluir" autocomplete="off" oninput="comboBuscar()" onblur="setTimeout(()=>{document.getElementById('cbSugestoes').innerHTML=''},150)">
+        <div class="cb-sugestoes" id="cbSugestoes"></div>
+      </div>
+      <ul class="cb-itens" id="cbItens"></ul>
+      <label class="pdv-fin-rot">Preço do combo</label>
+      <div class="pdv-alterna" role="group" aria-label="Preço do combo">
+        <button type="button" id="cbPrecoSoma" onclick="comboPrecoTipo('soma')">Soma dos itens</button>
+        <button type="button" id="cbPrecoProprio" onclick="comboPrecoTipo('proprio')">Preço próprio</button>
+      </div>
+      <div class="campo" id="cbPrecoCampo"><label>Preço do combo (R$)</label>
+        <input type="number" id="cbPreco" min="0" step="0.01" placeholder="0,00" oninput="comboPrevia()"></div>
+      <div class="pdv-previa" id="cbPrevia"></div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" id="cbExcluir" style="margin-right:auto;color:var(--vermelho)" onclick="excluirCombo()">Excluir</button>
+        <button class="btn btn-claro" onclick="fechar('modalCombo')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="salvarCombo()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: editar uma venda já feita (Histórico, só o Gerente, 2.16.0) ===== -->
+<div class="overlay" id="modalEditarVenda">
+  <div class="modal modal-rola" style="max-width:640px">
+    <div class="modal-cabecalho">
+      <h2>Editar venda</h2>
+      <button class="fechar" onclick="fechar('modalEditarVenda')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p class="dica" id="evSobre" style="margin:0 0 12px"></p>
+      <div class="ev-cab"><span>Item</span><span class="c">Qtd</span><span class="r">Unit. (R$)</span><span class="r">Total</span><span></span></div>
+      <div class="ev-lista" id="evLista"></div>
+      <div class="cb-busca" style="margin-top:12px">
+        <input type="text" id="evBusca" placeholder="+ Acrescentar produto ou serviço" autocomplete="off" oninput="evBuscar()" onblur="setTimeout(()=>{document.getElementById('evSugestoes').innerHTML=''},150)">
+        <div class="cb-sugestoes" id="evSugestoes"></div>
+      </div>
+      <label class="pdv-fin-rot" style="margin-top:16px">Forma de pagamento</label>
+      <div id="evPagNota"></div>
+      <div class="pdv-pags" id="evPags"></div>
+      <div class="pdv-fin-resumo" id="evTotais" style="margin-top:16px"></div>
+      <div class="rodape-modal">
+        <button class="btn btn-claro" onclick="fechar('modalEditarVenda')">Cancelar</button>
+        <button class="btn btn-amarelo" onclick="evSalvar()">Salvar venda</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modalPromocao">
   <div class="modal modal-rola" style="max-width:480px">
     <div class="modal-cabecalho">
@@ -1130,9 +1195,13 @@
     <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
     <span>Métricas</span>
   </button>
-  <button class="nav-item so-pc" data-nav="config" onclick="mostrarView('config')" title="Configurações">
+  <button class="nav-item so-pc" data-nav="loja" onclick="mostrarView('loja')" title="Ajustes da Loja">
+    <svg viewBox="0 0 24 24"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v1.5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 13v8h14v-8"/><path d="M10 21v-5h4v5"/></svg>
+    <span>Ajustes da Loja</span>
+  </button>
+  <button class="nav-item so-pc" data-nav="config" onclick="mostrarView('config')" title="Sistema">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 1h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 23h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z"/></svg>
-    <span>Configurações</span>
+    <span>Sistema</span>
   </button>
   <!-- Nível de acesso (2.14.0): troca rápida Gerente ⇄ Caixa no pé do menu lateral (só PC) -->
   <div class="nav-nivel so-pc" id="navNivel"></div>
