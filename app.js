@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.16.0';
+const VERSAO = '2.18.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -330,6 +330,7 @@ function finalizarRecebimento(movId){
   if(pg) m.pagamento = pg; else delete m.pagamento;
   salvar(); renderReceber(); render();
   if(aberto('modalMov')) renderMov();
+  registrarLog('venda', 'Recebimento (a receber)', `${p.nome} · ${m.qtd} un.${m.pagamento?' · '+textoPagamentos(m):''}`, m.qtd*v);
   toast('Recebimento registrado.');
 }
 
@@ -382,11 +383,14 @@ function salvarProduto(){
     preco: isNaN(precoVal) ? 0 : precoVal,
     minimo: parseInt(document.getElementById('pMinimo').value)||0
   };
+  { const uso = dados.codigoBarras && codigoEmUso(dados.codigoBarras, { pid:id }); if(uso){ toast(`Este código de barras já é de ${uso}.`); return; } }
 
   if(id){
     const p = prod(id);
     const precoMudou = Math.abs((dados.preco||0) - (p.preco||0)) > 0.001;
-    const aplicar = ()=>{ Object.assign(p, dados); salvar(); fechar('modalProduto'); render(); toast('Produto salvo.'); };
+    const aplicar = ()=>{
+      registrarLog('cadastro', 'Produto editado', dados.nome + (precoMudou ? ` · preço ${brl(p.preco)} → ${brl(dados.preco)}` : ''));
+      Object.assign(p, dados); salvar(); fechar('modalProduto'); render(); toast('Produto salvo.'); };
     if(precoMudou){
       senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente ou do administrador para confirmar a mudança.');
     } else {
@@ -403,6 +407,7 @@ function salvarProduto(){
     const novoId = uid();
     estado.produtos.push({ id:novoId, ...dados, ...(produtoFotoDuplicada?{foto:produtoFotoDuplicada}:{}), movimentacoes:movs });
     produtoFotoDuplicada = '';
+    registrarLog('cadastro', 'Produto criado', `${dados.nome}${dados.marca?' · '+dados.marca:''} · ${brl(dados.preco)}${qIni>0?' · '+qIni+' un. de inventário':''}`);
     const itInv = inventarioPendente && (estado.inventario||[]).find(x=>x.id===inventarioPendente);
     if(itInv){ itInv.pid = novoId; inventarioPendente = null; }   // item do inventário cadastrado
     salvar(); fechar('modalProduto'); render(); renderViewAtual();
@@ -416,6 +421,7 @@ function excluirProdutoId(id){
   pedirConfirmacao(`Excluir “${p.nome}” e ${n?`as ${n} movimentação(ões) do histórico dele`:'o cadastro'}? Isso não pode ser desfeito. Para só tirar o produto da lista, use “Arquivar”.`, ()=>{
     pedirSenha(()=>{
       estado.produtos = estado.produtos.filter(x=>x.id!==id);
+      registrarLog('exclusao', 'Produto excluído', `${p.nome} · ${n} movimentação(ões) apagada(s) junto`);
       salvar(); fechar('modalProduto'); fechar('modalMov'); render(); renderViewAtual(); toast('Produto excluído.');
     }, `Excluir um produto apaga o histórico dele. Digite ${nomeSenha(nivelDaSenha())} para confirmar.`, nivelDaSenha());
   }, 'Excluir produto');
@@ -435,10 +441,12 @@ function arquivarProduto(id, arquivar){
       + (est>0 ? ` Atenção: ainda há ${est} unidade(s) em estoque.` : '');
     pedirConfirmacao(msg, ()=>{
       p.arquivado = true; p.dataArquivado = hoje();
+      registrarLog('cadastro', 'Produto arquivado', p.nome);
       salvar(); render(); renderViewAtual(); if(aberto('modalMov')) renderMov(); toast('Produto arquivado.');
     }, 'Arquivar produto');
   } else {
     delete p.arquivado; delete p.dataArquivado;
+    registrarLog('cadastro', 'Produto desarquivado', p.nome);
     salvar(); render(); renderViewAtual(); if(aberto('modalMov')) renderMov(); toast('Produto desarquivado.');
   }
 }
@@ -648,6 +656,8 @@ function pdvEnter(){
   const ql = q.toLowerCase();
   const exato = estado.produtos.find(p=>!p.arquivado && ((p.codigoBarras && p.codigoBarras===q) || (p.codigo && p.codigo.toLowerCase()===ql)));
   if(exato){ pdvProdutoLido(exato); return; }
+  const svCod = (estado.servicos||[]).find(sv=>sv.codigoBarras && sv.codigoBarras===q);   // código da loja (2.17.0)
+  if(svCod){ pdvLimparBusca(); pdvAdicionarServico(svCod.id); return; }
   const lista = pdvBuscar(q), servs = pdvBuscarServicos(q), combos = pdvBuscarCombos(q);
   const comboExato = (estado.combos||[]).find(c=>c.titulo.toLowerCase()===ql);
   if(comboExato){ pdvAdicionarCombo(comboExato.id); return; }
@@ -947,6 +957,7 @@ function pdvConfirmar(){
   festejar();
   notificarVenda(feita);
   avisarEstoqueBaixo(antesEst);
+  registrarLog('venda', 'Venda', `${feita.produtos} item(ns) · ${textoPagamentos(feita)}${r.ajustes.length ? ' · combo ' + r.ajustes.map(a=>a.titulo).join(', ') : ''}`, feita.total, vendaId);
 }
 
 /* =========================================================
@@ -1035,12 +1046,14 @@ function salvarAvulsa(){
   if(avEditando){
     const a = estado.avulsas.find(x=>x.id===avEditando);
     if(a){ Object.assign(a, dados); if(!dados.custo) delete a.custo; if(a.pagamento!=='varios') delete a.pagamentos; }
+    registrarLog('edicao', 'Movimentação avulsa editada', `${dados.descricao} · ${dados.qtd} un.`, dados.valor, a && a.vendaId);
     salvar(); fechar('modalAvulsa'); renderViewAtual();
     toast('Movimentação avulsa atualizada.');
     return;
   }
   estado.avulsas.push({ id:uid(), ...dados, hora:new Date().toTimeString().slice(0,5) });
   salvar(); fechar('modalAvulsa'); renderViewAtual();
+  registrarLog('venda', 'Movimentação avulsa', `${descricao} · ${qtd} un. · ${rotuloTipoAvulsa(avTipoSel)} · ${nomePagamento(avPagSel)}`, dados.valor);
   toast('Movimentação avulsa registrada.');
   notificarVenda({ total:dados.valor, unidades:qtd, produtos:1, pagamento:dados.pagamento, nomes:[descricao], titulo:'Movimentação avulsa' });
 }
@@ -1059,6 +1072,7 @@ function excluirAvulsa(){
   const a = (estado.avulsas||[]).find(x=>x.id===avEditando); if(!a) return;
   pedirConfirmacao(`Excluir a movimentação avulsa “${a.descricao}” de ${fmtBRL(a.valor)} (${fmtData(a.data)})? Ela sai do Histórico e das Métricas. Não dá para desfazer.`, ()=>{
     estado.avulsas = estado.avulsas.filter(x=>x.id!==a.id);
+    registrarLog('exclusao', 'Movimentação avulsa excluída', `${a.descricao} · ${fmtData(a.data)}`, a.valor, a.vendaId);
     salvar(); fechar('modalAvulsa'); renderViewAtual();
     toast('Movimentação avulsa excluída.');
   }, 'Excluir movimentação avulsa');
@@ -1605,6 +1619,7 @@ function registrarCompraLote(){
     p.movimentacoes.push({ id:uid(), tipo:'entrada', data, qtd:it.qtd, custoUnit:it.custo, loteId, ...(forn?{fornecedor:forn}:{}) });
   });
   salvar(); fechar('modalCompra'); render();
+  registrarLog('estoque', 'Compra em lote', `${itens.length} item(ns)${fornCompra?' · '+fornCompra:''}${itens.some(x=>x.novo)?' · '+itens.filter(x=>x.novo).length+' produto(s) novo(s)':''}`, itens.reduce((t,x)=>t+x.qtd*x.custo,0));
   toast(`Compra registrada: ${itens.length} item(ns).`);
 }
 
@@ -1780,6 +1795,7 @@ function ppDados(p){
     <div class="campo"><label>Código de barras (opcional)</label>
       <div style="display:flex;gap:8px"><input type="text" id="dpCodigoBarras" value="${escapar(p.codigoBarras||'')}" placeholder="EAN/UPC — o leitor USB digita aqui" style="flex:1" inputmode="numeric">
         <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner('dpCodigoBarras')">Escanear</button></div>
+      <div class="cod-loja"><button type="button" onclick="codigoLojaGerar('dpCodigoBarras')">Gerar código da loja</button><button type="button" onclick="etiquetaImprimir('dpCodigoBarras', val('dpNome'))">Imprimir etiqueta</button></div>
     </div>
     <div class="campo"><label>Nome do produto</label><input type="text" id="dpNome" value="${escapar(p.nome)}"></div>
     <div class="linha-campos">
@@ -1814,7 +1830,10 @@ function salvarDadosPainel(){
   };
   const foto = val('dpFoto').trim();
   if(foto && !/^https?:\/\//i.test(foto)){ toast('O link da foto precisa começar com http:// ou https://'); return; }
-  const aplicar = ()=>{ Object.assign(p, dados); if(foto) p.foto = foto; else delete p.foto; salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
+  { const uso = dados.codigoBarras && codigoEmUso(dados.codigoBarras, { pid:p.id }); if(uso){ toast(`Este código de barras já é de ${uso}.`); return; } }
+  const aplicar = ()=>{
+    registrarLog('cadastro', 'Produto editado', dados.nome + (Math.abs((dados.preco||0)-(p.preco||0)) > 0.001 ? ` · preço ${brl(p.preco)} → ${brl(dados.preco)}` : ''));
+    Object.assign(p, dados); if(foto) p.foto = foto; else delete p.foto; salvar(); render(); renderViewAtual(); renderMov(); toast('Produto salvo.'); };
   if(Math.abs((dados.preco||0)-(p.preco||0)) > 0.001)
     senhaSeNaoGerente(aplicar, 'O preço de venda foi alterado. Digite a senha do gerente ou do administrador para confirmar a mudança.');
   else aplicar();
@@ -1929,6 +1948,7 @@ function entradaConfirmaNovo(){
 function commitEntrada(p, mov){
   if(!mov.fornecedor) delete mov.fornecedor;
   p.movimentacoes.push({ id:uid(), tipo:'entrada', ...mov });
+  registrarLog('estoque', 'Entrada', `${p.nome} · ${mov.qtd} un. a ${brl(mov.custoUnit)}${mov.fornecedor?' · '+mov.fornecedor:''}`, mov.qtd*(mov.custoUnit||0));
   salvar(); entradaPendente = null;
   aposMovimento(); toast('Entrada registrada.');
 }
@@ -1971,6 +1991,8 @@ function registrarSaida(){
 function efetivarSaida(p, mov){
   const antesEst = estoquesAntes([p.id]);
   p.movimentacoes.push(mov);
+  if(mov.motivo==='Venda') registrarLog('venda', 'Venda (Registrar saída)', `${p.nome} · ${mov.qtd} un.${mov.pagamento?' · '+textoPagamentos(mov):''}`, mov.qtd*(mov.precoVenda||0));
+  else registrarLog('estoque', 'Saída: ' + rotuloMov(mov), `${p.nome} · ${mov.qtd} un.`);
   salvar(); aposMovimento(); toast('Baixa registrada.');
   if(mov.motivo==='Venda') notificarVenda({ total:mov.qtd*(mov.precoVenda||0), unidades:mov.qtd, produtos:1, pagamento:mov.pagamento, nomes:[p.nome] });
   avisarEstoqueBaixo(antesEst);
@@ -1998,7 +2020,10 @@ async function confirmarSenha(){
   let ok = false;
   try{ ok = await senhaConfere(document.getElementById('senhaInput').value, acaoSenhaNivel); }
   finally{ senhaConferindo = false; }
-  if(!ok){ toast('Senha incorreta.'); return; }
+  if(!ok){
+    registrarLog('seguranca', 'Senha errada', `${acaoSenhaNivel==='gerente' ? 'Pedia a senha do gerente' : 'Pedia a senha do gerente ou do administrador'} · modo ${NIVEIS[nivelAtual()]} · “${(document.getElementById('senhaTexto').textContent||'').slice(0,120)}”`);
+    toast('Senha incorreta.'); return;
+  }
   fechar('modalSenha');
   const cb = acaoSenha; acaoSenha = null;
   if(cb) cb();
@@ -2524,6 +2549,7 @@ function excluirMovimentacao(){
         `Tem certeza? A exclusão é definitiva e não pode ser desfeita no app — só restaurando um backup. Confirmar a exclusão d${desc}?`,
         ()=>{
           p.movimentacoes = p.movimentacoes.filter(x=>x.id!==m.id);
+          registrarLog('exclusao', 'Movimentação excluída', desc.replace(/^(a |à )/,''), valorMov(m) ? Math.abs(valorMov(m).total) : null, m.vendaId);
           salvar(); fechar('modalEditMov');
           render(); renderViewAtual(); if(aberto('modalMov')) renderMov();
           mostrarAviso('Movimentação excluída',
@@ -2573,6 +2599,7 @@ function salvarEdicaoMov(){
   }
   // sobrescreve no lugar (mantém o id da movimentação)
   const antesEst = estoquesAntes([p.id]);
+  const antesTxt = `${m.qtd} un.${m.tipo==='entrada' ? ' a '+brl(m.custoUnit) : m.precoVenda ? ' a '+brl(m.precoVenda) : ''}`;
   m.data = novo.data; m.qtd = novo.qtd;
   if(m.tipo==='entrada'){ m.custoUnit = novo.custoUnit; if(novo.fornecedor) m.fornecedor = novo.fornecedor; else delete m.fornecedor; }
   else {
@@ -2584,6 +2611,7 @@ function salvarEdicaoMov(){
     if(m.recebido && !m.dataRecebimento) m.dataRecebimento = hoje();
     if(m.recebido===false) delete m.recebido;
   }
+  registrarLog('edicao', 'Movimentação editada', `${p.nome} · ${rotuloMov(m)} de ${fmtData(m.data)} · ${antesTxt} → ${m.qtd} un.${m.tipo==='entrada' ? ' a '+brl(m.custoUnit) : m.precoVenda ? ' a '+brl(m.precoVenda) : ''}`, null, m.vendaId);
   salvar(); fechar('modalEditMov');
   render(); renderHistorico(); if(aberto('modalMov')) renderMov();
   toast('Movimentação atualizada.');
@@ -2671,6 +2699,7 @@ function adicionarCategoria(){
   estado.categorias.push(v);   // ordem personalizada: a nova entra no fim; senão, em ordem alfabética
   ordenarCategorias();
   campo.value='';
+  registrarLog('ajuste', 'Categoria criada', v);
   salvar(); renderCategorias(); render(); toast('Categoria adicionada.');
 }
 function salvarEdicaoCategoria(i){
@@ -2686,6 +2715,7 @@ function salvarEdicaoCategoria(i){
     estado.categorias[i] = novo;
     ordenarCategorias();
     estado.produtos.forEach(p=>{ if(p.categoria===antigo) p.categoria=novo; });
+    registrarLog('ajuste', 'Categoria renomeada', `${antigo} → ${novo}`);
     salvar(); catEditando=null; renderCategorias(); render(); toast('Categoria renomeada.');
   };
   if(temEstoqueAtivo){
@@ -2699,6 +2729,7 @@ function removerCategoriaIdx(i){
   if(estado.produtos.some(p=>p.categoria===c)){ toast('Categoria em uso — não pode ser removida.'); return; }
   pedirConfirmacao(`Remover a categoria “${c}”?`, ()=>{
     estado.categorias.splice(i,1); catEditando = null;
+    registrarLog('ajuste', 'Categoria removida', c);
     salvar(); renderCategorias(); render(); toast('Categoria removida.');
   }, 'Remover categoria');
 }
@@ -2717,6 +2748,7 @@ function exportar(){
   a.href = URL.createObjectURL(blob);
   a.download = `backup-china-engine-${hoje()}.json`;   // estoque + financeiro num só arquivo
   a.click();
+  registrarLog('sistema', 'Backup baixado', `${estado.produtos.length} produto(s)`);
   toast('Backup gerado.');
 }
 function importar(ev){
@@ -2736,7 +2768,9 @@ function importar(ev){
       }
       if(!dados.produtos||!dados.categorias) throw new Error();
       pedirConfirmacao('Isso vai substituir os dados atuais (estoque e financeiro) pelo backup. Continuar?', ()=>{
-        estado = garantirFinanceiro(dados); salvar(); render(); renderViewAtual(); toast('Backup restaurado.');
+        estado = garantirFinanceiro(dados);
+        registrarLog('seguranca', 'Backup restaurado', `Arquivo ${arq.name} · ${estado.produtos.length} produto(s) · os dados anteriores foram substituídos`);
+        salvar(); render(); renderViewAtual(); toast('Backup restaurado.');
       });
     }catch(err){ toast('Arquivo inválido.'); }
   };
@@ -2877,7 +2911,7 @@ function renderConfig(){
 async function alterarSenha(){
   if(emSandbox('alterar a senha')) return;
   const atual = val('cfgSenhaAtual'), nova = val('cfgSenhaNova'), rep = val('cfgSenhaRep');
-  if(!(await senhaConfere(atual, 'gerente'))){ toast('Senha atual do gerente incorreta.'); return; }
+  if(!(await senhaConfere(atual, 'gerente'))){ registrarLog('seguranca', 'Senha errada', 'Ao tentar trocar a senha do gerente'); toast('Senha atual do gerente incorreta.'); return; }
   if(await senhaBate(nova, senhaAdminReferencia())){ toast('A senha do gerente precisa ser diferente da senha do administrador.'); return; }
   if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
   if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
@@ -2886,6 +2920,7 @@ async function alterarSenha(){
   estado.config = estado.config || {};
   estado.config.senhaGerenteHash = await resumoSenha(nova);
   delete estado.config.senhaGerente;
+  registrarLog('seguranca', 'Senha do gerente alterada', '');
   salvar();
   ['cfgSenhaAtual','cfgSenhaNova','cfgSenhaRep'].forEach(id=>document.getElementById(id).value='');
   senhaRenderAviso();
@@ -2906,12 +2941,14 @@ async function alterarSenhaAdmin(){
   if(emSandbox('alterar a senha')) return;
   // ainda não existe: o Administrador cria a dele com a senha do gerente (uma vez); depois troca com a própria
   const atual = val('cfgAdmAtual'), nova = val('cfgAdmNova'), rep = val('cfgAdmRep'), nv = senhaAdminReferencia() ? 'admin' : 'gerente';
-  if(!(await senhaConfere(atual, nv))){ toast(nv==='gerente' ? 'Senha do gerente incorreta.' : 'Senha atual incorreta.'); return; }
+  if(!(await senhaConfere(atual, nv))){ registrarLog('seguranca', 'Senha errada', 'Ao tentar criar ou trocar a senha do administrador'); toast(nv==='gerente' ? 'Senha do gerente incorreta.' : 'Senha atual incorreta.'); return; }
   if(nova.length < 6){ toast('A nova senha precisa ter ao menos 6 caracteres.'); return; }
   if(nova !== rep){ toast('A nova senha e a repetição não conferem.'); return; }
   if(await senhaBate(nova, senhaReferencia())){ toast('A senha do administrador precisa ser diferente da senha do gerente.'); return; }
   estado.config = estado.config || {};
+  const criou = !senhaAdminReferencia();
   estado.config.senhaAdminHash = await resumoSenha(nova);
+  registrarLog('seguranca', criou ? 'Senha do administrador criada' : 'Senha do administrador alterada', '');
   salvar();
   ['cfgAdmAtual','cfgAdmNova','cfgAdmRep'].forEach(id=>document.getElementById(id).value='');
   senhaRenderAviso();
@@ -4092,6 +4129,7 @@ function nivelParaCaixa(){
   const max = NIVEIS[nivelMaximo()];
   pedirConfirmacao(`Passar este aparelho para o modo Caixa? O funcionário vê só o PDV e o Histórico de hoje, sem custos nem lucro. Para voltar ao modo ${max}, é preciso ${nomeSenha(nivelDaSenha())}.`, ()=>{
     try{ localStorage.setItem(MODO_CHAVE, 'caixa'); }catch(e){}
+    registrarLog('seguranca', 'Modo Caixa ligado', `Aparelho ${NIVEIS[nivelMaximo()]} passou para o modo Caixa`);
     document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
     aplicarNivel(); mostrarView('pdv');
     toast('Modo Caixa ligado neste aparelho.');
@@ -4102,6 +4140,7 @@ function nivelVoltar(){
   const max = NIVEIS[nivelMaximo()], nv = nivelDaSenha();
   pedirSenha(()=>{
     try{ localStorage.removeItem(MODO_CHAVE); }catch(e){}
+    registrarLog('seguranca', `Voltou ao modo ${max}`, 'Saiu do modo Caixa com a senha');
     aplicarNivel(); renderViewAtual();
     toast(`Modo ${max} ligado neste aparelho.`);
   }, `Voltar ao modo ${max} neste aparelho. Digite ${nomeSenha(nv)}.`, nv);
@@ -4379,6 +4418,87 @@ function parearPeloLink(){
   }
   conectarCodigoAbrir(d);
 }
+/* =========================================================
+   LOG DE ALTERAÇÕES (2.18.0)
+   Cada ação é anotada na hora, numa fila deste aparelho (fora dos dados da loja e do backup), e vai para
+   o Worker logo depois da sincronização. O log fica numa tabela própria do Worker: não pesa na
+   sincronização e não pode ser apagado nem editado pelo app (o que tem mais de 1 ano sai sozinho).
+   ========================================================= */
+const LOG_FILA = 'chinatown_log_fila';
+const LOG_TIPOS = { venda:'Venda', estoque:'Estoque', cadastro:'Cadastro', edicao:'Edição', exclusao:'Exclusão', ajuste:'Ajustes da loja', seguranca:'Segurança', sistema:'Sistema' };
+const brl = v => moeda.format(v||0);   // valor real, mesmo com o "olho" fechado
+function logFila(){ try{ return JSON.parse(localStorage.getItem(LOG_FILA)) || []; }catch(e){ return []; } }
+function logGravarFila(f){ try{ localStorage.setItem(LOG_FILA, JSON.stringify(f.slice(-1000))); }catch(e){} }
+let logTimer = null;
+function registrarLog(tipo, acao, detalhe, valor, ref){
+  try{
+    if(sandbox.ativo && acao!=='Modo Faz-de-Conta desligado') return;   // o Faz-de-Conta não é de verdade
+    const f = logFila();
+    f.push({ id:uid()+uid(), quando:new Date().toISOString(), tipo, acao, detalhe:detalhe||'', valor: typeof valor==='number' ? cent(valor) : null, ref:ref||null });
+    logGravarFila(f);
+    clearTimeout(logTimer); logTimer = setTimeout(logEnviar, 5000);   // ações sem sincronização (senha errada, modo Caixa) também saem
+  }catch(e){}
+}
+let logEnviando = false;
+async function logEnviar(){
+  if(logEnviando || sandbox.ativo || !Sync.conectado()) return;
+  const f = logFila(); if(!f.length) return;
+  logEnviando = true;
+  try{
+    const lote = f.slice(0, 100);
+    const r = await syncReq('POST', '/log', { eventos:lote });
+    const ok = new Set(r.recebidos || lote.map(x=>x.id));
+    logGravarFila(logFila().filter(x=>!ok.has(x.id)));
+    if(f.length > 100) setTimeout(logEnviar, 1000);
+  }catch(e){ /* tenta de novo na próxima sincronização (Worker antigo: fica guardado) */ }
+  finally{ logEnviando = false; }
+}
+
+/* ----- Modal do log: tabela com filtros, 50 linhas por vez ----- */
+let logPular = 0, logLinhas = [];
+function logAbrir(){
+  if(!Sync.conectado() || !maximoTotal()){ toast('O log aparece para Gerente e Administrador conectados à sincronização.'); return; }
+  document.getElementById('logTipo').innerHTML = '<option value="">Todos os tipos</option>' + Object.entries(LOG_TIPOS).map(([k,n])=>`<option value="${k}">${n}</option>`).join('');
+  document.getElementById('logDia').value = '';
+  document.getElementById('logAparelho').innerHTML = '<option value="">Todos os aparelhos</option>';
+  abrir('modalLog');
+  logEnviar().finally(()=>logCarregar(true));
+}
+async function logCarregar(doZero){
+  const corpo = document.getElementById('logCorpo'), mais = document.getElementById('logMais');
+  if(doZero){ logPular = 0; logLinhas = []; corpo.innerHTML = '<tr><td colspan="7" class="log-vazio">Carregando…</td></tr>'; }
+  mais.hidden = true;
+  const q = new URLSearchParams({ pular:logPular });
+  if(val('logAparelho')) q.set('aparelho', val('logAparelho'));
+  if(val('logTipo')) q.set('tipo', val('logTipo'));
+  if(val('logDia')) q.set('dia', val('logDia'));
+  try{
+    const j = await syncReq('GET', '/log?' + q.toString());
+    if(j.aparelhos){
+      const sel = document.getElementById('logAparelho'), atual = sel.value;
+      sel.innerHTML = '<option value="">Todos os aparelhos</option>' + j.aparelhos.map(a=>`<option value="${escapar(a.id)}"${a.id===atual?' selected':''}>${escapar(a.nome||a.id)}</option>`).join('');
+    }
+    logLinhas = logLinhas.concat(j.eventos||[]);
+    logPular += (j.eventos||[]).length;
+    corpo.innerHTML = logLinhas.length ? logLinhas.map(e=>{
+      const d = new Date(e.quando), dia = isoDe(d);
+      const ver = e.tipo==='venda' || e.ref ? `<button type="button" class="log-ver" onclick="logVerNoHistorico('${dia}')">ver</button>` : '';
+      return `<tr class="log-${escapar(e.tipo)}">
+        <td>${d.toLocaleDateString('pt-BR')}</td>
+        <td>${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${escapar(e.aparelho)}</td>
+        <td><span class="log-tag">${escapar(LOG_TIPOS[e.tipo]||e.tipo)}</span></td>
+        <td class="log-acao">${escapar(e.acao)}${ver}</td>
+        <td class="log-det">${escapar(e.detalhe||'')}</td>
+        <td class="num">${e.valor==null ? '' : (e.valor<0?'−':'')+brl(Math.abs(e.valor))}</td>
+      </tr>`; }).join('') : '<tr><td colspan="7" class="log-vazio">Nada registrado com esses filtros.</td></tr>';
+    mais.hidden = !j.mais;
+  }catch(e){
+    corpo.innerHTML = `<tr><td colspan="7" class="log-vazio">${escapar(e.codigo==='rota' ? 'Para ver o log, publique no Cloudflare a versão nova do sync-worker.js.' : e.message)}</td></tr>`;
+  }
+}
+function logVerNoHistorico(dia){ fechar('modalLog'); hxPeriodo = { tipo:'dia', ref:dia }; mostrarView('historico'); }
+
 function quandoFoi(iso){
   const min = Math.round((Date.now() - Date.parse(iso))/60000);
   if(min < 2) return 'agora';
@@ -4458,7 +4578,7 @@ async function sincronizar(){
       }
     }
     syncStatus(Sync.ler() && Sync.ler().pendente ? 'pendente' : 'ok');
-    if(Sync.ler() && !Sync.ler().pendente && !adiado) await pushEnviarFila();   // dados na nuvem: agora saem os avisos de venda
+    if(Sync.ler() && !Sync.ler().pendente && !adiado){ await pushEnviarFila(); logEnviar(); }   // dados na nuvem: agora saem os avisos de venda e o log
   }catch(e){
     syncStatus(e.tipo==='rede' && navigator.onLine===false ? 'offline' : 'erro', e.message);
   }finally{
@@ -4569,7 +4689,9 @@ function syncDesconectar(){
   const aviso = d && d.pendente ? ' Atenção: há alterações deste aparelho que ainda não foram enviadas.' : '';
   pedirConfirmacao(`Desconectar este aparelho da sincronização? Os dados continuam aqui e na nuvem, mas este aparelho para de enviar e receber alterações.${aviso}`, ()=>{
     clearTimeout(syncTimer);
-    pushDesativar(true).finally(()=>{   // tira este aparelho da lista de notificações antes de esquecer a senha
+    registrarLog('seguranca', 'Aparelho desconectado da sincronização', 'Pelo próprio aparelho');
+    clearTimeout(logTimer);
+    logEnviar().finally(()=>pushDesativar(true)).finally(()=>{   // manda o log e tira este aparelho da lista de notificações antes de esquecer a senha
       Sync.gravar(null); Sync.gravarBase(null);
       syncFase = { tipo:'', msg:'' };
       syncRenderConfig(); toast('Aparelho desconectado da sincronização.');
@@ -4657,6 +4779,7 @@ function sandboxLigar(){
     toast('Finalize ou cancele a venda em andamento antes de ligar o Modo Faz-de-Conta.');
     sandboxTela(); return;
   }
+  registrarLog('sistema', 'Modo Faz-de-Conta ligado', 'O que for feito agora não é salvo');
   sandbox = { ativo:true, copia:JSON.stringify(estado) };
   clearTimeout(syncTimer);
   pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar();
@@ -4667,6 +4790,7 @@ function sandboxDesligar(){
   if(!sandbox.ativo) return;
   estado = JSON.parse(sandbox.copia);   // exatamente como estava antes de ligar
   sandbox = { ativo:false, copia:null };
+  registrarLog('sistema', 'Modo Faz-de-Conta desligado', 'Os dados voltaram ao que eram');
   pdv = pdvVazio(); pdvVisor = { tipo:'livre' }; pdvGuardar();
   document.querySelectorAll('.overlay.aberto').forEach(o=>fechar(o.id));
   render(); atualizarAlertas(); sandboxTela(); renderViewAtual();
@@ -4945,6 +5069,7 @@ function salvarCombo(){
   estado.combos = estado.combos || [];
   if(cbEditando){ const c = comboDe(cbEditando); if(c) Object.assign(c, dados); }
   else estado.combos.push({ id:uid(), ...dados });
+  registrarLog('ajuste', cbEditando ? 'Combo editado' : 'Combo criado', `${titulo} · ${comboResumo(dados)} · ${preco!=null ? brl(preco) : 'soma dos itens'}`);
   salvar(); fechar('modalCombo'); renderCombos();
   toast(cbEditando ? 'Combo atualizado.' : 'Combo criado.');
 }
@@ -4952,6 +5077,7 @@ function excluirCombo(){
   const c = comboDe(cbEditando); if(!c) return;
   pedirConfirmacao(`Excluir o combo “${c.titulo}”? As vendas já feitas com ele não mudam.`, ()=>{
     estado.combos = estado.combos.filter(x=>x.id!==c.id);
+    registrarLog('exclusao', 'Combo excluído', c.titulo);
     salvar(); fechar('modalCombo'); renderCombos(); toast('Combo excluído.');
   }, 'Excluir combo');
 }
@@ -5090,6 +5216,7 @@ function evSalvar(){
     }
     aplicaPag(a);
   });
+  registrarLog('edicao', 'Venda editada', `Venda de ${fmtData(ev.data)}${ev.hora?' '+ev.hora:''} · total ${brl(ev.totalOrig)} → ${brl(evTotal())}`, evTotal(), ev.vid);
   salvar(); render(); renderViewAtual(); fechar('modalEditarVenda');
   avisarEstoqueBaixo(antesEst);
   toast('Venda atualizada.');
@@ -5164,9 +5291,9 @@ function renderPromocoes(){
 }
 function promoAlternar(id, ligar, chk){
   const pr = (estado.promocoes||[]).find(x=>x.id===id); if(!pr) return;
-  if(!ligar){ pr.ativa = false; salvar(); renderPromocoes(); renderViewAtual(); toast(`Promoção “${pr.titulo}” desligada.`); return; }
+  if(!ligar){ pr.ativa = false; registrarLog('ajuste', 'Promoção desligada', pr.titulo); salvar(); renderPromocoes(); renderViewAtual(); toast(`Promoção “${pr.titulo}” desligada.`); return; }
   chk.checked = false;   // só liga depois da senha
-  pedirSenha(()=>{ pr.ativa = true; salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
+  pedirSenha(()=>{ pr.ativa = true; registrarLog('ajuste', 'Promoção ligada', `${pr.titulo} · ${frasePromo(pr)}`); salvar(); renderPromocoes(); toast(`Promoção “${pr.titulo}” ligada.`); },
     `Ligar a promoção “${pr.titulo}” (${frasePromo(pr)}). Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 
@@ -5241,6 +5368,7 @@ function salvarPromocao(){
     estado.promocoes = estado.promocoes || [];
     if(pmEditando){ const pr = estado.promocoes.find(x=>x.id===pmEditando); if(pr) Object.assign(pr, dados); }
     else estado.promocoes.push({ id:uid(), ...dados });
+    registrarLog('ajuste', pmEditando ? 'Promoção editada' : 'Promoção criada', `${dados.titulo} · ${frasePromo(dados)}${dados.ativa?' · ligada':' · desligada'}`);
     salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual();
     toast(pmEditando ? 'Promoção atualizada.' : 'Promoção criada.');
   };
@@ -5252,6 +5380,7 @@ function excluirPromocao(){
   const pr = (estado.promocoes||[]).find(x=>x.id===pmEditando); if(!pr) return;
   pedirConfirmacao(`Excluir a promoção “${pr.titulo}”? As vendas já feitas com ela continuam nas Métricas.`, ()=>{
     estado.promocoes = estado.promocoes.filter(x=>x.id!==pr.id);
+    registrarLog('exclusao', 'Promoção excluída', pr.titulo);
     salvar(); fechar('modalPromocao'); renderPromocoes(); renderViewAtual(); toast('Promoção excluída.');
   }, 'Excluir promoção');
 }
@@ -5343,6 +5472,7 @@ function salvarInventario(){
   if(inventarioFechado()) return;
   const lista = inventarioValidar(); if(!lista) return;
   estado.inventario = lista;
+  registrarLog('ajuste', 'Inventário salvo', `${lista.length} item(ns)`);
   salvar(); fechar('modalInventario'); inventarioResumo(); inventarioAviso();
   toast('Inventário salvo.');
 }
@@ -5356,6 +5486,7 @@ function fecharInventarioDefinitivo(){
       estado.inventario = lista;
       estado.config = estado.config || {};
       estado.config.inventarioFechado = hoje();
+      registrarLog('ajuste', 'Inventário fechado', `${lista.length} item(ns) · ${pend} sem cadastro no Estoque`);
       salvar(); renderInventario(); inventarioResumo(); inventarioAviso();
       toast('Inventário fechado.');
     }, 'Fechar inventário'), `Fechar o inventário. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
@@ -5402,6 +5533,7 @@ function servicosAtivos(){ return !(estado.config && estado.config.servicosAtivo
 function servicosAtivar(ligar){
   estado.config = estado.config || {};
   estado.config.servicosAtivo = !!ligar;
+  registrarLog('ajuste', ligar ? 'Módulo Serviços ligado' : 'Módulo Serviços desligado', '');
   salvar(); servicosTela();
   toast(ligar ? 'Módulo Serviços ligado.' : 'Módulo Serviços desligado. Os serviços cadastrados continuam guardados.');
 }
@@ -5433,10 +5565,73 @@ function abrirServico(id){
   document.getElementById('svValor').value = sv ? sv.valor : '';
   document.getElementById('svCusto').value = sv && sv.custo>0 ? sv.custo : '';
   document.getElementById('svFoto').value = sv && sv.foto ? sv.foto : '';
+  document.getElementById('svCodigo').value = sv && sv.codigoBarras ? sv.codigoBarras : '';
   document.getElementById('svExcluir').style.display = sv ? '' : 'none';
   abrir('modalServico');
   setTimeout(()=>document.getElementById('svNome').focus(), 80);
 }
+/* =========================================================
+   CÓDIGOS DA LOJA (2.17.0): códigos de barras próprios para serviços e produtos sem código na embalagem.
+   Formato: 12 números começando com "29" (faixa de uso interno das lojas no padrão GS1, não colide com
+   códigos de fábrica), impressos em Code 128. O leitor "bipa" e o PDV coloca o item na venda.
+   ========================================================= */
+function codigoEmUso(cod, exceto){
+  exceto = exceto || {};
+  const p = estado.produtos.find(x=>x.codigoBarras===cod && x.id!==exceto.pid);
+  if(p) return `“${p.nome}”`;
+  const sv = (estado.servicos||[]).find(x=>x.codigoBarras===cod && x.id!==exceto.sid);
+  if(sv) return `“${sv.nome}”`;
+  return '';
+}
+function gerarCodigoLoja(){
+  let cod;
+  do { cod = '29' + Array.from(crypto.getRandomValues(new Uint8Array(10)), b=>b%10).join(''); } while(codigoEmUso(cod));
+  return cod;
+}
+/* botão "Gerar código da loja" ao lado de um campo de código de barras */
+function codigoLojaGerar(campo){
+  const el = document.getElementById(campo); if(!el) return;
+  if(el.value.trim()){ toast('Já tem um código. Apague o campo para gerar outro.'); return; }
+  el.value = gerarCodigoLoja();
+  toast('Código da loja gerado. Salve e imprima a etiqueta.');
+}
+/* Code 128 (conjunto C para números em pares; B para o resto) → SVG */
+const C128 = ['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'];
+function code128Svg(texto, altura){
+  const vals = [];
+  if(/^\d+$/.test(texto) && texto.length%2===0){ vals.push(105); for(let i=0;i<texto.length;i+=2) vals.push(parseInt(texto.substr(i,2),10)); }
+  else { vals.push(104); for(const ch of texto) vals.push(ch.charCodeAt(0)-32); }
+  let soma = vals[0]; for(let i=1;i<vals.length;i++) soma += vals[i]*i;
+  vals.push(soma%103, 106);
+  let x = 10, barras = '';   // 10 módulos de margem branca de cada lado
+  vals.forEach(v=>{ [...C128[v]].forEach((w,i)=>{ w = +w; if(i%2===0) barras += `<rect x="${x}" y="0" width="${w}" height="${altura||50}"/>`; x += w; }); });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${x+10} ${altura||50}" preserveAspectRatio="none" shape-rendering="crispEdges">${barras}</svg>`;
+}
+/* Etiqueta pequena (50 × 30 mm): nome + código. Abre a janela de impressão. */
+function etiquetaImprimir(campoCodigo, nome){
+  const cod = val(campoCodigo).trim();
+  if(!cod){ toast('Gere ou digite o código antes de imprimir.'); return; }
+  nome = (nome || '').trim() || 'Item';
+  const w = window.open('', '_blank', 'width=420,height=360');
+  if(!w){ toast('O navegador bloqueou a janela de impressão. Libere os pop-ups para este site.'); return; }
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Etiqueta · ${escapar(nome)}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+    <style>
+      @page{size:50mm 30mm;margin:0}
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'IBM Plex Sans',Arial,sans-serif;background:#fff;color:#000}
+      .et{width:50mm;height:30mm;padding:2mm 2.5mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden}
+      .et b{font-weight:600;font-size:10pt;line-height:1.15;text-align:center;max-height:2.3em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+      .et svg{width:45mm;height:13mm;display:block}
+      .et span{font-size:8pt;letter-spacing:1px}
+      @media screen{body{background:#eee;padding:16px}.et{background:#fff;border:1px dashed #999;margin:0 auto}}
+    </style></head><body>
+    <div class="et"><b>${escapar(nome)}</b>${code128Svg(cod)}<span>${escapar(cod)}</span></div>
+    <script>(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>setTimeout(()=>window.print(),150));<\/script>
+    </body></html>`);
+  w.document.close();
+}
+
 function salvarServico(){
   const nome = val('svNome').trim(), valor = parseFloat(val('svValor')), custo = parseFloat(val('svCusto'));
   if(!nome){ toast('Informe o nome do serviço.'); document.getElementById('svNome').focus(); return; }
@@ -5448,15 +5643,19 @@ function salvarServico(){
   if(!isNaN(custo) && custo>0) dados.custo = Math.round(custo*100)/100;
   const foto = val('svFoto').trim();
   if(foto){ if(!/^https?:\/\//i.test(foto)){ toast('A foto precisa ser um endereço que começa com https://'); return; } dados.foto = foto; }
-  if(svEditando){ const sv = estado.servicos.find(x=>x.id===svEditando); if(sv){ Object.assign(sv, dados); if(!dados.custo) delete sv.custo; if(!dados.foto) delete sv.foto; } }
+  const cod = val('svCodigo').trim();
+  if(cod){ const uso = codigoEmUso(cod, { sid:svEditando }); if(uso){ toast(`Este código já é de ${uso}.`); return; } dados.codigoBarras = cod; }
+  if(svEditando){ const sv = estado.servicos.find(x=>x.id===svEditando); if(sv){ Object.assign(sv, dados); if(!dados.custo) delete sv.custo; if(!dados.foto) delete sv.foto; if(!dados.codigoBarras) delete sv.codigoBarras; } }
   else estado.servicos.push({ id:uid(), ...dados });
   salvar(); fechar('modalServico'); renderServicos();
+  registrarLog('cadastro', svEditando ? 'Serviço editado' : 'Serviço criado', `${dados.nome} · ${brl(dados.valor)}${dados.codigoBarras?' · código '+dados.codigoBarras:''}`);
   toast(svEditando ? 'Serviço atualizado.' : 'Serviço cadastrado.');
 }
 function excluirServico(){
   const sv = (estado.servicos||[]).find(x=>x.id===svEditando); if(!sv) return;
   pedirConfirmacao(`Excluir o serviço “${sv.nome}”? As movimentações avulsas já registradas não mudam.`, ()=>{
     estado.servicos = estado.servicos.filter(x=>x.id!==sv.id);
+    registrarLog('exclusao', 'Serviço excluído', sv.nome);
     salvar(); fechar('modalServico'); renderServicos(); toast('Serviço excluído.');
   }, 'Excluir serviço');
 }

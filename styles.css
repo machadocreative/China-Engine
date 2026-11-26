@@ -1763,3 +1763,30 @@ body:not(.nivel-admin) .so-admin{display:none !important}   /* só o aparelho Ad
 .ds-vd-linha.total{background:var(--bg);font-weight:700}
 .ds-vd-linha .neg{color:var(--vermelho)}
 @media(max-width:480px){ .ds-vd-cab,.ds-vd-linha{grid-template-columns:minmax(0,1fr) 72px 72px 72px;font-size:14px} }
+
+/* ===== 2.17.0 ===== */
+/* Códigos da loja: gerar e imprimir etiqueta */
+.cod-loja{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:6px}
+.cod-loja button{border:none;background:none;padding:4px 0;font-size:14px;font-weight:600;color:var(--texto);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.cod-loja button:hover{color:var(--preto)}
+
+/* ===== 2.18.0 ===== */
+/* Log de alterações: tabela linha a linha, em colunas */
+.log-filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.log-filtros select,.log-filtros input{height:40px;padding:0 10px;font-size:15px;border:1px solid var(--borda-forte);border-radius:10px;background:#fff;min-width:0}
+.log-rolagem{overflow-x:auto;border:1px solid var(--borda)}
+.log-tabela{width:100%;min-width:860px;border-collapse:collapse;font-size:14px}
+.log-tabela th{position:sticky;top:0;background:var(--preto);color:#fff;text-align:left;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px;white-space:nowrap}
+.log-tabela td{padding:8px 10px;border-top:1px solid var(--borda);vertical-align:top;background:#fff}
+.log-tabela td:nth-child(1),.log-tabela td:nth-child(2){white-space:nowrap;color:var(--texto-sec)}
+.log-tabela td:nth-child(3){white-space:nowrap;font-weight:600}
+.log-tabela .num{text-align:right;white-space:nowrap;font-weight:600}
+.log-acao{font-weight:600;white-space:nowrap}
+.log-det{color:var(--texto-sec);min-width:240px}
+.log-tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:14px;font-weight:600;background:#ECEAE3;white-space:nowrap}
+.log-venda .log-tag{background:#E5F2E6;color:var(--verde)}
+.log-exclusao .log-tag{background:var(--vermelho-claro);color:var(--vermelho)}
+.log-seguranca td{background:#FFF8F7}
+.log-seguranca .log-tag{background:var(--vermelho);color:#fff}
+.log-vazio{text-align:center;color:var(--texto-sec);padding:24px !important}
+.log-ver{margin-left:8px;border:none;background:none;padding:0;font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px;color:var(--texto-sec);cursor:pointer}

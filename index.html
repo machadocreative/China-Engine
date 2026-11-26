@@ -391,6 +391,7 @@
     <ul class="ap-lista" id="cfgAparelhos"></ul>
     <div class="cfg-acoes">
       <button class="btn btn-escuro" onclick="parearAbrir()">Conectar novo aparelho (QR code)</button>
+      <button class="btn btn-claro" onclick="logAbrir()">Log de alterações</button>
       <button class="btn btn-claro" onclick="dispositivosRender(true)">Atualizar lista</button>
     </div>
   </div>
@@ -615,6 +616,10 @@
         <div class="campo"><label>Valor (R$)</label><input type="number" id="svValor" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
         <div class="campo"><label>Custo (R$, opcional)</label><input type="number" id="svCusto" min="0" step="0.01" placeholder="0,00" inputmode="decimal"></div>
       </div>
+      <div class="campo"><label>Código de barras (opcional)</label>
+        <input type="text" id="svCodigo" placeholder="Gere um código da loja ou leia um código" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')event.preventDefault()">
+        <div class="dica">Com a etiqueta impressa, basta "bipar" no PDV para o serviço entrar na venda.</div>
+        <div class="cod-loja"><button type="button" onclick="codigoLojaGerar('svCodigo')">Gerar código da loja</button><button type="button" onclick="etiquetaImprimir('svCodigo', val('svNome'))">Imprimir etiqueta</button></div></div>
       <div class="campo"><label>Foto (endereço da imagem, opcional)</label>
         <input type="url" id="svFoto" placeholder="https://… — aparece no visor do PDV e na tela do cliente" autocapitalize="off" spellcheck="false"></div>
       <div class="rodape-modal">
@@ -839,7 +844,8 @@
             onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pNome').focus();}">
           <button type="button" class="btn btn-claro btn-mini so-celular" onclick="abrirScanner()">Escanear</button>
         </div>
-        <div class="dica">Use a câmera ou um leitor USB com este campo focado.</div>
+        <div class="dica">Use a câmera ou um leitor USB com este campo focado. Produto sem código na embalagem: gere um código da loja.</div>
+        <div class="cod-loja"><button type="button" onclick="codigoLojaGerar('pCodigoBarras')">Gerar código da loja</button><button type="button" onclick="etiquetaImprimir('pCodigoBarras', val('pNome'))">Imprimir etiqueta</button></div>
       </div>
       <div class="campo">
         <label>Nome do produto</label>
@@ -1030,6 +1036,31 @@
     </div>
   </div>
 </div>
+<!-- ===== Modal: log de alterações (Sistema → Aparelhos conectados, 2.18.0) ===== -->
+<div class="overlay" id="modalLog">
+  <div class="modal modal-rola" style="max-width:1080px">
+    <div class="modal-cabecalho">
+      <h2>Log de alterações</h2>
+      <button class="fechar" onclick="fechar('modalLog')">&times;</button>
+    </div>
+    <div class="modal-corpo">
+      <p class="dica" style="margin:0 0 12px">O que cada aparelho fez, do mais recente para o mais antigo. O log não pode ser apagado nem editado; o que tem mais de 1 ano sai sozinho. Ações no Modo Faz-de-Conta não entram.</p>
+      <div class="log-filtros">
+        <select id="logAparelho" onchange="logCarregar(true)" aria-label="Aparelho"><option value="">Todos os aparelhos</option></select>
+        <select id="logTipo" onchange="logCarregar(true)" aria-label="Tipo"></select>
+        <input type="date" id="logDia" onchange="logCarregar(true)" aria-label="Dia">
+        <button type="button" class="btn btn-claro btn-mini" onclick="document.getElementById('logAparelho').value='';document.getElementById('logTipo').value='';document.getElementById('logDia').value='';logCarregar(true)">Limpar filtros</button>
+      </div>
+      <div class="log-rolagem">
+        <table class="log-tabela">
+          <thead><tr><th>Data</th><th>Hora</th><th>Aparelho</th><th>Tipo</th><th>Ação</th><th>Detalhe</th><th class="num">Valor</th></tr></thead>
+          <tbody id="logCorpo"></tbody>
+        </table>
+      </div>
+      <div class="cfg-acoes" style="margin-top:12px"><button class="btn btn-claro" id="logMais" hidden onclick="logCarregar(false)">Carregar mais</button></div>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="modalSenha">
   <div class="modal" style="max-width:420px">
     <div class="modal-cabecalho">
@@ -1179,6 +1210,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 8v4M10 8v4M13 8v4M17 8v4"/></svg>
     <span>PDV</span>
   </button>
+  <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span>Histórico</span>
+  </button>
   <button class="nav-item" data-nav="estoque" onclick="mostrarView('estoque')" title="Módulo de estoque">
     <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
     <span>Estoque</span>
@@ -1186,10 +1221,6 @@
   <button class="nav-item so-pc nav-servicos" data-nav="servicos" onclick="mostrarView('servicos')" title="Serviços">
     <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>
     <span>Serviços</span>
-  </button>
-  <button class="nav-item" data-nav="historico" onclick="mostrarView('historico')" title="Histórico de movimentações">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    <span>Histórico</span>
   </button>
   <button class="nav-item" data-nav="desempenho" onclick="mostrarView('desempenho')" title="Métricas das vendas">
     <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>

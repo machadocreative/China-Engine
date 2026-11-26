@@ -32,6 +32,46 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.18.0] - 2026-11-25
+
+> **Importante:** publique no Cloudflare a versão nova de `cloudflare/sync-worker.js` (a tabela do log é criada sozinha).
+
+### Adicionado
+
+- **Log de alterações** (Sistema → Aparelhos conectados → "Log de alterações", para Gerente e Administrador): uma tabela, linha a linha, com as colunas Data · Hora · Aparelho · Tipo · Ação · Detalhe · Valor, do mais recente para o mais antigo. Tem filtros por aparelho, tipo e dia, 50 linhas por vez ("Carregar mais") e o link "ver" nas vendas, que abre o Histórico daquele dia.
+  - **Vendas:** PDV (itens, forma de pagamento e combo), Registrar saída, recebimentos de "a receber", movimentações avulsas, vendas editadas.
+  - **Estoque:** entradas, compras em lote e saídas que não são venda.
+  - **Cadastros e edições:** produtos criados, editados (com o preço antes → depois), arquivados e excluídos; serviços; movimentações editadas (antes → depois) e excluídas.
+  - **Ajustes da loja:** combos, promoções (ligar, desligar, criar, editar, excluir), categorias, inventário e Módulo Serviços.
+  - **Segurança:** senha errada no app, modo Caixa ligado e volta ao modo Gerente/Administrador, senhas criadas ou trocadas, backup restaurado, aparelho desconectado. O Worker registra sozinho: aparelho conectado (com a senha ou pelo código), código de conexão gerado, código errado, tentativa de acesso com senha errada, nível alterado e aparelho removido. Tentativas repetidas em 1 minuto contam como uma linha, para ninguém encher o log.
+  - **Sistema:** backup baixado, Modo Faz-de-Conta ligado e desligado (o que é feito dentro dele não entra).
+  - **Bloqueios:** o log não pode ser apagado nem editado pelo app. O que tem mais de 1 ano sai sozinho.
+  - **Como funciona:** cada ação é anotada na hora, numa fila do próprio aparelho, e vai para o Worker logo depois da sincronização. Sem internet, fica guardada e sai quando a conexão voltar. O nome do aparelho vem da conexão, não do que o aparelho envia. O log fica numa tabela própria no Worker, então não pesa nos dados da loja, na sincronização nem no backup.
+
+### Alterado
+
+- Ordem do menu (lateral e barra inferior): PDV · Histórico · Estoque · Serviços · Métricas · Ajustes da Loja · Sistema.
+
+### Notas técnicas
+
+- Worker: tabela `log` (id, quando, recebido, aparelho_id, aparelho_nome, tipo, acao, detalhe, valor, ref), rotas `POST /log` (qualquer aparelho conectado; ignora repetidos) e `GET /log` (Gerente/Administrador). Sem rota de exclusão; limpeza automática de 365 dias.
+- App: `registrarLog(tipo, acao, detalhe, valor, ref)`, fila em localStorage `chinatown_log_fila` (até 1.000), enviada por `logEnviar()` depois de cada sincronização.
+
+---
+
+## [2.17.0] - 2026-11-25
+
+### Adicionado
+
+- **Códigos da loja:** códigos de barras próprios para serviços (ex.: Fichas de jogo) e para produtos sem código na embalagem. Com a etiqueta impressa, basta "bipar" no PDV: o serviço ou produto entra na venda (com o caixa livre, a venda já começa). Cada leitura soma 1 unidade.
+  - **Serviços:** novo campo "Código de barras" no cadastro, com "Gerar código da loja" e "Imprimir etiqueta".
+  - **Produtos:** os mesmos dois botões abaixo do código de barras (Novo produto e aba Dados do Painel do Produto).
+  - **Etiqueta pequena** (50 × 30 mm) com o nome e o código, aberta direto na janela de impressão.
+  - Os códigos têm 12 números e começam com "29", a faixa que o padrão GS1 reserva para uso interno das lojas, então não colidem com códigos de fábrica. São impressos em Code 128, lido pelos leitores USB e pela câmera.
+  - O app não deixa o mesmo código em dois itens (produto ou serviço).
+
+---
+
 ## [2.16.0] - 2026-11-25
 
 ### Adicionado
