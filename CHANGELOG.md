@@ -32,6 +32,43 @@ integrando as movimentações de entrada e saída com a gestão financeira da lo
 
 ---
 
+## [2.19.0] - 2026-11-27
+
+### Adicionado
+
+- **Leitor de Pix (Android)**: o app China Engine instalado no celular do gerente lê as notificações de **Pix recebido da CAIXA** e avisa a loja. Lê só o **valor** e a hora; o nome de quem pagou **nunca** é guardado nem enviado. Outros bancos (como InfinitePay) entram numa próxima versão, depois de vermos como são as notificações deles.
+  - Se já existe uma venda no Pix com o mesmo valor (até 15 minutos antes), o Pix é **conferido sozinho** e ninguém é avisado.
+  - Se não existe, os aparelhos de acesso total recebem a notificação **"Novo Pix: R$ X"** com os botões **"Abrir App"** e **"Já registrei"** (dispensa o Pix).
+- **Ajustes da Loja → Pix recebidos**: lista dos Pix lidos nos últimos 7 dias. Os que estão para conferir têm **"Inserir venda"** (abre o PDV já marcado com aquele Pix e com o pagamento no Pix) e **"Dispensar"**. Se o total da venda for diferente do valor do Pix, o app pergunta antes de concluir. "Abrir App" na notificação cai direto nesta tela.
+- **Sistema → Leitor de Pix (Android)**: botão **"Ligar o leitor de Pix neste celular"** (pede a senha do gerente). Ele gera uma chave própria para o leitor e a entrega ao app Android, sem digitar nada. O leitor aparece em "Aparelhos conectados" como **Leitor de Pix** e pode ser removido como qualquer aparelho.
+- Novo nível **Leitor de Pix**: só pode avisar Pix recebidos. Não lê produtos, vendas nem a lista de aparelhos.
+- Tela **Leitor de Pix** no app Android, com o passo a passo das permissões (acesso às notificações, "Permitir configurações restritas", bateria sem restrições e início automático no HyperOS/Xiaomi), o último Pix lido e o botão **"Enviar um teste"**.
+- **Curtir venda**: a notificação de venda que chega nos outros aparelhos tem o botão **"Curtir"**. O aparelho que vendeu mostra a animação **"[Nome do aparelho] mandou um curtir pela venda!"**. Se o app estiver fechado, chega como notificação e a animação aparece quando o app for aberto. Cada aparelho curte uma venda só uma vez.
+- Log: Pix recebido, conferido, registrado, dispensado, teste do leitor e curtidas.
+
+### Como colocar no ar
+
+1. **Cloudflare → Worker `china-sync`**: substitua o código pelo novo `cloudflare/sync-worker.js` e clique em **Deploy**. A tabela dos Pix é criada sozinha.
+2. **GitHub**: envie os arquivos do site (`index.html`, `app.js`, `styles.css`, `sw.js`, `CHANGELOG.md`) e os arquivos da pasta `android/`.
+3. **Novo APK**: em **Actions → App Android → Run workflow**, informe a versão (ex.: `1.1.0`). Baixe o APK em **Releases** e instale por cima do atual, no celular do gerente.
+4. **No celular do gerente** (Poco X6 Pro):
+   1. Abra o China Engine → **Sistema → Leitor de Pix → "Ligar o leitor de Pix neste celular"** e digite a senha do gerente. A tela do leitor abre já conectada.
+   2. **Acesso às notificações**: toque no botão e ligue o China Engine. Se o Android disser que é uma "configuração restrita": vá em **Informações do app → ⋮ (canto de cima) → Permitir configurações restritas** e tente de novo.
+   3. **Bateria**: escolha **Sem restrições**.
+   4. **Início automático** (HyperOS): ligue para o China Engine.
+   5. Toque em **"Enviar um teste"**. O teste aparece no log, em Sistema.
+5. Faça um Pix de teste (ex.: R$ 0,50) para a conta da loja e veja a notificação chegar nos outros aparelhos.
+
+---
+
+## [2.18.1] - 2026-11-25
+
+### Alterado
+
+- Métricas → Vendas: venda com vários itens aparece como **"Vários"**, com a quantidade de itens ao lado da forma de pagamento (ex.: "4 itens · Pix"). Os nomes dos produtos aparecem ao tocar na venda. Venda de um item só continua com o nome dele, e venda de combo com o nome do combo.
+
+---
+
 ## [2.18.0] - 2026-11-25
 
 > **Importante:** publique no Cloudflare a versão nova de `cloudflare/sync-worker.js` (a tabela do log é criada sozinha).

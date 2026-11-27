@@ -1790,3 +1790,55 @@ body:not(.nivel-admin) .so-admin{display:none !important}   /* só o aparelho Ad
 .log-seguranca .log-tag{background:var(--vermelho);color:#fff}
 .log-vazio{text-align:center;color:var(--texto-sec);padding:24px !important}
 .log-ver{margin-left:8px;border:none;background:none;padding:0;font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px;color:var(--texto-sec);cursor:pointer}
+
+/* ===== 2.19.0 ===== */
+/* Pix recebidos (Ajustes da Loja) */
+.pix-novos{display:inline-block;margin-left:8px;padding:1px 10px;border-radius:999px;background:var(--vermelho);color:#fff;font-family:var(--corpo);font-size:14px;font-weight:700;vertical-align:2px}
+.pix-novos:empty{display:none}
+.pix-lista{border:1px solid var(--borda)}
+.pix-linha{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--borda);background:#fff}
+.pix-linha:first-child{border-top:none}
+.pix-novo{background:var(--amarelo-claro)}
+.pix-quando{font-size:14px;color:var(--texto-sec);white-space:nowrap}
+.pix-valor{font-weight:700;font-size:16px}
+.pix-valor small{display:block;font-weight:400;font-size:14px;color:var(--texto-sec)}
+.pix-acoes{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pix-sit{font-size:14px;color:var(--texto-sec);text-align:right}
+.pix-registrado .pix-sit,.pix-conferido .pix-sit{color:var(--verde)}
+@media(max-width:520px){
+  .pix-linha{grid-template-columns:minmax(0,1fr) auto}
+  .pix-quando{grid-column:1 / -1}
+  .pix-acoes,.pix-sit{grid-column:1 / -1;justify-content:flex-start;text-align:left}
+}
+/* PDV: venda de um Pix recebido */
+.pdv-tl-pix{flex-wrap:wrap;background:var(--amarelo-claro);margin:4px -8px;padding:6px 8px !important}
+.pdv-tl-pix span{color:var(--texto) !important;font-weight:600}
+.pdv-tl-pix button{flex-basis:100%;text-align:left;border:none;background:none;padding:2px 0 0;font-size:14px;text-decoration:underline;text-underline-offset:3px;color:var(--texto-sec);cursor:pointer}
+
+/* Curtida: animação no aparelho que fez a venda */
+.curtida{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}
+.curtida.mostra{opacity:1;visibility:visible}
+.curtida-in{
+  display:flex;flex-direction:column;align-items:center;gap:8px;max-width:min(92vw,460px);padding:26px 30px 22px;text-align:center;
+  background:var(--preto);color:#fff;border-radius:22px;border:3px solid var(--amarelo);box-shadow:0 18px 60px rgba(0,0,0,.35);transform:scale(.6)
+}
+.curtida.mostra .curtida-in{animation:curtida-pula .7s cubic-bezier(.2,1.6,.4,1) forwards}
+.curtida-ic{width:76px;height:76px;fill:var(--amarelo);stroke:var(--preto);stroke-width:1.2;stroke-linejoin:round}
+.curtida.mostra .curtida-ic{animation:curtida-joia 1.1s ease-in-out .35s 2}
+.curtida-in b{font-family:var(--display);font-weight:800;font-size:22px;line-height:1.2}
+.curtida-in span{font-size:16px;color:#C9C7BE}
+.curtida i{position:absolute;left:50%;top:55%;width:16px;height:16px;background:var(--vermelho);transform:rotate(45deg);opacity:0}
+.curtida i::before,.curtida i::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:inherit}
+.curtida i::before{left:-8px}
+.curtida i::after{top:-8px}
+.curtida.mostra i{animation:curtida-sobe 2.6s ease-out forwards}
+.curtida i:nth-of-type(1){margin-left:-170px;animation-delay:.2s}
+.curtida i:nth-of-type(2){margin-left:-90px;animation-delay:.5s;background:var(--amarelo)}
+.curtida i:nth-of-type(3){margin-left:-20px;animation-delay:.1s}
+.curtida i:nth-of-type(4){margin-left:60px;animation-delay:.7s;background:var(--amarelo)}
+.curtida i:nth-of-type(5){margin-left:130px;animation-delay:.35s}
+.curtida i:nth-of-type(6){margin-left:180px;animation-delay:.9s;background:var(--amarelo)}
+@keyframes curtida-pula{to{transform:scale(1)}}
+@keyframes curtida-joia{0%,100%{transform:rotate(0)}30%{transform:rotate(-14deg) scale(1.08)}60%{transform:rotate(8deg)}}
+@keyframes curtida-sobe{0%{opacity:0;transform:translateY(40px) rotate(45deg) scale(.6)}15%{opacity:1}100%{opacity:0;transform:translateY(-260px) rotate(45deg) scale(1.1)}}
+@media (prefers-reduced-motion: reduce){ .curtida *{animation:none !important} .curtida-in{transform:none} }

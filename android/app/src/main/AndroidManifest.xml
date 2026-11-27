@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- China Engine — app Android (Trusted Web Activity).
-     O app não tem telas próprias: abre o China Engine do GitHub Pages em tela cheia, pelo Chrome.
+     O app abre o China Engine do GitHub Pages em tela cheia, pelo Chrome. A única tela própria é a do
+     Leitor de Pix (2.19.0), que lê os avisos de Pix do banco e avisa o Worker da sincronização.
      Atualizações do site (index.html, app.js, styles.css) aparecem no app sem reinstalar. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Android 13+: permissão para mostrar as notificações de venda (push) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Leitor de Pix (2.19.0): falar com o Worker e pedir para não ser desligado pela economia de bateria -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+: deixa o app encontrar o Chrome (ou outro navegador compatível) -->
     <queries>
@@ -78,11 +82,11 @@
             </intent-filter>
         </service>
 
-        <!-- Leitor de notificações (InfinitePay, banco): PREPARADO E DESLIGADO (enabled="false").
-             Entra em uso numa próxima versão, quando soubermos o formato das notificações. -->
+        <!-- Leitor de Pix (2.19.0): lê só o aviso "Pix recebido" do banco (hoje, Pix CAIXA) e avisa o Worker.
+             Só funciona depois que o usuário libera o "Acesso a notificações" do China Engine. -->
         <service
             android:name=".LeitorNotificacoes"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:label="@string/appName"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -90,5 +94,19 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- Tela do Leitor de Pix: abre pelo China Engine (Sistema → Leitor de Pix) com chinaengine://leitor?u=…&c=… -->
+        <activity
+            android:name=".LeitorActivity"
+            android:exported="true"
+            android:label="Leitor de Pix"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="chinaengine" android:host="leitor" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

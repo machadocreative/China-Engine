@@ -307,6 +307,12 @@
 
 <!-- ===================== TELA: AJUSTES DA LOJA (2.16.0) ===================== -->
 <section class="view" id="viewLoja" hidden>
+  <div class="cfg-bloco" id="cfgPixBloco">
+    <div class="cfg-cab"><h3>Pix recebidos <span class="pix-novos" id="cfgPixNovos"></span></h3>
+      <small>Pix lidos pelo leitor no celular do banco (últimos 7 dias). O que já tem venda no Pix com o mesmo valor é conferido sozinho. Para os outros: “Inserir venda” abre o PDV com o Pix, ou “Dispensar”.</small></div>
+    <div id="cfgPix"><div class="pm-vazia">Carregando…</div></div>
+    <div class="cfg-acoes" style="margin-top:12px"><button class="btn btn-claro" onclick="pixCarregar()">Atualizar</button></div>
+  </div>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Combos</h3>
       <small>Produtos e serviços vendidos juntos. No PDV, digite o nome do combo e todos os itens entram na venda. O preço pode ser a soma dos itens ou um preço próprio (para mais ou para menos).</small></div>
@@ -379,6 +385,11 @@
       <button class="btn btn-claro" id="cfgPushDesativar" onclick="pushDesativar()">Desativar</button>
     </div>
     <div class="dica" id="cfgPushDica" style="margin-top:10px"></div>
+  </div>
+  <div class="cfg-bloco so-gerente">
+    <div class="cfg-cab"><h3>Leitor de Pix (Android)</h3>
+      <small>O app Android lê as notificações de Pix do banco (por enquanto, Pix CAIXA) no celular que as recebe e avisa os outros aparelhos. Só o valor, a hora e o banco são guardados, nunca o nome de quem pagou.</small></div>
+    <div id="cfgLeitor"></div>
   </div>
   <div class="cfg-bloco">
     <div class="cfg-cab"><h3>Nível de acesso deste aparelho</h3>
@@ -963,6 +974,7 @@
         <p class="par-instr">No aparelho novo, aponte a câmera para o QR code (lá, abra Configurações → Sincronização → <b>Conectar com o aparelho do gerente</b>).</p>
         <div class="par-qr" id="parQr"></div>
         <div class="par-codigo"><small>Ou digite o código</small><b id="parCodigo"></b><span id="parTempo"></span></div>
+        <p class="dica par-info" id="parInstrLeitor" hidden><b>Leitor de Pix:</b> no celular Android, abra o app China Engine → Sistema → Leitor de Pix → “Abrir a tela do leitor” e digite o código (ou aponte a câmera para o QR).</p>
         <p class="dica par-info">Nível: <b id="parNivelRot"></b> · Endereço do Worker: <span id="parUrl"></span><br>O código vale uma vez só. A senha da sincronização não vai no QR code.</p>
         <div class="rodape-modal">
           <button class="btn btn-claro" onclick="document.getElementById('parPasso1').hidden=false;document.getElementById('parPasso2').hidden=true">Gerar outro</button>
@@ -1243,6 +1255,15 @@
   </label>
 </nav>
 
+<!-- Curtida (2.19.0): animação quando um colega curte a venda deste aparelho -->
+<div class="curtida" id="curtida" aria-live="polite">
+  <div class="curtida-in">
+    <svg class="curtida-ic" viewBox="0 0 24 24"><path d="M7 10v11H3V10z"/><path d="M7 10l4-8c1.7 0 3 1.3 3 3v3h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 20H7"/></svg>
+    <b id="curtidaTexto"></b>
+    <span>Bom trabalho!</span>
+  </div>
+  <i></i><i></i><i></i><i></i><i></i><i></i>
+</div>
 <script src="app.js"></script>
 </body>
 </html>

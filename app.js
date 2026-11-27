@@ -1,7 +1,7 @@
 /* =========================================================
    CONFIGURAÇÃO
    ========================================================= */
-const VERSAO = '2.18.0';
+const VERSAO = '2.19.0';
 const CHAVE = 'chinatown_estoque_v1';
 
 /* Senha do gerente para alterar preço (na saída e na edição do produto).
@@ -497,17 +497,17 @@ function ehVendaMov(m){ return m.tipo==='avulsa' || (m.tipo==='saida' && (m.moti
 const PDV_CHAVE = 'chinatown_pdv_v1';
 let vendaScanAtivo = false;   // a câmera foi aberta pelo PDV
 let compraScanIdx = null;     // linha da compra em lote que abriu a câmera
-function pdvVazio(){ return { ativa:false, itens:[], desconto:null, consulta:false, combos:[] }; }
+function pdvVazio(){ return { ativa:false, itens:[], desconto:null, consulta:false, combos:[], pix:null }; }
 function pdvCarregar(){
   try{
     const d = JSON.parse(sessionStorage.getItem(PDV_CHAVE));
-    if(d && d.ativa && Array.isArray(d.itens)) return { ...pdvVazio(), ativa:true, itens:d.itens, desconto:d.desconto||null, combos:Array.isArray(d.combos) ? d.combos : [] };
+    if(d && d.ativa && Array.isArray(d.itens)) return { ...pdvVazio(), ativa:true, itens:d.itens, desconto:d.desconto||null, combos:Array.isArray(d.combos) ? d.combos : [], pix:d.pix||null };
   }catch(e){}
   return pdvVazio();
 }
 function pdvGuardar(){
   try{
-    if(pdv.ativa && !sandbox.ativo) sessionStorage.setItem(PDV_CHAVE, JSON.stringify({ ativa:true, itens:pdv.itens, desconto:pdv.desconto, combos:pdv.combos||[] }));
+    if(pdv.ativa && !sandbox.ativo) sessionStorage.setItem(PDV_CHAVE, JSON.stringify({ ativa:true, itens:pdv.itens, desconto:pdv.desconto, combos:pdv.combos||[], pix:pdv.pix||null }));
     else sessionStorage.removeItem(PDV_CHAVE);
   }catch(e){}
 }
@@ -866,7 +866,7 @@ function pdvFinalizar(){
     ${r.ajustes.filter(a=>a.valor).map(a=>`<div><span>Combo ${escapar(a.titulo)}</span><b>${a.valor<0?'−':'+'}${fmtBRL(Math.abs(a.valor))}</b></div>`).join('')}
     ${desc>0 ? `<div><span>Descontos</span><b>−${fmtBRL(desc)}</b></div>` : ''}
     <div class="pdv-fin-total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
-  finPag = null; pdvRenderPags();
+  finPag = pdv.pix ? 'pix' : null; pdvRenderPags();   // venda de um Pix recebido: já vem no Pix
   finDividido = false; pdvDividirTela();
   document.getElementById('finData').value = hoje();
   abrir('modalFinalizar');
@@ -907,9 +907,16 @@ function pdvRenderPags(){
       <kbd>${i+1}</kbd><svg viewBox="0 0 24 24">${p.icone}</svg><span>${p.nome}</span></button>`).join('');
 }
 function pdvEscolherPag(id){ finPag = id; pdvRenderPags(); }
+let pdvPixConfirmado = false;
 function pdvConfirmar(){
   const r = pdvResumo();
   const pg = pdvPagamentoEscolhido(r.total); if(!pg) return;
+  if(pdv.pix && !pdvPixConfirmado && Math.abs(r.total - pdv.pix.valor) > 0.009){
+    pedirConfirmacao(`O total da venda (${brl(r.total)}) é diferente do Pix recebido (${brl(pdv.pix.valor)}). Registrar mesmo assim?`, ()=>{ pdvPixConfirmado = true; pdvConfirmar(); }, 'Total diferente do Pix');
+    return;
+  }
+  pdvPixConfirmado = false;
+  const pixDaVenda = pdv.pix;
   if(!r.linhas.length){ fechar('modalFinalizar'); return; }
   for(const l of r.linhas){
     if(!l.p.servico && qtdNaVenda(l.p.id)>estoqueDe(l.p)){ toast(`Sem estoque suficiente: ${l.p.nome}`); return; }
@@ -957,6 +964,7 @@ function pdvConfirmar(){
   festejar();
   notificarVenda(feita);
   avisarEstoqueBaixo(antesEst);
+  if(pixDaVenda) pixResolver(pixDaVenda.id, 'registrado', vendaId);
   registrarLog('venda', 'Venda', `${feita.produtos} item(ns) · ${textoPagamentos(feita)}${r.ajustes.length ? ' · combo ' + r.ajustes.map(a=>a.titulo).join(', ') : ''}`, feita.total, vendaId);
 }
 
@@ -1250,6 +1258,7 @@ function renderPdv(){
   document.getElementById('pdvTotais').innerHTML = `
     <div class="pdv-tl"><span>Itens</span><b>${r.linhas.length} produto(s) · ${r.unidades} un.</b></div>
     <div class="pdv-tl"><span>Subtotal</span><b>${fmtBRL(r.bruto)}</b></div>
+    ${pdv.pix ? `<div class="pdv-tl pdv-tl-pix"><span>Pix recebido ${escapar(pdv.pix.hora||'')}</span><b>${brl(pdv.pix.valor)}</b><button type="button" onclick="pdvTirarPix()" title="Esta venda não é deste Pix">não é deste Pix</button></div>` : ''}
     ${r.ajuste ? `<div class="pdv-tl${r.ajuste<0?' desc':''}"><span>Combos</span><b>${r.ajuste<0?'−':'+'}${fmtBRL(Math.abs(r.ajuste))}</b></div>` : ''}
     ${descontos>0 ? `<div class="pdv-tl desc"><span>Descontos</span><b>−${fmtBRL(descontos)}</b></div>` : ''}
     <div class="pdv-tl total"><span>Total</span><b>${fmtBRL(r.total)}</b></div>`;
@@ -2899,7 +2908,8 @@ function renderViewAtual(){
    ========================================================= */
 function renderConfig(){
   nivelRenderConfig(); senhaRenderAviso();
-  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender(); renderCombos();
+  syncRenderConfig(); pushRenderConfig(); sandboxTela(); renderPromocoes(); servicosTela(); inventarioResumo(); dispositivosRender(); renderCombos(); leitorRenderConfig();
+  if(viewAtual==='loja') pixCarregar();
   catEditando = null; renderCategorias();
   const u = estado.config && estado.config.ultimoBackup;
   const el = document.getElementById('cfgUltimoBackup');
@@ -3413,13 +3423,14 @@ function dsVendaRotulo(x){
   const itens = x.itens.filter(v=>!v.ajuste);
   if(x.combos.size) return 'Combo ' + [...x.combos].join(' + ') + (itens.some(v=>!v.m.comboTitulo) ? ' + outros itens' : '');
   if(itens.length<=1) return itens[0] ? itens[0].p.nome : 'Venda';
-  return `${itens[0].p.nome} + ${itens.length-1} ${itens.length-1===1?'item':'itens'}`;
+  return 'Vários';   // venda com vários itens: os nomes aparecem ao tocar na venda (2.18.1)
 }
+function dsVendaQtdItens(x){ const n = x.itens.filter(v=>!v.ajuste).length; return n>1 ? `${n} itens · ` : ''; }
 function dsVendasHtml(lista, umDia){
   return `<div class="ds-vendas">${lista.map(x=>{ const i = dsVendasGrupos.indexOf(x), mg = x.receita ? x.lucro/x.receita*100 : NaN; return `
     <button type="button" class="ds-venda" onclick="dsVendaDetalhe(${i})">
       <span class="ds-venda-quando">${umDia ? '' : fmtData(x.data).slice(0,5)+' '}${escapar(x.hora||'')}</span>
-      <span class="ds-venda-nome">${escapar(dsVendaRotulo(x))}<em>${escapar(textoPagamentos(x.m) || '')}</em></span>
+      <span class="ds-venda-nome">${escapar(dsVendaRotulo(x))}<em>${escapar(dsVendaQtdItens(x) + (textoPagamentos(x.m) || ''))}</em></span>
       <span class="ds-venda-num"><b>${fmtBRL(x.receita)}</b><i>total</i></span>
       <span class="ds-venda-num${x.lucro<0?' neg':''}"><b>${fmtBRL(x.lucro)}</b><i>lucro · ${fmtPctDs(mg)}</i></span>
     </button>`; }).join('')}</div>`;
@@ -3441,7 +3452,8 @@ function dsVendaDetalhe(i){
   const x = dsVendasGrupos[i]; if(!x) return;
   const linhas = [...x.itens].sort((a,b)=>(a.ajuste?1:0)-(b.ajuste?1:0) || b.receita-a.receita);
   const mg = x.receita ? x.lucro/x.receita*100 : NaN;
-  abrirInfo(dsVendaRotulo(x), `
+  const rot = dsVendaRotulo(x);
+  abrirInfo(rot==='Vários' ? `Venda de ${fmtData(x.data).slice(0,5)}${x.hora?' às '+x.hora:''}` : rot, `
     <p class="dica" style="margin:0 0 10px">${fmtData(x.data)}${x.hora?' às '+escapar(x.hora):''}${textoPagamentos(x.m)?' · '+escapar(textoPagamentos(x.m)):''}</p>
     <div class="ds-vd">
       <div class="ds-vd-cab"><span>Item</span><span>Valor</span><span>Custo</span><span>Lucro</span></div>
@@ -4026,7 +4038,7 @@ async function syncReq(metodo, caminho, corpo){
   if(r.status===403 && j && j.erro==='revogado'){
     // outro aparelho removeu este da sincronização: esquece o endereço e a senha (os dados continuam aqui)
     const limitado = nivelMaximo()!=='gerente';
-    clearTimeout(syncTimer); Sync.gravar(null); Sync.gravarBase(null);
+    clearTimeout(syncTimer); Sync.gravar(null); Sync.gravarBase(null); swGuardarSync();
     aparelhoIdMem = null; try{ localStorage.removeItem(APARELHO_CHAVE); }catch(e){}   // ao conectar de novo, entra como aparelho novo
     if(limitado){   // Caixa ou Só consulta removido: os dados da loja saem deste aparelho
       estado = normalizarEstado({ categorias:[], produtos:[] }); Armazenamento.gravar(estado);
@@ -4079,6 +4091,9 @@ const NIVEIS_TOTAL = ['gerente','admin'];
 const MODO_CHAVE = 'chinatown_modo_local';
 const NIVEL_FIXO_CHAVE = 'chinatown_nivel_fixo';   // nível de um aparelho conectado pelo QR (continua valendo se ele for removido)
 function nivelNormal(n){ return NIVEIS[n] ? n : (n==='total' ? 'gerente' : 'consulta'); }   // 'total' (até a 2.13.0) = gerente
+/* Leitor de Pix (2.19.0): nível só do app Android (a parte nativa); nunca é o nível deste app */
+const NOME_LEITOR = 'Leitor de Pix', DESC_LEITOR = 'O celular Android que recebe os avisos de Pix do banco. Só avisa pagamentos: não vê nem muda nada da loja.';
+function nomeNivel(n){ return n==='leitor' ? NOME_LEITOR : (NIVEIS[n] || n); }
 function nivelFixo(n){
   if(n===undefined){ try{ return localStorage.getItem(NIVEL_FIXO_CHAVE); }catch(e){ return null; } }
   try{ if(n && n!=='gerente') localStorage.setItem(NIVEL_FIXO_CHAVE, n); else localStorage.removeItem(NIVEL_FIXO_CHAVE); }catch(e){}
@@ -4176,6 +4191,7 @@ function nivelRenderConfig(){
    Gerente e Administrador veem a lista. Aparelho Gerente: ninguém muda o nível (só ele mesmo, se entrou pelo QR);
    só outro Gerente remove. Administrador mexe em Administradores, Caixas e Só consulta. */
 function niveisQuePossoDar(){ return nivelMaximo()==='gerente' ? Object.keys(NIVEIS) : ['admin','caixa','consulta']; }
+function niveisDoQr(){ return niveisQuePossoDar().concat('leitor'); }
 async function dispositivosRender(forcar){
   const bloco = document.getElementById('cfgAparelhosBloco'), el = document.getElementById('cfgAparelhos');
   if(!bloco || !el) return;
@@ -4189,14 +4205,14 @@ async function dispositivosRender(forcar){
     const eu = nivelMaximo();
     el.dataset.carregado = '1';
     el.innerHTML = lista.length ? lista.map(a=>{
-      const nv = a.pareado ? nivelNormal(a.nivel) : 'gerente', nomeJs = escapar(a.nome).replace(/'/g,'&#39;');
-      // quem pode mudar o nível: aparelho Gerente só ele mesmo (pelo QR); os outros, Gerente ou Administrador
-      const podeMudar = a.pareado && (nv==='gerente' ? a.atual : !a.atual);
+      const nv = a.nivel==='leitor' ? 'leitor' : a.pareado ? nivelNormal(a.nivel) : 'gerente', nomeJs = escapar(a.nome).replace(/'/g,'&#39;');
+      // quem pode mudar o nível: aparelho Gerente só ele mesmo (pelo QR); os outros, Gerente ou Administrador; o Leitor de Pix não muda
+      const podeMudar = a.pareado && nv!=='leitor' && (nv==='gerente' ? a.atual : !a.atual);
       const opcoes = nv==='gerente' ? Object.keys(NIVEIS) : niveisQuePossoDar();
       const podeRemover = !a.atual && (nv!=='gerente' || eu==='gerente');
       const nivelHtml = podeMudar
         ? `<select class="ap-nivel" onchange="dispositivoNivel('${a.id}', '${nomeJs}', this, ${a.atual?'true':'false'})" data-antes="${nv}" aria-label="Nível de ${escapar(a.nome)}">${opcoes.map(k=>`<option value="${k}"${k===nv?' selected':''}>${NIVEIS[k]}</option>`).join('')}</select>`
-        : `<span class="ap-nivel-fixo">${NIVEIS[nv]}</span>`;
+        : `<span class="ap-nivel-fixo">${nomeNivel(nv)}</span>`;
       return `
       <li class="ap-item">
         <span class="ap-ic"><svg viewBox="0 0 24 24">${/celular|android|iphone|moto|samsung|xiaomi|redmi|tablet/i.test(a.nome)
@@ -4242,9 +4258,9 @@ function parearAbrir(){
   abrir('modalParear');
 }
 function parearRenderNivel(){
-  document.getElementById('parNiveis').innerHTML = niveisQuePossoDar().map(k=>`
+  document.getElementById('parNiveis').innerHTML = niveisDoQr().map(k=>`
     <button type="button" class="par-nivel${parearNivel===k?' ativo':''}" onclick="parearNivel='${k}';parearRenderNivel()">
-      <b>${NIVEIS[k]}</b><small>${escapar(NIVEIS_DESC[k])}</small></button>`).join('');
+      <b>${nomeNivel(k)}</b><small>${escapar(k==='leitor' ? DESC_LEITOR : NIVEIS_DESC[k])}</small></button>`).join('');
 }
 function parearGerar(){
   pedirSenha(async ()=>{
@@ -4252,13 +4268,15 @@ function parearGerar(){
       const r = await syncReq('POST', '/pareamento', { nivel:parearNivel });
       const d = Sync.ler();
       const app = location.origin + location.pathname.replace(/index\.html$/, '');
-      const link = app + '?parear=' + b64urlDe(JSON.stringify({ u:d.url, c:r.codigo }));
+      // Leitor de Pix: o QR abre direto a tela do leitor no app Android
+      const link = r.nivel==='leitor' ? linkLeitor(d.url, r.codigo) : app + '?parear=' + b64urlDe(JSON.stringify({ u:d.url, c:r.codigo }));
       await carregarQrLib();
       const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
       document.getElementById('parQr').innerHTML = qr.createSvgTag({ cellSize:6, margin:2, scalable:true });
       document.getElementById('parCodigo').textContent = r.codigo.slice(0,3) + ' ' + r.codigo.slice(3);
       document.getElementById('parUrl').textContent = d.url;
-      document.getElementById('parNivelRot').textContent = NIVEIS[nivelNormal(r.nivel)];
+      document.getElementById('parNivelRot').textContent = nomeNivel(r.nivel==='leitor' ? 'leitor' : nivelNormal(r.nivel));
+      document.getElementById('parInstrLeitor').hidden = r.nivel!=='leitor';
       document.getElementById('parPasso1').hidden = true;
       document.getElementById('parPasso2').hidden = false;
       const fim = Date.now() + (r.validadeSeg||120)*1000;
@@ -4273,7 +4291,7 @@ function parearGerar(){
       };
       tic(); parearTimer = setInterval(tic, 1000);
     }catch(e){ toast(e.codigo==='rota' ? 'Publique no Cloudflare a versão nova do sync-worker.js para conectar pelo QR code.' : e.message); }
-  }, `Gerar o QR code para conectar um aparelho como ${NIVEIS[parearNivel]}. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
+  }, `Gerar o QR code para conectar um aparelho como ${nomeNivel(parearNivel)}. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 function parearFechar(){
   clearInterval(parearTimer); parearTimer = null;
@@ -4393,6 +4411,7 @@ async function conectarCodigoConfirmar(){
       try{ j = await r.json(); }catch(e){}
     }catch(e){ toast('Não foi possível falar com o Worker da sincronização. Confira o endereço e a internet.'); return; }
     if(!r.ok || !j || !j.chave){ toast((j && j.mensagem) || `O Worker respondeu com erro (${r.status}).`); return; }
+    if(j.nivel==='leitor'){ toast('Este código é para o Leitor de Pix: digite-o na tela do leitor, no app Android. Gere outro código para este aparelho.'); return; }
     const nivel = nivelNormal(j.nivel);
     Sync.gravar({ url, senha:j.chave, pareado:true, nivel, aparelho:nome, conectado:false, versao:0 });
     Sync.gravarBase(null); nivelFixo(nivel);
@@ -4578,7 +4597,7 @@ async function sincronizar(){
       }
     }
     syncStatus(Sync.ler() && Sync.ler().pendente ? 'pendente' : 'ok');
-    if(Sync.ler() && !Sync.ler().pendente && !adiado){ await pushEnviarFila(); logEnviar(); }   // dados na nuvem: agora saem os avisos de venda e o log
+    if(Sync.ler() && !Sync.ler().pendente && !adiado){ await pushEnviarFila(); logEnviar(); swGuardarSync(); }   // dados na nuvem: agora saem os avisos de venda e o log
   }catch(e){
     syncStatus(e.tipo==='rede' && navigator.onLine===false ? 'offline' : 'erro', e.message);
   }finally{
@@ -4692,7 +4711,7 @@ function syncDesconectar(){
     registrarLog('seguranca', 'Aparelho desconectado da sincronização', 'Pelo próprio aparelho');
     clearTimeout(logTimer);
     logEnviar().finally(()=>pushDesativar(true)).finally(()=>{   // manda o log e tira este aparelho da lista de notificações antes de esquecer a senha
-      Sync.gravar(null); Sync.gravarBase(null);
+      Sync.gravar(null); Sync.gravarBase(null); swGuardarSync();
       syncFase = { tipo:'', msg:'' };
       syncRenderConfig(); toast('Aparelho desconectado da sincronização.');
     });
@@ -4912,8 +4931,11 @@ async function pushIniciar(){
   if(!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.addEventListener('message', e=>{
     if(e.data && e.data.tipo==='push' && Sync.conectado()) sincronizar();   // chegou aviso: busca os dados novos na hora
+    if(e.data && e.data.tipo==='curtida') mostrarCurtida(e.data.nome);    // 2.19.0
+    if(e.data && e.data.tipo==='abrir' && e.data.ver==='pix') abrirPixRecebidos();
   });
   const reg = await pushRegistrarSW();
+  swGuardarSync(); curtidasPendentes();
   const d = Sync.ler();
   if(!reg || !PUSH_OK || !d || !d.push) return;
   try{
@@ -4943,13 +4965,13 @@ function notificarVenda(v){
   const nomes = v.nomes||[];
   const item = (v.produtos||nomes.length)>1 ? 'Vários produtos' : (nomes[0] || 'Venda');
   const linha1 = [item, `${v.unidades||1} un.`, pagamentoNoAviso(v)].filter(Boolean).join(' · ');
-  enfileirarAviso(`${v.titulo || 'Venda concluída'} · ${fmtBRL(v.total)}`, linha1, 'venda-'+uid());
+  enfileirarAviso(`${v.titulo || 'Venda concluída'} · ${brl(v.total)}`, linha1, 'venda-'+uid(), 'venda');
 }
-function enfileirarAviso(titulo, linha1, tag){
+function enfileirarAviso(titulo, linha1, tag, tipo){
   if(sandbox.ativo || !Sync.conectado()) return;
   const d = Sync.ler();
   const fila = (d.fila||[]).filter(n=>Date.now()-n.em < PUSH_VALIDADE);
-  fila.push({ em:Date.now(), titulo, corpo:`${linha1}\n(Lançado por ${d.aparelho||'outro aparelho'})`, tag });
+  fila.push({ em:Date.now(), titulo, corpo:`${linha1}\n(Lançado por ${d.aparelho||'outro aparelho'})`, tag, ...(tipo?{ tipo }:{}) });
   Sync.atualizar({ fila });
   sincronizar();
 }
@@ -4972,10 +4994,158 @@ async function pushEnviarFila(){
   const restam = [];
   for(const n of d.fila){
     if(Date.now()-n.em >= PUSH_VALIDADE) continue;
-    try{ await syncReq('POST', '/push/enviar', { titulo:n.titulo, corpo:n.corpo, tag:n.tag, excluir:d.push||null }); }
+    try{ await syncReq('POST', '/push/enviar', { titulo:n.titulo, corpo:n.corpo, tag:n.tag, tipo:n.tipo||'', excluir:d.push||null }); }
     catch(e){ if(e.tipo==='rede') restam.push(n); }   // sem internet: tenta de novo depois; outros erros: descarta
   }
   Sync.atualizar({ fila:restam });
+}
+
+/* =========================================================
+   LEITOR DE PIX (2.19.0) — o app Android lê os avisos de Pix do banco e avisa o Worker.
+   Aqui: Pix recebidos (Ajustes da Loja), "Inserir venda" / "Dispensar", ligar o leitor (Sistema),
+   e a curtida de venda (botão "Curtir" nas notificações).
+   ========================================================= */
+const PACOTE_ANDROID = 'io.github.machadocreative.chinaengine';
+const EH_ANDROID = /Android/i.test(navigator.userAgent);
+let pixLista = [];
+/* Credenciais para o service worker (botões das notificações que falam com o Worker sem abrir o app) */
+let swSyncGravado = null;
+function swGuardarSync(){
+  if(!('caches' in window)) return;
+  const d = Sync.ler();
+  const dados = Sync.conectado() ? JSON.stringify({ url:d.url, senha:d.senha, ap:aparelhoId(), apn:d.aparelho||'' }) : '';
+  if(dados===swSyncGravado) return;
+  swSyncGravado = dados;
+  const chave = new URL('__ce_sync', location.href).href;
+  caches.open('ce-sw').then(c=> dados ? c.put(chave, new Response(dados)) : c.delete(chave)).catch(()=>{});
+}
+/* ----- Curtida: animação no aparelho que fez a venda ----- */
+function mostrarCurtida(nome){
+  const el = document.getElementById('curtida'); if(!el) return;
+  document.getElementById('curtidaTexto').textContent = `${nome || 'Um colega'} mandou um curtir pela venda!`;
+  el.classList.remove('mostra'); void el.offsetWidth; el.classList.add('mostra');
+  clearTimeout(mostrarCurtida.t); mostrarCurtida.t = setTimeout(()=>el.classList.remove('mostra'), 4200);
+}
+async function curtidasPendentes(){
+  if(!('caches' in window)) return;
+  try{
+    const c = await caches.open('ce-sw'), chave = new URL('__ce_curtidas', location.href).href;
+    const r = await c.match(chave); if(!r) return;
+    const lista = (await r.json()).filter(x=>Date.now()-x.em < 12*3600000);
+    await c.delete(chave);
+    lista.forEach((x,i)=>setTimeout(()=>mostrarCurtida(x.nome), 900 + i*4500));
+  }catch(e){}
+}
+/* ----- Pix recebidos (Ajustes da Loja) ----- */
+async function pixCarregar(){
+  const el = document.getElementById('cfgPix'); if(!el) return;
+  const bloco = document.getElementById('cfgPixBloco');
+  if(!Sync.conectado()){ el.innerHTML = '<div class="pm-vazia">Conecte a sincronização na nuvem para receber os Pix lidos pelo leitor.</div>'; return; }
+  el.innerHTML = '<div class="pm-vazia">Carregando…</div>';
+  try{
+    const j = await syncReq('GET', '/pix?dias=7');
+    pixLista = j.pix || [];
+    await pixConferirSozinho();
+    pixRender();
+  }catch(e){ el.innerHTML = `<div class="pm-vazia">${escapar(e.codigo==='rota' ? 'Para ver os Pix, publique no Cloudflare a versão nova do sync-worker.js.' : e.message)}</div>`; }
+}
+/* Pix que bate com uma venda no Pix já registrada (mesmo valor, até 20 min de diferença) = conferido */
+function vendasPixRecentes(){
+  const g = new Map();
+  const add = (m, valor)=>{
+    if(!m.vendaId && !m.id) return;
+    const k = m.vendaId || m.id, pg = m.pagamento==='pix' ? 1 : 0;
+    if(!pg) return;
+    const x = g.get(k) || { id:k, total:0, quando:new Date(`${m.data}T${m.hora||'12:00'}:00`).getTime() };
+    x.total = cent(x.total + valor); g.set(k, x);
+  };
+  const limite = Date.now() - 8*86400000;
+  estado.produtos.forEach(p=>p.movimentacoes.forEach(m=>{ if(ehVendaMov(m) && dataDe(m.data).getTime()>=limite) add(m, m.qtd*(m.precoVenda||0)); }));
+  (estado.avulsas||[]).forEach(a=>{ if(dataDe(a.data).getTime()>=limite) add(a, a.valor); });
+  return [...g.values()];
+}
+async function pixConferirSozinho(){
+  const usadas = new Set(pixLista.filter(p=>p.vendaId).map(p=>p.vendaId));
+  const vendas = vendasPixRecentes();
+  for(const p of pixLista.filter(x=>x.status==='novo')){
+    const t = Date.parse(p.quando);
+    const v = vendas.find(v=>!usadas.has(v.id) && Math.abs(v.total-p.valor)<0.01 && Math.abs(v.quando - t) < 20*60000);
+    if(!v) continue;
+    usadas.add(v.id);
+    try{ await syncReq('PATCH', '/pix/'+encodeURIComponent(p.id), { status:'conferido', vendaId:v.id }); p.status = 'conferido'; p.vendaId = v.id; p.resolvidoPor = 'automático'; }catch(e){}
+  }
+}
+function pixRender(){
+  const el = document.getElementById('cfgPix'); if(!el) return;
+  const novos = pixLista.filter(p=>p.status==='novo').length;
+  const cont = document.getElementById('cfgPixNovos'); if(cont) cont.textContent = novos ? `${novos} para conferir` : '';
+  el.innerHTML = pixLista.length ? `<div class="pix-lista">${pixLista.map(p=>{
+    const d = new Date(p.quando);
+    const sit = p.status==='novo' ? '' : p.status==='registrado' ? `Registrado${p.resolvidoPor?' por '+escapar(p.resolvidoPor):''}`
+      : p.status==='conferido' ? (p.resolvidoPor==='automático' ? 'Conferido sozinho (venda no Pix com o mesmo valor)' : 'Conferido') : `Dispensado${p.resolvidoPor?' por '+escapar(p.resolvidoPor):''}`;
+    return `<div class="pix-linha pix-${p.status}">
+      <span class="pix-quando">${d.toLocaleDateString('pt-BR').slice(0,5)} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span class="pix-valor">${brl(p.valor)}<small>${escapar(p.origem||'Pix')}</small></span>
+      ${p.status==='novo' ? `<span class="pix-acoes"><button class="btn btn-amarelo btn-mini" onclick="pixInserirVenda('${p.id}')">Inserir venda</button><button class="btn btn-claro btn-mini" onclick="pixDispensar('${p.id}')">Dispensar</button></span>`
+        : `<span class="pix-sit">${sit}</span>`}
+    </div>`; }).join('')}</div>` : '<div class="pm-vazia">Nenhum Pix lido nos últimos 7 dias.</div>';
+}
+async function pixResolver(id, status, vendaId){
+  try{
+    await syncReq('PATCH', '/pix/'+encodeURIComponent(id), { status, ...(vendaId?{ vendaId }:{}) });
+    const p = pixLista.find(x=>x.id===id); if(p){ p.status = status; p.vendaId = vendaId||null; p.resolvidoPor = (Sync.ler()||{}).aparelho; }
+    pixRender();
+    return true;
+  }catch(e){ toast(e.message); return false; }
+}
+async function pixDispensar(id){
+  if(await pixResolver(id, 'dispensado')) toast('Pix dispensado.');
+}
+function pixInserirVenda(id){
+  const p = pixLista.find(x=>x.id===id); if(!p) return;
+  const d = new Date(p.quando);
+  const pix = { id:p.id, valor:p.valor, hora:d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) };
+  if(!pdv.ativa) pdv = { ...pdvVazio(), ativa:true };
+  pdv.pix = pix; pdv.consulta = false;
+  pdvGuardar(); mostrarView('pdv');
+  toast(`Registrando o Pix de ${brl(p.valor)}: coloque os itens e finalize.`);
+}
+function pdvTirarPix(){ pdv.pix = null; pdvGuardar(); renderPdv(); }
+function abrirPixRecebidos(){
+  if(!maximoTotal() || !acessoTotal()){ toast('Os Pix recebidos aparecem para Gerente e Administrador.'); return; }
+  mostrarView('loja');
+  pixCarregar();
+  setTimeout(()=>{ const b = document.getElementById('cfgPixBloco'); if(b) b.scrollIntoView({ block:'start', behavior:'smooth' }); }, 120);
+}
+/* ----- Ligar o leitor (Sistema): gera um código de "Leitor de Pix" e entrega para a parte nativa do app ----- */
+function linkLeitor(urlWorker, codigo){
+  const q = 'u=' + encodeURIComponent(urlWorker) + (codigo ? '&c=' + codigo : '');
+  return `chinaengine://leitor?${q}`;
+}
+function intentLeitor(urlWorker, codigo){
+  const q = 'u=' + encodeURIComponent(urlWorker) + (codigo ? '&c=' + codigo : '');
+  return `intent://leitor?${q}#Intent;scheme=chinaengine;package=${PACOTE_ANDROID};end`;
+}
+function leitorRenderConfig(){
+  const el = document.getElementById('cfgLeitor'); if(!el) return;
+  el.innerHTML = !Sync.conectado()
+    ? '<div class="sy-status">Conecte a sincronização na nuvem primeiro.</div>'
+    : EH_ANDROID
+      ? `<div class="cfg-acoes"><button class="btn btn-amarelo" onclick="leitorLigar()">Ligar o leitor de Pix neste celular</button>
+           <button class="btn btn-claro" onclick="location.href=intentLeitor('')">Abrir a tela do leitor</button></div>
+         <div class="dica" style="margin-top:10px">Use no celular que recebe as notificações do banco, com o app China Engine instalado (o APK gerado depois desta atualização, com o leitor de Pix).</div>`
+      : `<div class="dica">Abra o China Engine no celular Android que recebe as notificações do banco e toque em “Ligar o leitor de Pix neste celular”. Ou gere aqui um código em Aparelhos conectados → Conectar novo aparelho → <b>Leitor de Pix</b> e digite-o na tela do leitor.</div>`;
+}
+function leitorLigar(){
+  if(emSandbox('ligar o leitor')) return;
+  if(!Sync.conectado() || !maximoTotal()){ toast('Só um aparelho Gerente ou Administrador conectado liga o leitor.'); return; }
+  pedirSenha(async ()=>{
+    try{
+      const r = await syncReq('POST', '/pareamento', { nivel:'leitor' });
+      registrarLog('seguranca', 'Leitor de Pix ligado', 'Código entregue ao app Android deste celular');
+      location.href = intentLeitor(Sync.ler().url, r.codigo);
+    }catch(e){ toast(e.codigo==='rota' || e.codigo==='nivel' ? 'Publique no Cloudflare a versão nova do sync-worker.js para usar o leitor de Pix.' : e.message); }
+  }, `Ligar o leitor de Pix neste celular. Digite ${nomeSenha(nivelDaSenha())}.`, nivelDaSenha());
 }
 
 /* =========================================================
@@ -5824,6 +5994,7 @@ aplicarNivel();
 mostrarView(viewInicial());
 migrarSenhaGerente();
 parearPeloLink();
+if(/[?&]ver=pix/.test(location.search)){ try{ history.replaceState(null, '', location.pathname); }catch(e){} setTimeout(abrirPixRecebidos, 300); }
 ajustarNav();
 syncIniciar();
 pushIniciar();

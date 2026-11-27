@@ -56,6 +56,22 @@
      POST /pareamento/usar   (sem senha: o próprio código é a credencial) { codigo, nome, aparelhoId }
                              → { chave, nivel }. Depois de 10 tentativas erradas, os códigos abertos
                              deixam de valer (é preciso gerar outro).
+   Log de alterações (2.18.0):
+     POST /log   cada aparelho envia as ações que fez: { eventos:[{ id, quando, tipo, acao, detalhe, valor, ref }] }
+                 (o nome do aparelho vem da conexão, não do que ele manda; repetidos são ignorados)
+     GET  /log   (Gerente ou Administrador) lista do mais recente para o mais antigo, 50 por vez:
+                 ?pular=0&aparelho=<id>&tipo=<tipo>&dia=AAAA-MM-DD
+     Não existe rota para apagar ou editar o log. O que tem mais de 1 ano sai sozinho.
+     O próprio Worker registra os eventos de segurança: aparelho conectado (senha ou código), código
+     gerado, código errado, senha errada, nível alterado e aparelho removido.
+   Leitor de Pix (2.19.0): o app Android lê as notificações de Pix do banco e avisa aqui.
+     O leitor entra com o código de 6 dígitos no nível "Leitor de Pix", que só pode usar POST /pix.
+     POST  /pix         { id, valor, origem, quando, pacote, teste? } → guarda (sem nome de quem pagou)
+                        e, se ninguém registrou uma venda no Pix com esse valor, avisa os aparelhos
+     GET   /pix         (Gerente/Administrador) Pix dos últimos dias (?dias=7)
+     PATCH /pix/{id}    (Gerente/Administrador) { status: registrado | dispensado | conferido, vendaId? }
+   Curtir uma venda (2.19.0):
+     POST  /curtir      { para: <id do aparelho que vendeu>, ref } → avisa esse aparelho: "Fulano mandou um curtir pela venda!"
    O que cada nível pode fazer aqui: Caixa e Só consulta não veem a lista de aparelhos, as cópias
    diárias nem geram códigos; Só consulta também não envia dados (PUT /dados).
 
@@ -74,15 +90,37 @@ const ORIGENS_PADRAO = ['https://machadocreative.github.io'];
 const DIAS_COPIAS = 30;
 const LIMITE_LINHA = 1_900_000;   // margem abaixo dos 2 MB do D1
 const FUSO = 'America/Sao_Paulo';
-const NIVEIS = ['gerente', 'admin', 'caixa', 'consulta'];   // 2.15.0: Administrador entre Gerente e Caixa
+const NIVEIS = ['gerente', 'admin', 'caixa', 'consulta', 'leitor'];   // 2.15.0: Administrador; 2.19.0: Leitor de Pix (só avisa Pix)
 const PAREAMENTO_MIN = 2;          // validade do código de 6 dígitos
 const PAREAMENTO_TENTATIVAS = 10;  // erros seguidos que invalidam os códigos abertos
 const nivelNormal = n => NIVEIS.includes(n) ? n : 'consulta';   // chave com nível desconhecido: o mínimo
+const NOME_NIVEL = { gerente: 'Gerente', admin: 'Administrador', caixa: 'Caixa', consulta: 'Só consulta', leitor: 'Leitor de Pix' };
+const PIX_ESPERA_SEG = 20;   // espera antes de avisar: dá tempo de a venda do PDV chegar e o Pix ser conferido sozinho
+const PIX_JANELA_MIN = 15;   // venda no Pix com o mesmo valor até 15 min antes do Pix = já registrada
+const LOG_DIAS = 365;
+const LOG_TIPOS = ['venda', 'estoque', 'cadastro', 'edicao', 'exclusao', 'ajuste', 'seguranca', 'sistema'];
+let ultimaLimpezaLog = 0;
+
+/* Grava um evento no log. limiteSeg: não repete o mesmo evento (ação + aparelho) dentro desse intervalo
+   (evita que alguém encha o log tentando senhas) */
+async function logEvento(db, ev, limiteSeg) {
+  try {
+    const agora = new Date().toISOString();
+    if (limiteSeg) {
+      const ult = await db.prepare('SELECT recebido FROM log WHERE acao = ? AND IFNULL(aparelho_id, \'\') = ? ORDER BY recebido DESC LIMIT 1')
+        .bind(ev.acao, ev.aparelhoId || '').first();
+      if (ult && Date.now() - Date.parse(ult.recebido) < limiteSeg * 1000) return;
+    }
+    await db.prepare('INSERT OR IGNORE INTO log (id, quando, recebido, aparelho_id, aparelho_nome, tipo, acao, detalhe, valor, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(ev.id || ('w' + crypto.randomUUID()), ev.quando || agora, agora, ev.aparelhoId || null, ev.aparelhoNome || null,
+        ev.tipo || 'seguranca', String(ev.acao || '').slice(0, 80), String(ev.detalhe || '').slice(0, 300), ev.valor ?? null, ev.ref || null).run();
+  } catch (e) { /* o log nunca derruba a chamada principal */ }
+}
 
 let tabelasProntas = false;
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origem = req.headers.get('Origin') || '';
     const permitidas = env.ORIGENS_PERMITIDAS
       ? env.ORIGENS_PERMITIDAS.split(',').map(s => s.trim()).filter(Boolean)
@@ -110,6 +148,7 @@ export default {
     const auth = req.headers.get('Authorization') || '';
     const senha = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const negar = async () => {
+      await logEvento(env.DB, { tipo: 'seguranca', acao: 'Tentativa de acesso com senha errada', detalhe: 'Senha da sincronização ou chave de aparelho inválida (repetições em 1 minuto contam uma vez)', aparelhoNome: (url.searchParams.get('apn') || '').slice(0, 60) || null }, 60);
       await new Promise(r => setTimeout(r, 800));   // freia tentativas de adivinhar a senha
       return responder(401, { erro: 'senha', mensagem: 'Senha da sincronização incorreta.' });
     };
@@ -117,7 +156,7 @@ export default {
       await prepararTabelas(env.DB);
 
       // ----- Aparelho novo usando o código do QR (antes da senha: o código é a credencial) -----
-      if (req.method === 'POST' && caminho === '/pareamento/usar') return await usarPareamento(req, env.DB, responder);
+      if (req.method === 'POST' && caminho === '/pareamento/usar') return await usarPareamento(req, env.DB, responder, logEvento);
 
       // ----- Quem está chamando: senha mestra (Gerente) ou chave de um aparelho conectado pelo QR -----
       let nivel = null, apChave = null;
@@ -131,18 +170,29 @@ export default {
       const gerente = nivel === 'gerente';
       const total = nivel === 'gerente' || nivel === 'admin';   // Gerente e Administrador
       const soTotal = () => responder(403, { erro: 'nivel', mensagem: 'Só um aparelho Gerente ou Administrador pode fazer isso.' });
+      // Leitor de Pix: só avisa pagamentos (não lê nem altera nada da loja)
+      if (nivel === 'leitor' && !((req.method === 'POST' && caminho === '/pix') || (req.method === 'GET' && caminho === '/versao')))
+        return responder(403, { erro: 'nivel', mensagem: 'O Leitor de Pix só pode avisar pagamentos.' });
 
       // ----- Aparelho que está chamando (registro, último acesso e remoção) -----
       const apId = apChave || (url.searchParams.get('ap') || '').slice(0, 64);   // com chave própria, vale o aparelho da chave
       const apOk = /^[A-Za-z0-9_-]{4,64}$/.test(apId);
+      const apNome = (url.searchParams.get('apn') || '').slice(0, 60) || 'Aparelho';
+      const quem = { aparelhoId: apOk ? apId : null, aparelhoNome: apNome };
       if (apOk) {
-        const apNome = (url.searchParams.get('apn') || '').slice(0, 60) || 'Aparelho';
         const agora = new Date().toISOString();
-        const ap = await env.DB.prepare('SELECT nome, visto_em, revogado FROM aparelhos WHERE id = ?').bind(apId).first();
+        const ap = await env.DB.prepare('SELECT nome, visto_em, revogado, nivel, chave_hash FROM aparelhos WHERE id = ?').bind(apId).first();
         if (ap && ap.revogado)
           return responder(403, { erro: 'revogado', mensagem: 'Este aparelho foi removido da sincronização.' });
-        if (!ap)
+        if (!ap) {
           await env.DB.prepare("INSERT INTO aparelhos (id, nome, criado_em, visto_em, nivel, revogado) VALUES (?, ?, ?, ?, 'gerente', 0)").bind(apId, apNome, agora, agora).run();
+          await logEvento(env.DB, { ...quem, tipo: 'seguranca', acao: 'Aparelho conectado', detalhe: 'Com a senha da sincronização · Gerente' });
+        } else if (!apChave && (ap.chave_hash || ap.nivel !== 'gerente')) {
+          // 2.15.1: aparelho que antes entrou pelo QR e agora usa a SENHA_SYNC passa a ser Gerente na lista
+          // (a chave antiga dele deixa de valer)
+          await env.DB.prepare("UPDATE aparelhos SET nome = ?, visto_em = ?, nivel = 'gerente', chave_hash = NULL WHERE id = ?").bind(apNome, agora, apId).run();
+          await logEvento(env.DB, { ...quem, tipo: 'seguranca', acao: 'Aparelho conectado', detalhe: 'Com a senha da sincronização · passou a ser Gerente' });
+        }
         else if (ap.nome !== apNome || Date.now() - Date.parse(ap.visto_em || 0) > 5 * 60000)   // grava no máximo a cada 5 min
           await env.DB.prepare('UPDATE aparelhos SET nome = ?, visto_em = ? WHERE id = ?').bind(apNome, agora, apId).run();
       }
@@ -159,7 +209,7 @@ export default {
       const ma = caminho.match(/^\/aparelhos\/([A-Za-z0-9_-]{4,64})$/);
       if (ma && (req.method === 'DELETE' || req.method === 'PATCH') && !total) return soTotal();
       // nível do aparelho alvo: sem chave própria = entrou com a SENHA_SYNC = Gerente
-      const alvo = ma ? await env.DB.prepare('SELECT chave_hash, nivel FROM aparelhos WHERE id = ? AND revogado = 0').bind(ma[1]).first() : null;
+      const alvo = ma ? await env.DB.prepare('SELECT chave_hash, nivel, nome FROM aparelhos WHERE id = ? AND revogado = 0').bind(ma[1]).first() : null;
       const alvoNivel = alvo ? (alvo.chave_hash ? nivelNormal(alvo.nivel) : 'gerente') : null;
       if (req.method === 'PATCH' && ma) {
         let corpo;
@@ -171,7 +221,9 @@ export default {
         if (alvoNivel === 'gerente' && ma[1] !== apId) return responder(403, { erro: 'nivel', mensagem: 'Só o próprio aparelho Gerente pode mudar o nível dele.' });
         // Administrador não dá nem tira o nível Gerente
         if (corpo.nivel === 'gerente' && !gerente) return responder(403, { erro: 'nivel', mensagem: 'Só um Gerente pode dar o nível Gerente.' });
+        if (alvoNivel === 'leitor' || corpo.nivel === 'leitor') return responder(400, { erro: 'nivel', mensagem: 'O Leitor de Pix não troca de nível. Para mudar, remova e conecte de novo.' });
         await env.DB.prepare('UPDATE aparelhos SET nivel = ? WHERE id = ?').bind(corpo.nivel, ma[1]).run();
+        await logEvento(env.DB, { ...quem, tipo: 'seguranca', acao: 'Nível alterado', detalhe: `${alvo.nome || 'Aparelho'}: ${NOME_NIVEL[alvoNivel]} → ${NOME_NIVEL[corpo.nivel]}` });
         return responder(200, { ok: true });
       }
       if (req.method === 'DELETE' && ma) {
@@ -181,6 +233,7 @@ export default {
           env.DB.prepare('UPDATE aparelhos SET revogado = 1 WHERE id = ?').bind(ma[1]),
           env.DB.prepare('DELETE FROM push_inscricoes WHERE aparelho_id = ?').bind(ma[1])
         ]);
+        if (alvo) await logEvento(env.DB, { ...quem, tipo: 'seguranca', acao: 'Aparelho removido', detalhe: `${alvo.nome || 'Aparelho'} (${NOME_NIVEL[alvoNivel]})` });
         return responder(200, { ok: true });
       }
 
@@ -203,7 +256,49 @@ export default {
         const expira = agora + PAREAMENTO_MIN * 60000;
         await env.DB.prepare('INSERT INTO pareamentos (codigo, nivel, expira_em, criado_por, usado, falhas) VALUES (?, ?, ?, ?, 0, 0)')
           .bind(codigo, nivelNovo, expira, apOk ? apId : null).run();
+        await logEvento(env.DB, { ...quem, tipo: 'seguranca', acao: 'Código de conexão gerado', detalhe: `Para um aparelho ${NOME_NIVEL[nivelNovo]} (vale 2 minutos)` });
         return responder(200, { ok: true, codigo, nivel: nivelNovo, expiraEm: new Date(expira).toISOString(), validadeSeg: PAREAMENTO_MIN * 60 });
+      }
+
+      // ----- Log de alterações (2.18.0) -----
+      if (req.method === 'POST' && caminho === '/log') {
+        let corpo;
+        try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
+        const eventos = Array.isArray(corpo && corpo.eventos) ? corpo.eventos.slice(0, 200) : [];
+        const agora = new Date().toISOString(), aceitos = [];
+        const passos = eventos.filter(e => e && /^[A-Za-z0-9_-]{4,64}$/.test(String(e.id || '')) && e.acao).map(e => {
+          aceitos.push(String(e.id));
+          const quando = /^\d{4}-\d{2}-\d{2}T/.test(String(e.quando || '')) ? String(e.quando).slice(0, 30) : agora;
+          const valor = typeof e.valor === 'number' && isFinite(e.valor) ? Math.round(e.valor * 100) / 100 : null;
+          return env.DB.prepare('INSERT OR IGNORE INTO log (id, quando, recebido, aparelho_id, aparelho_nome, tipo, acao, detalhe, valor, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind((apOk ? apId : 'x') + ':' + String(e.id), quando, agora, apOk ? apId : null, apNome,
+              LOG_TIPOS.includes(e.tipo) ? e.tipo : 'sistema', String(e.acao).slice(0, 80), String(e.detalhe || '').slice(0, 300), valor, e.ref ? String(e.ref).slice(0, 64) : null);
+        });
+        if (Date.now() - ultimaLimpezaLog > 3600000) {   // limpeza do que tem mais de 1 ano, no máximo 1 vez por hora
+          ultimaLimpezaLog = Date.now();
+          passos.push(env.DB.prepare('DELETE FROM log WHERE recebido < ?').bind(new Date(Date.now() - LOG_DIAS * 86400000).toISOString()));
+        }
+        if (passos.length) await env.DB.batch(passos);
+        return responder(200, { ok: true, recebidos: aceitos });
+      }
+      if (req.method === 'GET' && caminho === '/log') {
+        if (!total) return soTotal();
+        const pular = Math.max(0, parseInt(url.searchParams.get('pular')) || 0);
+        const filtros = [], binds = [];
+        const fAp = url.searchParams.get('aparelho'), fTipo = url.searchParams.get('tipo'), fDia = url.searchParams.get('dia');
+        if (fAp) { filtros.push('aparelho_id = ?'); binds.push(fAp); }
+        if (fTipo && LOG_TIPOS.includes(fTipo)) { filtros.push('tipo = ?'); binds.push(fTipo); }
+        if (fDia && /^\d{4}-\d{2}-\d{2}$/.test(fDia)) {   // dia no horário de Brasília (−3h)
+          filtros.push('quando >= ? AND quando < ?');
+          const ini = new Date(fDia + 'T03:00:00.000Z');
+          binds.push(ini.toISOString(), new Date(ini.getTime() + 86400000).toISOString());
+        }
+        const { results } = await env.DB.prepare(
+          'SELECT id, quando, aparelho_id, aparelho_nome, tipo, acao, detalhe, valor, ref FROM log' +
+          (filtros.length ? ' WHERE ' + filtros.join(' AND ') : '') + ' ORDER BY quando DESC, recebido DESC LIMIT 51 OFFSET ?'
+        ).bind(...binds, pular).all();
+        const aps = pular ? null : (await env.DB.prepare('SELECT DISTINCT aparelho_id AS id, aparelho_nome AS nome FROM log WHERE aparelho_id IS NOT NULL ORDER BY nome').all()).results;
+        return responder(200, { eventos: results.slice(0, 50).map(r => ({ quando: r.quando, aparelhoId: r.aparelho_id, aparelho: r.aparelho_nome || '—', tipo: r.tipo, acao: r.acao, detalhe: r.detalhe, valor: r.valor, ref: r.ref })), mais: results.length > 50, aparelhos: aps });
       }
 
       if (req.method === 'GET' && (caminho === '/versao' || caminho === '/status')) {
@@ -302,26 +397,101 @@ export default {
         if (nivel === 'consulta') return responder(403, { erro: 'nivel', mensagem: 'Este aparelho é só de consulta.' });
         let corpo;
         try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
-        const aviso = JSON.stringify({
+        // 2.19.0: a venda leva quem vendeu (para o botão "Curtir")
+        const ehVenda = corpo.tipo === 'venda';
+        const aviso = {
           titulo: String(corpo.titulo || 'China Engine').slice(0, 120),
           corpo: String(corpo.corpo || '').slice(0, 400),
-          tag: String(corpo.tag || '').slice(0, 60)
-        });
-        const { results } = await env.DB.prepare('SELECT endpoint, p256dh, auth FROM push_inscricoes').all();
-        const alvos = results.filter(i => corpo.somente ? i.endpoint === corpo.somente : i.endpoint !== corpo.excluir);
-        if (!alvos.length) return responder(200, { ok: true, enviadas: 0, falhas: 0 });
-        const vapid = await chavesPush(env.DB);
-        const mortos = [];
-        let enviadas = 0, falhas = 0;
-        await Promise.all(alvos.map(async i => {
-          try {
-            const r = await enviarPush(i, aviso, vapid, origem || permitidas[0]);
-            if (r.ok) enviadas++;
-            else { falhas++; if (r.status === 404 || r.status === 410) mortos.push(i.endpoint); }   // inscrição cancelada no aparelho
-          } catch (e) { falhas++; }
-        }));
-        if (mortos.length) await env.DB.batch(mortos.map(m => env.DB.prepare('DELETE FROM push_inscricoes WHERE endpoint = ?').bind(m)));
-        return responder(200, { ok: true, enviadas, falhas });
+          tag: String(corpo.tag || '').slice(0, 60),
+          ...(ehVenda && apOk ? { tipo: 'venda', origemAp: apId, acoes: [{ action: 'curtir', title: 'Curtir' }] } : {})
+        };
+        const r = await avisarAparelhos(env.DB, i => corpo.somente ? i.endpoint === corpo.somente : i.endpoint !== corpo.excluir, aviso, origem || permitidas[0]);
+        return responder(200, { ok: true, ...r });
+      }
+
+      // ----- Curtir uma venda (2.19.0) -----
+      if (req.method === 'POST' && caminho === '/curtir') {
+        let corpo;
+        try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
+        const para = String(corpo && corpo.para || '');
+        if (!/^[A-Za-z0-9_-]{4,64}$/.test(para) || para === apId) return responder(400, { erro: 'dados', mensagem: 'Venda inválida.' });
+        const ref = String(corpo.ref || '').slice(0, 64);
+        // uma curtida por venda e por aparelho
+        if (ref) {
+          const ja = await env.DB.prepare("SELECT 1 FROM log WHERE acao = 'Curtida' AND aparelho_id = ? AND ref = ? LIMIT 1").bind(apOk ? apId : '', ref).first();
+          if (ja) return responder(200, { ok: true, repetida: true });
+        }
+        const dono = await env.DB.prepare('SELECT nome FROM aparelhos WHERE id = ?').bind(para).first();
+        const r = await avisarAparelhos(env.DB, i => i.aparelho_id === para, {
+          titulo: `${apNome} mandou um curtir pela venda!`, corpo: 'Bom trabalho!', tag: 'curtida-' + (ref || Date.now()),
+          tipo: 'curtida', nome: apNome
+        }, origem || permitidas[0]);
+        await logEvento(env.DB, { ...quem, tipo: 'sistema', acao: 'Curtida', detalhe: `${apNome} curtiu uma venda de ${dono ? dono.nome : 'outro aparelho'}`, ref: ref || null });
+        return responder(200, { ok: true, ...r });
+      }
+
+      // ----- Leitor de Pix (2.19.0) -----
+      if (req.method === 'POST' && caminho === '/pix') {
+        if (nivel !== 'leitor' && !total) return soTotal();
+        let corpo;
+        try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
+        const valor = Math.round(Number(corpo && corpo.valor) * 100) / 100;
+        const origemPix = String(corpo.origem || 'Pix').slice(0, 40);
+        if (corpo.teste) {
+          await logEvento(env.DB, { ...quem, tipo: 'sistema', acao: 'Teste do leitor de Pix', detalhe: `O leitor está conectado e falando com o Worker (${origemPix})` });
+          return responder(200, { ok: true, teste: true });
+        }
+        const id = String(corpo.id || '');
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(id) || !(valor > 0) || valor > 1e7) return responder(400, { erro: 'dados', mensagem: 'Pix inválido.' });
+        const agoraIso = new Date().toISOString();
+        const quando = /^\d{4}-\d{2}-\d{2}T/.test(String(corpo.quando || '')) ? String(corpo.quando).slice(0, 30) : agoraIso;
+        const ins = await env.DB.prepare('INSERT OR IGNORE INTO pix (id, quando, recebido, valor, origem, pacote, aparelho_id, aparelho_nome, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, quando, agoraIso, valor, origemPix, String(corpo.pacote || '').slice(0, 80), apOk ? apId : null, apNome, 'novo').run();
+        if (!ins.meta.changes) return responder(200, { ok: true, repetido: true });
+        await logEvento(env.DB, { ...quem, tipo: 'venda', acao: 'Pix recebido (leitor)', detalhe: origemPix, valor, ref: id });
+        // espera um pouco: se a venda no Pix já foi (ou for logo) registrada no PDV, não incomoda ninguém
+        const avisar = async () => {
+          await new Promise(r => setTimeout(r, PIX_ESPERA_SEG * 1000));
+          const desde = new Date(Date.parse(quando) - PIX_JANELA_MIN * 60000).toISOString();
+          const venda = await env.DB.prepare("SELECT ref FROM log WHERE tipo = 'venda' AND acao NOT LIKE 'Pix%' AND valor = ? AND detalhe LIKE '%Pix%' AND quando >= ? " +
+            'AND (ref IS NULL OR ref NOT IN (SELECT venda_id FROM pix WHERE venda_id IS NOT NULL)) ORDER BY quando DESC LIMIT 1').bind(valor, desde).first();
+          const atual = await env.DB.prepare('SELECT status FROM pix WHERE id = ?').bind(id).first();
+          if (!atual || atual.status !== 'novo') return;
+          if (venda) {
+            await env.DB.prepare("UPDATE pix SET status = 'conferido', venda_id = ?, resolvido_por = 'automático', resolvido_em = ? WHERE id = ? AND status = 'novo'")
+              .bind(venda.ref || null, new Date().toISOString(), id).run();
+            return;
+          }
+          const hora = new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' }).format(new Date(quando));
+          const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+          await avisarAparelhos(env.DB, () => true, {
+            titulo: `Novo Pix: ${brl}`, corpo: `Chegou no ${origemPix} às ${hora}. Já foi lançado no caixa?`, tag: 'pix-' + id,
+            tipo: 'pix', pixId: id, acoes: [{ action: 'abrir', title: 'Abrir App' }, { action: 'dispensar', title: 'Já registrei' }]
+          }, origem || permitidas[0]);
+        };
+        if (ctx && ctx.waitUntil) ctx.waitUntil(avisar().catch(() => {}));
+        return responder(200, { ok: true });
+      }
+      if (req.method === 'GET' && caminho === '/pix') {
+        if (!total) return soTotal();
+        const dias = Math.min(60, Math.max(1, parseInt(url.searchParams.get('dias')) || 7));
+        const desde = new Date(Date.now() - dias * 86400000).toISOString();
+        const { results } = await env.DB.prepare("SELECT id, quando, valor, origem, aparelho_nome, status, venda_id, resolvido_por, resolvido_em FROM pix WHERE quando >= ? OR status = 'novo' ORDER BY quando DESC LIMIT 200").bind(desde).all();
+        return responder(200, { pix: results.map(p => ({ id: p.id, quando: p.quando, valor: p.valor, origem: p.origem, leitor: p.aparelho_nome, status: p.status, vendaId: p.venda_id, resolvidoPor: p.resolvido_por, resolvidoEm: p.resolvido_em })) });
+      }
+      const mp = caminho.match(/^\/pix\/([A-Za-z0-9_-]{8,64})$/);
+      if (req.method === 'PATCH' && mp) {
+        if (!total) return soTotal();
+        let corpo;
+        try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
+        if (!['registrado', 'dispensado', 'conferido', 'novo'].includes(corpo && corpo.status)) return responder(400, { erro: 'dados', mensagem: 'Situação inválida.' });
+        const px = await env.DB.prepare('SELECT valor, origem, status FROM pix WHERE id = ?').bind(mp[1]).first();
+        if (!px) return responder(404, { erro: 'pix', mensagem: 'Pix não encontrado.' });
+        await env.DB.prepare('UPDATE pix SET status = ?, venda_id = ?, resolvido_por = ?, resolvido_em = ? WHERE id = ?')
+          .bind(corpo.status, corpo.vendaId ? String(corpo.vendaId).slice(0, 64) : null, corpo.status === 'novo' ? null : apNome, corpo.status === 'novo' ? null : new Date().toISOString(), mp[1]).run();
+        const txt = { registrado: 'Pix registrado numa venda', dispensado: 'Pix dispensado', conferido: 'Pix conferido', novo: 'Pix reaberto' }[corpo.status];
+        if (corpo.status !== 'conferido' || corpo.manual) await logEvento(env.DB, { ...quem, tipo: 'venda', acao: txt, detalhe: px.origem, valor: px.valor, ref: mp[1] });
+        return responder(200, { ok: true });
       }
 
       return responder(404, { erro: 'rota', mensagem: 'Rota não encontrada.' });
@@ -350,7 +520,14 @@ async function prepararTabelas(db) {
   await db.batch([
     db.prepare('CREATE TABLE IF NOT EXISTS pareamentos (codigo TEXT PRIMARY KEY, nivel TEXT NOT NULL, expira_em INTEGER NOT NULL, criado_por TEXT, usado INTEGER DEFAULT 0, falhas INTEGER DEFAULT 0)'),
     db.prepare('CREATE INDEX IF NOT EXISTS aparelhos_chave ON aparelhos (chave_hash)'),
-    db.prepare('CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT)')
+    db.prepare('CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT)'),
+    // 2.18.0: log de alterações (só cresce; o que tem mais de 1 ano sai sozinho)
+    db.prepare('CREATE TABLE IF NOT EXISTS log (id TEXT PRIMARY KEY, quando TEXT NOT NULL, recebido TEXT NOT NULL, aparelho_id TEXT, aparelho_nome TEXT, tipo TEXT, acao TEXT, detalhe TEXT, valor REAL, ref TEXT)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS log_quando ON log (quando)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS log_recebido ON log (recebido)'),
+    // 2.19.0: Pix lidos pelo leitor (sem o nome de quem pagou)
+    db.prepare('CREATE TABLE IF NOT EXISTS pix (id TEXT PRIMARY KEY, quando TEXT NOT NULL, recebido TEXT, valor REAL NOT NULL, origem TEXT, pacote TEXT, aparelho_id TEXT, aparelho_nome TEXT, status TEXT NOT NULL, venda_id TEXT, resolvido_por TEXT, resolvido_em TEXT)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS pix_quando ON pix (quando)')
   ]);
   // 2.15.0: o "Gerente" conectado pelo QR na 2.14.0 vira Administrador (uma vez só). Quem usa a SENHA_SYNC continua Gerente.
   const migrado = await db.prepare("SELECT valor FROM meta WHERE chave = 'niveis'").first();
@@ -365,7 +542,7 @@ async function prepararTabelas(db) {
 }
 
 /* Aparelho novo troca o código de 6 dígitos (QR code) por uma chave própria, com o nível escolhido pelo gerente */
-async function usarPareamento(req, db, responder) {
+async function usarPareamento(req, db, responder, logEvento) {
   let corpo;
   try { corpo = await req.json(); } catch (e) { return responder(400, { erro: 'json', mensagem: 'Dados inválidos.' }); }
   const codigo = String(corpo && corpo.codigo || '').replace(/\D/g, '');
@@ -379,6 +556,7 @@ async function usarPareamento(req, db, responder) {
   if (!p) {
     // erro conta para todos os códigos abertos: depois de 10, nenhum vale mais (freia quem tenta adivinhar)
     await db.prepare('UPDATE pareamentos SET falhas = falhas + 1 WHERE usado = 0 AND expira_em >= ?').bind(agora).run();
+    await logEvento(db, { tipo: 'seguranca', acao: 'Código de conexão errado', detalhe: `Tentativa de "${nome}" (repetições em 1 minuto contam uma vez)`, aparelhoNome: nome }, 60);
     await new Promise(r => setTimeout(r, 800));
     return responder(401, { erro: 'codigo', mensagem: 'Código inválido ou vencido. Gere um novo no aparelho do gerente.' });
   }
@@ -391,7 +569,28 @@ async function usarPareamento(req, db, responder) {
     'INSERT INTO aparelhos (id, nome, criado_em, visto_em, nivel, revogado, chave_hash) VALUES (?, ?, ?, ?, ?, 0, ?) ' +
     'ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, visto_em = excluded.visto_em, nivel = excluded.nivel, revogado = 0, chave_hash = excluded.chave_hash'
   ).bind(apId, nome, iso, iso, nivelNormal(p.nivel), await resumo(chave)).run();
+  await logEvento(db, { tipo: 'seguranca', acao: 'Aparelho conectado', detalhe: `Pelo código · ${NOME_NIVEL[nivelNormal(p.nivel)]}`, aparelhoId: apId, aparelhoNome: nome });
   return responder(200, { ok: true, chave, nivel: nivelNormal(p.nivel) });
+}
+
+/* Envia um aviso push para as inscrições escolhidas (filtro) e limpa as que o navegador cancelou */
+async function avisarAparelhos(db, filtro, aviso, contato) {
+  const { results } = await db.prepare('SELECT endpoint, p256dh, auth, aparelho_id FROM push_inscricoes').all();
+  const alvos = results.filter(filtro);
+  if (!alvos.length) return { enviadas: 0, falhas: 0 };
+  const vapid = await chavesPush(db);
+  const texto = JSON.stringify(aviso).slice(0, 3000);
+  const mortos = [];
+  let enviadas = 0, falhas = 0;
+  await Promise.all(alvos.map(async i => {
+    try {
+      const r = await enviarPush(i, texto, vapid, contato);
+      if (r.ok) enviadas++;
+      else { falhas++; if (r.status === 404 || r.status === 410) mortos.push(i.endpoint); }   // inscrição cancelada no aparelho
+    } catch (e) { falhas++; }
+  }));
+  if (mortos.length) await db.batch(mortos.map(m => db.prepare('DELETE FROM push_inscricoes WHERE endpoint = ?').bind(m)));
+  return { enviadas, falhas };
 }
 
 /* Resumo SHA-256 (hex) da chave de um aparelho: é isso que fica no banco, nunca a chave */
